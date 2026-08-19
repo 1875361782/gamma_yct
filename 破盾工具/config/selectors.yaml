@@ -1,0 +1,68 @@
+# 上海一网通办登录页 - 仅滑块验证（自研 imgVer 插件）
+target_url: "https://zwdtuser.sh.gov.cn/uc/login/login.jsp?kind=0&self=self&redirect_uri=https%3A//zwdt.sh.gov.cn/govPortals"
+
+browser:
+  # auto | chrome | edge  （当前环境无 Chrome，默认 edge）
+  browser: edge
+  headless: false
+  window_width: 1280
+  window_height: 900
+  page_load_timeout: 30
+  implicit_wait: 0
+
+slider:
+  # 图片像素 → CSS 像素后的经验校正（可按实测微调）
+  bias: 0
+  max_retries: 5
+  retry_wait_min: 0.8
+  retry_wait_max: 1.8
+  result_wait: 2.8
+  simple_target: true
+
+login_page:
+  account_tab_xpaths:
+    - "//a[contains(text(),'账号密码登录')]"
+    - "//span[contains(text(),'账号密码登录')]"
+    - "//li[contains(text(),'账号密码登录')]"
+    - "//*[contains(@class,'password') or contains(text(),'账号密码')]"
+  username_selectors:
+    - "input[placeholder*='手机号码']"
+    - "input[placeholder*='身份证']"
+    - "input[name='loginname']"
+    - "#username"
+    - "#loginname"
+  password_selectors:
+    - "input[type='password']"
+    - "input[placeholder*='密码']"
+  # 点击登录会调用 showSlidingValidation() 弹出滑块
+  submit_selectors:
+    - "#login-btn"
+    - "input.login-btn"
+    - "//input[@id='login-btn']"
+
+# 一网通办 imgVer DOM（来自 /uc/plugin/imgVer/img_ver.js）
+captcha:
+  panel_selectors:
+    - "#Sliding"
+    - "#SlidingValidation"
+    - "#scream"
+  background_selectors:
+    - "#scream"
+    - "img#scream"
+  piece_selectors:
+    - "#puzzleShadow"
+  handle_selectors:
+    - ".slider-btn"
+    - "#Sliding .slider-btn"
+  refresh_selectors:
+    - ".re-btn a"
+    - "#SlidingValidation .re-btn a"
+  success_selectors:
+    - "#tokenId[value]:not([value=''])"
+    - "//*[contains(@class,'ver-tips') and contains(@class,'slider-tips')]//span[contains(@style,'42ca6b')]"
+    - "//*[contains(@class,'ver-tips')]//span[contains(text(),'成功')]"
+  fail_selectors:
+    - "//*[contains(@class,'ver-tips') and contains(@class,'slider-tips')]//span[contains(@style,'red')]"
+    - "//*[contains(@class,'ver-tips')]//span[contains(text(),'失败')]"
+    - "//*[contains(@class,'ver-tips')]//span[contains(text(),'重试')]"
+  iframe_selectors: []

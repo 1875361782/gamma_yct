@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "一窗通填报助手（Agent 工厂）",
+  "description": "在用户自己的已登录 Chrome 中，按企业档案识别并填写上海一窗通表单。登录、实名、人脸、签署与最终提交始终由用户本人完成。",
+  "version": "0.1.0",
+  "minimum_chrome_version": "120",
+  "permissions": ["storage", "activeTab", "debugger"],
+  "host_permissions": ["https://online.yct.sh.gov.cn/*"],
+  "optional_host_permissions": ["https://*/*"],
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "一窗通填报助手",
+    "default_popup": "src/ui/popup.html"
+  },
+  "options_page": "src/ui/options.html",
+  "content_scripts": [
+    {
+      "matches": ["https://online.yct.sh.gov.cn/*"],
+      "js": ["src/main-world/net-probe.js"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_about_blank": true,
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://online.yct.sh.gov.cn/*"],
+      "js": [
+        "src/common/namespace.js",
+        "src/common/policy.js",
+        "src/common/field-map.js",
+        "src/common/site-profile.js",
+        "src/content/roots.js",
+        "src/content/trusted.js",
+        "src/content/labels.js",
+        "src/content/controls.js",
+        "src/content/selects.js",
+        "src/content/dialogs.js",
+        "src/content/page.js",
+        "src/content/planner.js",
+        "src/content/runner.js",
+        "src/content/panel.js",
+        "src/content/main.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true,
+      "match_about_blank": true
+    }
+  ]
+}

@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>一窗通填报助手 · 档案与设置</title>
+    <style>
+      /* 只设 color 不设 background，在深色配色下就是深底深字。扩展页面必须自己钉死。 */
+      :root { color-scheme: light; }
+      body { max-width: 900px; margin: 0 auto; padding: 24px; font: 14px/1.7 -apple-system, "PingFang SC", system-ui, sans-serif; color: #1c2333; background: #fff; }
+      h1 { font-size: 18px; margin: 0 0 4px; }
+      h2 { font-size: 15px; margin: 24px 0 8px; }
+      p { color: #57617d; margin: 4px 0 10px; }
+      textarea { width: 100%; height: 340px; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 10px; border: 1px solid #c8cfe0; border-radius: 8px; box-sizing: border-box; }
+      input { padding: 6px 8px; border: 1px solid #c8cfe0; border-radius: 6px; font-size: 13px; min-width: 280px; }
+      button { padding: 7px 14px; border: 1px solid #c8cfe0; border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; margin-right: 8px; }
+      button.primary { background: #26356b; color: #fff; border-color: #26356b; }
+      .msg { margin-top: 10px; padding: 8px 10px; border-radius: 6px; background: #f2f4fa; font-size: 13px; }
+      .warn { background: #fff8e6; color: #6b4e00; }
+      .bad { background: #fdeeee; color: #7d1d1d; }
+      .field { margin-bottom: 10px; }
+      label { display: block; font-size: 12px; color: #57617d; margin-bottom: 3px; }
+      code { background: #f2f4fa; padding: 1px 4px; border-radius: 3px; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <h1>档案与设置</h1>
+    <p>
+      企业档案只存在本机的扩展存储里，不会被上传。<strong>不要</strong>把密码、短信验证码、
+      一次性口令或人脸凭证写进档案——插件识别到这类字段会直接跳过，写进来只是徒增泄露面。
+    </p>
+
+    <h2>企业档案（JSON）</h2>
+    <p>
+      键名用 <code>enterprise_registration.v1</code> 的路径写法，例如
+      <code>enterprise.name.trade_name</code>、<code>investors[0].name</code>。
+      点「载入示例」看完整结构。
+    </p>
+    <textarea id="dossier" spellcheck="false"></textarea>
+    <div style="margin-top: 10px">
+      <button class="primary" id="save">保存档案</button>
+      <button id="sample">载入示例</button>
+      <button id="clear-journal">清空留痕</button>
+    </div>
+    <div class="msg" id="dossier-msg"></div>
+
+    <h2>可信输入（默认开启）</h2>
+    <p>
+      点击类操作（展开下拉、点选项、勾选、下一步）走 Chrome 的调试通道
+      （<code>chrome.debugger</code>）派发<strong>真实输入事件</strong>——和你亲手点击在页面眼里
+      没有区别，专治政务站自绘下拉「点了没反应」。边界与代价：
+    </p>
+    <ul>
+      <li>运行时页面顶部会出现「"一窗通填报助手"正在调试此浏览器」提示条。这是 Chrome
+          对该通道的固定标识，也是它保持透明的方式；<strong>点掉提示条即当场收回</strong>，
+          在你点面板的「重置本次运行」之前，插件不会再自动连回来。</li>
+      <li>扩展只用这个通道发送鼠标/键盘输入，<strong>不读取页面内容、不执行任何脚本</strong>
+          （后台只放行 CDP 的 Input 域）。</li>
+      <li>停用后一切照常工作：所有点击自动回退到普通合成事件，只是自绘组件的成功率会低一些。</li>
+      <li>
+        <strong>为什么这个权限在安装时就要给：</strong>Chrome 不允许把
+        <code>debugger</code> 做成「用时再申请」的可选权限，它只能随扩展一次性授予。
+        所以下面这个开关是软开关——停用会立刻松开所有调试附着并拒绝后续派发，
+        但不会（也无法）从扩展上摘掉这项权限。真要彻底收回，请在
+        <code>chrome://extensions</code> 里停用或删除本扩展。
+      </li>
+    </ul>
+    <button class="primary" id="trusted-enable">启用可信输入</button>
+    <button id="trusted-disable">停用（并松开调试附着）</button>
+    <div class="msg" id="trusted-msg"></div>
+
+    <h2>知情提示的处理方式</h2>
+    <p>
+      政务站点在推进过程中会弹出「告知后果」类的提示，例如
+      <code>一经申报无法修改企业类型</code>、<code>请仔细核对投资人信息</code>。
+      它们要的是你点头知悉，不点就走不下去。
+    </p>
+    <ul>
+      <li><strong>开启后</strong>：这类提示由插件代你点「确定」，连续填报不再被打断。
+          每一次代点都会记进留痕，并把站点原话一并记下，事后能查清确认过什么。</li>
+      <li><strong>不开启</strong>：每次遇到都停下来，把原话摆给你看，你可以自己点，
+          也可以当场授权（只在本次运行内有效）。</li>
+      <li>
+        <strong>这个开关管不到的事：</strong>承诺书、声明、电子签名、实名/人脸、
+        支付缴费、放弃/注销，以及<strong>最终提交</strong>。那些是你本人做出承诺、
+        表明身份或处置财产，插件永远不代劳——它不是默认关闭的功能，是边界。
+      </li>
+    </ul>
+    <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: #1c2333">
+      <input type="checkbox" id="auto-ack" style="min-width: auto; width: auto" />
+      自动确认「告知后果」类提示，并在弹窗字段全部回读通过后自动继续（推荐开启）
+    </label>
+    <div class="msg" id="ack-msg"></div>
+
+    <h2>平台接入（可选）</h2>
+    <p>
+      不配也能用。配上之后，字段别名会以平台的表单结构（form_schemas）为准覆盖本地那份，
+      运行事件也会回写审计。<strong>当前后端下发的是录制步骤而非企业档案，所以档案仍然来自上面这个输入框。</strong>
+    </p>
+    <div class="field">
+      <label for="base-url">平台地址（https）</label>
+      <input id="base-url" placeholder="https://factory.example.com" />
+    </div>
+    <div class="field">
+      <label for="pairing-code">一次性配对码</label>
+      <input id="pairing-code" placeholder="在 Agent 工厂「浏览器任务」页面生成" />
+    </div>
+    <button id="pair">配对</button>
+    <button id="sync">同步字段别名</button>
+    <div class="msg" id="platform-msg"></div>
+
+    <h2>自检</h2>
+    <p>
+      装好之后先跑一次自检：它按 manifest 的顺序加载引擎的每个模块，对合成的
+      Element Plus 结构跑断言，并逐个解析扩展的其余脚本。全绿说明「装上能不能跑」这一层没问题。
+    </p>
+    <p><a href="selftest.html" target="_blank">打开自检页 →</a></p>
+
+    <h2>这个插件不做的事</h2>
+    <ul>
+      <li>不读、不写、不记录密码、验证码、短信码、一次性口令。</li>
+      <li>不代做实名认证、人脸识别、扫码授权、银行卡核验、电子签名。</li>
+      <li>不勾选承诺书、声明、告知书一类的法律意思表示。</li>
+      <li>不在业务域白名单之外的任何页面上动作。</li>
+      <li>最终提交需要在面板上连点两次显式授权，且一次运行只点一次，结果不明确时不重试。</li>
+    </ul>
+
+    <script src="options.js"></script>
+  </body>
+</html>

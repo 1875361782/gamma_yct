@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>伽马注册 · RPA 二维码获取（A 页）</title>
+<style>
+  *{box-sizing:border-box;}
+  :root{
+    --color-primary:#1E5FD9;
+    --color-primary-soft:#E8F0FE;
+    --color-success:#2BB673;
+    --color-danger:#DC2626;
+    --color-warning:#EA580C;
+    --color-text:#0B2E66;
+    --color-text-sub:#5A6B85;
+    --color-border:#E5E7EB;
+    --color-surface:#fff;
+    --color-bg:#F5F7FA;
+    --radius:10px;
+    --radius-sm:6px;
+    --font:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  body{font-family:var(--font); background:var(--color-bg); color:var(--color-text); margin:0; padding:0; min-height:100vh;}
+  .header{display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 24px; background:#fff; border-bottom:1px solid var(--color-border); position:sticky; top:0; z-index:10;}
+  .header-left{display:flex; align-items:center; gap:14px;}
+  .logo{width:38px; height:38px; border-radius:var(--radius-sm); background:var(--color-primary); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:18px;}
+  .title h1{font-size:18px; margin:0; font-weight:700;}
+  .title .sub{font-size:12px; color:var(--color-text-sub); margin-top:2px;}
+  .status{display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; padding:5px 12px; border-radius:99px; background:#fff7ed; color:var(--color-warning); border:1px solid #fdba74;}
+  .status.ok{background:var(--color-success-soft); color:#15803d; border-color:#86efac;}
+  .status.err{background:#fef2f2; color:#b91c1c; border-color:#fca5a5;}
+  .status-dot{width:8px; height:8px; border-radius:50%; background:currentColor; animation:pulse 1.5s infinite;}
+  .status.ok .status-dot{animation:none;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+  .header-actions{display:flex; align-items:center; gap:10px;}
+  .btn{padding:8px 16px; border-radius:var(--radius-sm); border:1px solid var(--color-border); background:#fff; color:var(--color-text); font-family:var(--font); font-size:13px; font-weight:600; cursor:pointer;}
+  .btn-primary{background:var(--color-primary); border-color:var(--color-primary); color:#fff;}
+  .btn:disabled{opacity:.6; cursor:not-allowed;}
+  .sid-tag{font-size:12px; color:var(--color-text-sub); background:var(--color-bg); padding:4px 10px; border-radius:99px; font-family:'SF Mono',monospace;}
+
+  .main{display:grid; grid-template-columns:1fr 360px; gap:20px; padding:20px 24px; max-width:1600px; margin:0 auto;}
+  @media (max-width:1100px){.main{grid-template-columns:1fr;}}
+
+  .panel{background:#fff; border-radius:var(--radius); border:1px solid var(--color-border); overflow:hidden;}
+  .panel-head{padding:12px 16px; border-bottom:1px solid var(--color-border); font-weight:700; font-size:14px; display:flex; align-items:center; justify-content:space-between;}
+  .panel-body{padding:16px;}
+
+  .screen-wrap{position:relative; background:#f0f2f5; min-height:480px; display:flex; align-items:center; justify-content:center;}
+  .screen-img{max-width:100%; height:auto; display:block; background:#fff;}
+  .screen-placeholder{text-align:center; color:var(--color-text-sub); font-size:14px;}
+  .screen-placeholder .spin{width:36px; height:36px; border:3px solid var(--color-primary); border-top-color:transparent; border-radius:50%; animation:spin 1s linear infinite; margin:0 auto 12px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .screen-badge{position:absolute; top:10px; left:10px; background:rgba(0,0,0,.65); color:#fff; font-size:12px; padding:4px 10px; border-radius:99px;}
+
+  .log-list{max-height:320px; overflow-y:auto; font-size:13px;}
+  .log-item{display:flex; align-items:flex-start; gap:10px; padding:8px 0; border-bottom:1px dashed var(--color-border);}
+  .log-item:last-child{border-bottom:0;}
+  .log-icon{width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:11px; color:#fff; margin-top:1px;}
+  .log-icon.info{background:var(--color-primary);}
+  .log-icon.ok{background:var(--color-success);}
+  .log-icon.err{background:var(--color-danger);}
+  .log-text{line-height:1.45;}
+  .log-time{color:#94a3b8; font-size:11px; margin-left:auto; white-space:nowrap;}
+
+  .qr-panel{text-align:center;}
+  .qr-img{width:180px; height:180px; object-fit:contain; border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:8px; background:#fff;}
+  .qr-empty{width:180px; height:180px; border:2px dashed var(--color-border); border-radius:var(--radius-sm); display:flex; align-items:center; justify-content:center; color:var(--color-text-sub); font-size:13px; margin:0 auto;}
+  .qr-tip{font-size:12px; color:var(--color-text-sub); margin-top:10px; line-height:1.5;}
+
+  .steps{margin-top:14px;}
+  .step{display:flex; align-items:center; gap:10px; padding:9px 0; font-size:13px; color:var(--color-text-sub); border-bottom:1px solid var(--color-border);}
+  .step:last-child{border-bottom:0;}
+  .step-num{width:22px; height:22px; border-radius:50%; background:#e2e8f0; color:var(--color-text); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0;}
+  .step.active{color:var(--color-text); font-weight:600;}
+  .step.active .step-num{background:var(--color-primary); color:#fff;}
+  .step.done{color:var(--color-success);}
+  .step.done .step-num{background:var(--color-success); color:#fff;}
+  .step.error{color:var(--color-danger);}
+  .step.error .step-num{background:var(--color-danger); color:#fff;}
+
+  .hint{background:#fff7ed; border:1px solid #fdba74; border-radius:var(--radius-sm); padding:12px; font-size:12px; color:#7c2d12; line-height:1.6; margin-top:16px;}
+  .hint code{background:#1e293b; color:#86efac; padding:2px 6px; border-radius:4px; font-family:'SF Mono',monospace;}
+
+  @media (max-width:768px){
+    .header{flex-wrap:wrap; padding:12px 16px;}
+    .main{padding:12px;}
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-left">
+    <div class="logo">A</div>
+    <div class="title">
+      <h1>二维码获取页（RPA 端）</h1>
+      <div class="sub">上海企业登记在线 → 开办 → 企业 → 一网通办登录 → 扫码登录</div>
+    </div>
+  </div>
+  <div class="header-actions">
+    <span class="sid-tag" id="sidTag">sid: ...</span>
+    <span class="status" id="connStatus"><span class="status-dot"></span>未连接</span>
+    <button class="btn btn-primary" id="startBtn" type="button">开始 RPA</button>
+    <button class="btn" id="resetBtn" type="button">重置</button>
+    <button class="btn" id="skipBtn" type="button" title="当自动流程卡住、但浏览器实际已进入登录页时，从此处接管后续步骤">✓ 我已到登录页，继续</button>
+    <a id="openB" class="btn" href="#" target="_blank" style="text-decoration:none;">↗ 打开 B 页扫码</a>
+  </div>
+</div>
+
+<div class="main">
+  <div class="panel">
+    <div class="panel-head">
+      <span>📺 RPA 浏览器实时画面</span>
+      <span style="font-size:12px;color:var(--color-text-sub);" id="fpsText">等待画面…</span>
+    </div>
+    <div class="panel-body" style="padding:0;">
+      <div class="screen-wrap" id="screenWrap">
+        <div class="screen-placeholder" id="screenPlaceholder">
+          <div class="spin"></div>
+          <div>等待 RPA 启动并打开门户…</div>
+        </div>
+        <img id="screenImg" class="screen-img" style="display:none;" alt="RPA screenshot" />
+        <div class="screen-badge" id="screenBadge" style="display:none;">live</div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="panel" style="margin-bottom:16px;">
+      <div class="panel-head">当前二维码</div>
+      <div class="panel-body qr-panel">
+        <div class="qr-empty" id="qrEmpty">等待 QR…</div>
+        <img id="qrImg" class="qr-img" style="display:none;" alt="QR" />
+        <div class="qr-tip" id="qrTip">RPA 捕获二维码后，会自动同步到 B 页（扫码登录页）。</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">操作步骤</div>
+      <div class="panel-body">
+        <div class="steps" id="steps">
+          <div class="step" data-step="start"><span class="step-num">1</span>启动 RPA 浏览器</div>
+          <div class="step" data-step="open_portal"><span class="step-num">2</span>打开上海企业登记在线门户</div>
+          <div class="step" data-step="close_policy_popup"><span class="step-num">3</span>关闭「市场准入政策解读」弹窗</div>
+          <div class="step" data-step="close_notice_popup"><span class="step-num">4</span>关闭「重要提示」弹窗</div>
+          <div class="step" data-step="click_kaiban"><span class="step-num">5</span>点击「开办」</div>
+          <div class="step" data-step="click_enterprise"><span class="step-num">6</span>选择「企业」</div>
+          <div class="step" data-step="login_page_loaded"><span class="step-num">7</span>进入一网通办登录页</div>
+          <div class="step" data-step="click_qr_tab"><span class="step-num">8</span>点击「扫码登录」</div>
+          <div class="step" data-step="qr_captured"><span class="step-num">9</span>捕获二维码</div>
+          <div class="step" data-step="login_success"><span class="step-num">10</span>扫码成功，页面自动跳转</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:16px;">
+      <div class="panel-head">运行日志</div>
+      <div class="panel-body">
+        <div class="log-list" id="logList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  function getParams(){
+    return new URLSearchParams(location.search);
+  }
+  var params = getParams();
+  var sid = params.get('sid');
+  if (!sid) {
+    sid = 'demo-' + Date.now().toString(36);
+    params.set('sid', sid);
+    history.replaceState(null, '', location.pathname + '?' + params.toString());
+  }
+  var useMock = params.get('mock') === '1' || params.get('mock') === 'true';
+  document.getElementById('sidTag').textContent = 'sid: ' + sid + (useMock ? ' (mock)' : '');
+  var openB = document.getElementById('openB');
+  if (openB) openB.href = '/qrlogin?sid=' + encodeURIComponent(sid) + (useMock ? '&mock=true' : '');
+
+  var ws = null, ping = null;
+  var screenImg = document.getElementById('screenImg');
+  var screenPlaceholder = document.getElementById('screenPlaceholder');
+  var screenBadge = document.getElementById('screenBadge');
+  var qrImg = document.getElementById('qrImg');
+  var qrEmpty = document.getElementById('qrEmpty');
+  var connStatus = document.getElementById('connStatus');
+  var logList = document.getElementById('logList');
+  var fpsText = document.getElementById('fpsText');
+  var lastScreenAt = 0;
+
+  function setStatus(state, text){
+    connStatus.className = 'status ' + (state === 'ok' ? 'ok' : state === 'err' ? 'err' : '');
+    connStatus.innerHTML = '<span class="status-dot"></span>' + text;
+  }
+
+  function addLog(type, text){
+    var item = document.createElement('div');
+    item.className = 'log-item';
+    var iconClass = type === 'ok' ? 'ok' : type === 'err' ? 'err' : 'info';
+    var icon = type === 'ok' ? '✓' : type === 'err' ? '!' : '›';
+    var t = new Date().toLocaleTimeString('zh-CN', {hour12:false});
+    item.innerHTML = '<span class="log-icon ' + iconClass + '">' + icon + '</span><div class="log-text">' + escapeHtml(text) + '</div><div class="log-time">' + t + '</div>';
+    logList.appendChild(item);
+    logList.scrollTop = logList.scrollHeight;
+  }
+
+  function escapeHtml(s){
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function markStep(step, state){
+    var el = document.querySelector('.step[data-step="' + step + '"]');
+    if (!el) return;
+    el.classList.remove('active','done','error');
+    if (state) el.classList.add(state);
+    // 前置步骤全部 done
+    if (state === 'active' || state === 'done') {
+      var all = Array.from(document.querySelectorAll('.step'));
+      var idx = all.indexOf(el);
+      for (var i=0;i<idx;i++) all[i].classList.add('done');
+    }
+  }
+
+  function connect(){
+    if (ws) { try{ ws.close(); }catch(e){} ws = null; }
+    if (ping) { clearInterval(ping); ping = null; }
+
+    var wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    var host = (location.hostname && location.hostname !== '') ? location.hostname : 'localhost';
+    var wsUrl = wsProto + '//' + host + ':8766/ws/' + encodeURIComponent(sid);
+    setStatus('', '连接中…');
+
+    try { ws = new WebSocket(wsUrl); }
+    catch(e) { setStatus('err', '连接失败'); return; }
+
+    ws.onopen = function(){
+      ws.send(JSON.stringify({
+        action:'bind',
+        sid:sid,
+        mock:useMock,
+        subscribe:['qr','login','error','step','screenshot','bound']
+      }));
+      setStatus('', '已连接，等待 RPA 启动…');
+      addLog('info', 'WebSocket 已连接' + (useMock ? '（mock 模式）' : ''));
+    };
+
+    ws.onmessage = function(ev){
+      var msg; try{ msg = JSON.parse(ev.data); }catch(e){ return; }
+      if (msg.type === 'bound'){
+        setStatus('ok', '已绑定 RPA 会话');
+        addLog('ok', '会话已绑定: ' + sid);
+      } else if (msg.type === 'step'){
+        addLog(msg.step === 'qr_captured' || msg.step === 'login_success' ? 'ok' : 'info', msg.message);
+        markStep(msg.step, msg.step === 'error' ? 'error' : 'done');
+        if (msg.step === 'login_success') {
+          setStatus('ok', '扫码成功，A 页已自动跳转');
+        }
+      } else if (msg.type === 'qr_update'){
+        qrImg.src = msg.qr;
+        qrImg.style.display = '';
+        qrEmpty.style.display = 'none';
+        document.getElementById('qrTip').textContent = '二维码已同步到 B 页，请使用「随申办」APP 扫码。';
+        markStep('qr_captured', 'done');
+      } else if (msg.type === 'screenshot'){
+        screenImg.src = msg.image;
+        screenImg.style.display = '';
+        screenPlaceholder.style.display = 'none';
+        screenBadge.style.display = '';
+        lastScreenAt = Date.now();
+        fpsText.textContent = '画面实时同步中';
+      } else if (msg.type === 'login_success'){
+        setStatus('ok', '扫码成功');
+        addLog('ok', '登录成功：' + (msg.user || '法人'));
+        markStep('login_success', 'done');
+      } else if (msg.type === 'error'){
+        setStatus('err', '异常：' + msg.message);
+        addLog('err', msg.message);
+      }
+    };
+
+    ws.onerror = function(){
+      setStatus('err', 'WebSocket 异常');
+    };
+    ws.onclose = function(){
+      setStatus('err', '连接已断开');
+    };
+
+    ping = setInterval(function(){
+      if (ws && ws.readyState === 1) ws.send(JSON.stringify({action:'ping'}));
+    }, 25000);
+  }
+
+  document.getElementById('startBtn').addEventListener('click', function(){
+    connect();
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', function(){
+    if (ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({action:'stop'}));
+      ws.close();
+    }
+    location.reload();
+  });
+
+  document.getElementById('skipBtn').addEventListener('click', function(){
+    if (!ws || ws.readyState !== 1) {
+      setStatus('err', '请先连接');
+      addLog('err', '未连接，无法接管');
+      return;
+    }
+    ws.send(JSON.stringify({action:'skip_to_login'}));
+    setStatus('', '已从登录页接管后续步骤…');
+    addLog('info', '已发送「接管」指令，后端将从当前登录页继续（点扫码登录 → 抓二维码）');
+  });
+
+  // 自动连接
+  connect();
+})();
+</script>
+</body>
+</html>

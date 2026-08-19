@@ -1,0 +1,1692 @@
+<!-- 伽马注册 H5 原型 v2 · 9 屏两阶段
+     阶段 A: 登录 / 企业信息 / 人员信息 / 受益人证件 / 信息确认单 (①②③④⑤)
+     阶段 B: 扫码登录 QR / 进度跟踪 / 核名重填 / 办理完成 (⑥⑦⑧⑨)
+     自包含 HTML + 内联 CSS + 原生 JS · 政务蓝设计系统 · 无外部依赖 -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>伽马注册 · 企业注册向导原型 v2</title>
+<style>
+/* ============ 设计令牌（政务蓝 + Modern Minimal） ============ */
+:root{
+  --color-primary:#1E5FD9;
+  --color-primary-hover:#174BB0;
+  --color-primary-soft:#EAF1FD;
+  --color-bg:#F5F7FA;
+  --color-surface:#FFFFFF;
+  --color-border:#E3E8EF;
+  --color-text:#1F2937;
+  --color-text-sub:#6B7280;
+  --color-success:#16A34A;
+  --color-warning:#F59E0B;
+  --color-danger:#DC2626;
+  --color-info:#3B82F6;
+  --color-phase-a:#EAF1FD;          /* 阶段 A 横幅浅蓝 */
+  --color-phase-a-text:#1E5FD9;
+  --color-phase-b:#FFF7E6;          /* 阶段 B 横幅浅橙 */
+  --color-phase-b-text:#D97706;
+  --radius:14px; --radius-sm:10px;
+  --space-xs:4px; --space-sm:8px; --space-md:16px; --space-lg:24px;
+  --shadow-card:0 1px 3px rgba(0,0,0,.06);
+  --shadow-float:0 6px 20px rgba(0,0,0,.10);
+  --font: "PingFang SC","Helvetica Neue",Arial,sans-serif;
+  --touch:44px;
+  --phone-w:420px;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{height:100%;}
+body{
+  margin:0;
+  font-family:var(--font);
+  color:var(--color-text);
+  background:#dde2ea;
+  display:flex; justify-content:center; align-items:stretch;
+}
+
+/* ============ 手机外框 ============ */
+.phone{
+  position:relative;
+  width:100%; max-width:var(--phone-w);
+  background:var(--color-bg);
+  min-height:100vh;
+  display:flex; flex-direction:column;
+  overflow:hidden;
+  box-shadow:0 0 0 1px #cfd5df, 0 20px 60px rgba(15,23,42,.18);
+}
+
+/* ============ iOS 状态栏 ============ */
+.status-bar{
+  flex-shrink:0; height:34px;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 20px; font-size:13px; font-weight:600; color:var(--color-text);
+  background:var(--color-surface);
+}
+.status-bar .sb-right{display:flex; align-items:center; gap:6px;}
+.status-bar svg{display:block;}
+
+/* ============ 阶段横幅 ============ */
+.phase-banner{
+  flex-shrink:0;
+  padding:10px var(--space-md);
+  font-size:13px; font-weight:700;
+  display:flex; align-items:center; gap:8px;
+}
+.phase-a{ background:var(--color-phase-a); color:var(--color-phase-a-text); }
+.phase-b{ background:var(--color-phase-b); color:var(--color-phase-b-text); }
+.phase-banner .ph-dot{
+  width:8px; height:8px; border-radius:50%;
+  background:currentColor; flex-shrink:0;
+}
+.phase-banner .ph-meta{margin-left:auto; font-size:11px; font-weight:600; opacity:.75;}
+
+/* ============ 顶部品牌栏 + 步骤条 ============ */
+.brand-bar{
+  flex-shrink:0;
+  background:var(--color-surface);
+  padding:var(--space-sm) var(--space-md);
+  border-bottom:1px solid var(--color-border);
+}
+.brand-row{display:flex; align-items:center; gap:10px;}
+.brand-logo{
+  width:30px; height:30px; border-radius:8px;
+  background:var(--color-primary); color:#fff;
+  display:flex; align-items:center; justify-content:center;
+  font-weight:700; font-size:15px; flex-shrink:0;
+}
+.brand-name{font-size:16px; font-weight:700; letter-spacing:.5px;}
+.brand-sub{font-size:11px; color:var(--color-text-sub); margin-left:auto;}
+
+.steps{
+  display:flex; align-items:center; justify-content:space-between;
+  margin-top:var(--space-sm);
+}
+.step{
+  display:flex; flex-direction:column; align-items:center; gap:3px;
+  flex:1; position:relative;
+}
+.step .dot{
+  width:22px; height:22px; border-radius:50%;
+  background:var(--color-bg); border:1.5px solid var(--color-border);
+  color:var(--color-text-sub); font-size:11px; font-weight:700;
+  display:flex; align-items:center; justify-content:center;
+  transition:all .2s ease; z-index:2;
+}
+.step .lbl{font-size:9.5px; color:var(--color-text-sub); white-space:nowrap;}
+.step.active .dot{background:var(--color-primary); border-color:var(--color-primary); color:#fff;}
+.step.active .lbl{color:var(--color-primary); font-weight:600;}
+.step.done .dot{background:var(--color-primary-soft); border-color:var(--color-primary); color:var(--color-primary);}
+.step.done .lbl{color:var(--color-text);}
+.step.future .dot{background:var(--color-bg); border-color:var(--color-border); color:var(--color-text-sub);}
+.step.phase-sep::after{
+  content:""; position:absolute; right:-2px; top:50%;
+  width:1px; height:18px; background:var(--color-border);
+  transform:translateY(-50%);
+}
+
+/* 进度条 */
+.progress-track{
+  height:3px; background:var(--color-border); border-radius:99px;
+  margin-top:8px; overflow:hidden;
+}
+.progress-fill{
+  height:100%; width:11.11%;
+  background:var(--color-primary); border-radius:99px;
+  transition:width .35s ease;
+}
+
+/* ============ 滚动内容区 ============ */
+.scroll{
+  flex:1 1 auto; overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  padding:var(--space-md) var(--space-md) calc(var(--space-lg) + 8px);
+}
+.screen{display:none; animation:fade .25s ease;}
+.screen.active{display:block;}
+@keyframes fade{from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:none;}}
+
+.screen-title{font-size:19px; font-weight:700; margin:0 0 4px;}
+.screen-desc{font-size:13px; color:var(--color-text-sub); margin:0 0 var(--space-md); line-height:1.5;}
+
+/* ============ 卡片 / 区块 ============ */
+.card{
+  background:var(--color-surface);
+  border:1px solid var(--color-border);
+  border-radius:var(--radius);
+  padding:var(--space-md);
+  box-shadow:var(--shadow-card);
+  margin-bottom:var(--space-md);
+}
+.card-h{font-size:14px; font-weight:700; margin:0 0 var(--space-md); display:flex; align-items:center; gap:8px;}
+.card-h .tag{margin-left:auto; font-size:11px; font-weight:600; color:var(--color-primary);
+  background:var(--color-primary-soft); padding:2px 8px; border-radius:99px;}
+
+/* ============ 表单字段 ============ */
+.field{margin-bottom:var(--space-md);}
+.field:last-child{margin-bottom:0;}
+.field > label{display:block; font-size:13px; font-weight:600; margin-bottom:var(--space-sm); color:var(--color-text);}
+.field .req{color:var(--color-danger); margin-left:2px;}
+
+.input-wrap{position:relative; display:flex; align-items:center;}
+.input-wrap .prefix{
+  position:absolute; left:12px; font-size:14px; color:var(--color-text-sub);
+  font-weight:600; pointer-events:none;
+}
+input[type=text], input[type=tel], input[type=number], textarea, select{
+  width:100%; min-height:var(--touch);
+  border:1px solid var(--color-border);
+  border-radius:var(--radius-sm);
+  background:var(--color-surface);
+  color:var(--color-text);
+  font-family:var(--font); font-size:15px;
+  padding:10px 12px;
+  transition:border-color .15s ease, box-shadow .15s ease;
+  outline:none;
+}
+.input-wrap.has-prefix input{padding-left:46px;}
+textarea{resize:vertical; min-height:96px; line-height:1.5; padding:12px;}
+input:focus, textarea:focus, select:focus{
+  border-color:var(--color-primary);
+  box-shadow:0 0 0 3px var(--color-primary-soft);
+}
+input::placeholder, textarea::placeholder{color:#9AA3B2;}
+.unit{
+  position:absolute; right:12px; font-size:13px; color:var(--color-text-sub);
+  pointer-events:none;
+}
+.suffix-btn{
+  position:absolute; right:6px;
+  height:34px; padding:0 12px; border:none; border-radius:8px;
+  background:var(--color-primary-soft); color:var(--color-primary);
+  font-size:13px; font-weight:600; cursor:pointer; font-family:var(--font);
+}
+.suffix-btn:disabled{color:var(--color-text-sub); background:var(--color-bg); cursor:not-allowed;}
+
+/* 内联校验提示 */
+.hint{
+  display:none; align-items:center; gap:6px;
+  font-size:12px; margin-top:6px; line-height:1.4;
+}
+.hint.show{display:flex;}
+.hint.err{color:var(--color-danger);}
+.hint.ok{color:var(--color-success);}
+.hint.warn{color:var(--color-warning);}
+.hint svg{flex-shrink:0;}
+
+/* ============ 按钮 ============ */
+.btn{
+  min-height:var(--touch);
+  border:none; border-radius:var(--radius-sm);
+  font-family:var(--font); font-size:15px; font-weight:600;
+  cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  transition:background .15s ease, transform .05s ease, opacity .15s ease;
+  padding:0 16px; width:100%;
+}
+.btn:active{transform:scale(.985);}
+.btn-primary{background:var(--color-primary); color:#fff;}
+.btn-primary:hover{background:var(--color-primary-hover);}
+.btn-ghost{background:var(--color-surface); color:var(--color-text); border:1px solid var(--color-border);}
+.btn-ghost:hover{background:var(--color-bg);}
+.btn-block{width:100%;}
+.btn-sm{min-height:36px; width:auto; font-size:13px; padding:0 14px;}
+.btn-orange{background:#F59E0B; color:#fff;}
+.btn-orange:hover{background:#D97706;}
+
+/* 隐私协议 */
+.agree{
+  display:flex; align-items:flex-start; gap:8px; margin-top:var(--space-md);
+  font-size:12px; color:var(--color-text-sub); line-height:1.5;
+}
+.agree input{width:18px; height:18px; margin-top:1px; accent-color:var(--color-primary); flex-shrink:0;}
+.agree a{color:var(--color-primary); text-decoration:none;}
+
+/* ============ AI 推荐 ============ */
+.ai-tip{
+  display:none; align-items:center; gap:8px;
+  background:#FEF2F2; border:1px solid #FECACA; color:var(--color-danger);
+  border-radius:var(--radius-sm); padding:10px 12px; font-size:12.5px; margin-top:var(--space-md); line-height:1.4;
+}
+.ai-tip.show{display:flex;}
+.reco{display:none; flex-direction:column; gap:10px; margin-top:var(--space-md);}
+.reco.show{display:flex;}
+.reco-card{
+  border:1px solid var(--color-border); border-radius:var(--radius-sm);
+  padding:12px 14px; background:var(--color-surface);
+}
+.reco-top{display:flex; align-items:center; gap:8px;}
+.reco-rank{
+  width:20px; height:20px; border-radius:6px; background:var(--color-primary);
+  color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center;
+}
+.reco-name{font-size:15px; font-weight:700;}
+.reco-rate{margin-left:auto; font-size:12px; font-weight:700; color:var(--color-success);}
+.reco-reason{font-size:12px; color:var(--color-text-sub); margin-top:6px; line-height:1.5;}
+.reco-bar{height:5px; background:var(--color-bg); border-radius:99px; margin-top:8px; overflow:hidden;}
+.reco-bar > i{display:block; height:100%; background:var(--color-success); border-radius:99px;}
+
+/* 名称候选 chip */
+.chips{display:flex; flex-wrap:wrap; gap:8px; justify-content:center;}
+.chip{
+  min-height:36px; padding:0 14px; border-radius:99px;
+  border:1px solid var(--color-border); background:var(--color-surface);
+  color:var(--color-text); font-size:13px; cursor:pointer;
+  display:inline-flex; align-items:center; justify-content:center; gap:6px; font-family:var(--font);
+  text-align:center; transition:all .15s ease;
+}
+.chip:hover{border-color:var(--color-primary);}
+.chip.on{background:var(--color-primary-soft); border-color:var(--color-primary); color:var(--color-primary); font-weight:600;}
+.chip .ck{display:none;}
+.chip.on .ck{display:inline-flex;}
+.counter{font-size:12px; color:var(--color-text-sub); text-align:right; margin-top:6px;}
+.counter b{color:var(--color-text);}
+
+/* ============ 屏1 字号 / 经营范围 增强 ============ */
+.field-tip{font-size:12px; color:var(--color-text-sub); margin:0 0 10px; line-height:1.5;}
+.zi-test{display:flex; gap:8px; margin-bottom:10px;}
+.zi-test input{flex:1;}
+.btn-ghost{border:1px solid var(--color-border); background:var(--color-surface); color:var(--color-text); border-radius:var(--radius-sm); padding:0 14px; font-size:13px; font-family:var(--font); cursor:pointer; white-space:nowrap;}
+.btn-ghost:hover{border-color:var(--color-primary); color:var(--color-primary);}
+#ziAdd{background:var(--color-primary); border-color:var(--color-primary); color:#fff; font-weight:600;}
+#ziAdd:hover{filter:brightness(.95); color:#fff; border-color:var(--color-primary);}
+.chip.zi{padding-right:10px;}
+.chip.zi .rate{font-size:11px; font-weight:700; margin-left:2px; padding:1px 6px; border-radius:99px; background:#F0FDF4; color:var(--color-success);}
+.chip.zi.low .rate{background:#FEF2F2; color:var(--color-danger);}
+.chip.zi.on .rate{background:rgba(255,255,255,.25); color:#fff;}
+.btn-soft{background:var(--color-primary-soft); color:var(--color-primary); border:1px solid transparent; border-radius:var(--radius-sm); font-family:var(--font); font-size:14px; font-weight:600; padding:11px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:8px; margin-top:10px;}
+.btn-soft:hover{filter:brightness(.97);}
+.btn-block{width:100%;}
+/* 经营范围 点选合成 */
+.scope-tabs{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;}
+.stab{border:1px solid var(--color-border); background:var(--color-surface); color:var(--color-text); border-radius:99px; padding:6px 14px; font-size:13px; font-family:var(--font); cursor:pointer;}
+.stab.on{background:var(--color-primary); border-color:var(--color-primary); color:#fff; font-weight:600;}
+.scope-opts{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+.scope-opt{border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:10px 12px; font-size:13px; display:flex; align-items:center; gap:8px; cursor:pointer; background:var(--color-surface); line-height:1.3;}
+.scope-opt.on{border-color:var(--color-primary); background:var(--color-primary-soft); color:var(--color-primary); font-weight:600;}
+.scope-opt .box{width:18px; height:18px; border-radius:5px; border:1.5px solid var(--color-border); flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:12px; color:#fff;}
+.scope-opt.on .box{background:var(--color-primary); border-color:var(--color-primary);}
+.scope-preview{margin-top:12px; padding:10px 12px; background:var(--color-bg); border-radius:var(--radius-sm); font-size:12.5px; color:var(--color-text-sub); line-height:1.6; min-height:20px;}
+.scope-preview b{color:var(--color-primary);}
+.scope-custom{margin-top:10px; border:1px dashed var(--color-border); border-radius:var(--radius-sm); padding:8px 12px;}
+.scope-custom summary{cursor:pointer; font-size:13px; color:var(--color-text-sub);}
+.scope-custom textarea{width:100%; margin-top:8px; min-height:60px; border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:8px; font-family:var(--font); font-size:13px; resize:vertical; box-sizing:border-box;}
+.reco-h{font-size:13px; font-weight:700; color:var(--color-text); margin-bottom:10px;}
+.reco-empty{font-size:12.5px; color:var(--color-text-sub); padding:8px 0;}
+@media (max-width:360px){ .scope-opts{grid-template-columns:1fr;} }
+
+/* ============ 人员折叠卡 ============ */
+.person{border:1px solid var(--color-border); border-radius:var(--radius); background:var(--color-surface); margin-bottom:var(--space-md); overflow:hidden;}
+.person-h{
+  display:flex; align-items:center; gap:10px; padding:14px var(--space-md);
+  cursor:pointer; user-select:none;
+}
+.person-h .pid{
+  width:30px; height:30px; border-radius:8px; background:var(--color-primary-soft); color:var(--color-primary);
+  font-size:13px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+.person-h .pname{font-size:14px; font-weight:700;}
+.person-h .prole{font-size:11px; color:var(--color-text-sub);}
+.person-h .prate{
+  margin-left:auto; font-size:11px; font-weight:700; color:var(--color-success);
+  background:#F0FDF4; padding:2px 8px; border-radius:99px;
+}
+.person-b{padding:0 var(--space-md) var(--space-md); display:none;}
+.person.open .person-b{display:block;}
+.person.open{border-color:var(--color-primary);}
+.add-card{
+  border:1.5px dashed var(--color-border); border-radius:var(--radius);
+  padding:14px var(--space-md); text-align:center;
+  color:var(--color-primary); font-size:13px; font-weight:600; cursor:pointer;
+  background:var(--color-surface);
+}
+.add-card:hover{border-color:var(--color-primary); background:var(--color-primary-soft);}
+.ratio-sum{
+  margin-top:var(--space-md); padding:12px 14px; border-radius:var(--radius-sm);
+  background:#F0FDF4; color:var(--color-success);
+  display:flex; align-items:center; gap:8px; font-size:13px;
+}
+.ratio-sum b{font-size:15px; font-weight:700;}
+
+/* ============ 屏3 人员角色结构 ============ */
+.role-sec{border:1px solid var(--color-border); border-radius:var(--radius); background:var(--color-surface); padding:var(--space-md); margin-bottom:var(--space-md);}
+.role-h{display:flex; align-items:center; gap:8px; font-size:14px; font-weight:700; margin-bottom:var(--space-md);}
+.role-h .req{color:var(--color-danger);}
+.role-h .opt{margin-left:auto; font-size:11px; font-weight:600; color:var(--color-text-sub); background:var(--color-bg); padding:2px 8px; border-radius:99px;}
+.role-meta{margin-left:auto; font-size:11px; font-weight:500; color:var(--color-text-sub);}
+.role-dot{width:10px; height:10px; border-radius:3px; flex-shrink:0;}
+.r-sh{background:#1E5FD9;} .r-legal{background:#0EA5E9;} .r-sup{background:#8B5CF6;} .r-fin{background:#F59E0B;}
+
+.sh-row{display:grid; grid-template-columns:22px 1fr 92px 32px; gap:8px; align-items:center; margin-bottom:8px;}
+.sh-row .sh-idx{width:22px; height:22px; border-radius:6px; background:var(--color-primary-soft); color:var(--color-primary); font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center;}
+.sh-row .sh-name{width:100%; min-height:40px; border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:8px 10px; font-size:14px; font-family:var(--font); outline:none; box-sizing:border-box;}
+.sh-row .sh-name:focus{border-color:var(--color-primary); box-shadow:0 0 0 3px var(--color-primary-soft);}
+.sh-pct-wrap{flex:0 0 auto;}
+.sh-row .sh-pct-input{width:64px; min-height:40px; text-align:right; padding:8px 24px 8px 10px; box-sizing:border-box; -moz-appearance:textfield;}
+.sh-row .sh-pct-input::-webkit-inner-spin-button, .sh-row .sh-pct-input::-webkit-outer-spin-button{-webkit-appearance:none; margin:0;}
+.pct-suffix{position:absolute; right:10px; font-size:13px; color:var(--color-text-sub); pointer-events:none;}
+.sh-del{width:32px; height:32px; border:1px solid var(--color-border); border-radius:8px; background:var(--color-surface); color:var(--color-text-sub); cursor:pointer; font-size:13px; display:flex; align-items:center; justify-content:center;}
+.sh-del:hover{border-color:var(--color-danger); color:var(--color-danger);}
+@media (max-width:360px){ .sh-row{grid-template-columns:20px 1fr 80px 30px;} }
+
+.inline-note{font-size:11.5px; color:var(--color-text-sub); margin-top:8px; line-height:1.5;}
+
+.seg{display:inline-flex; border:1px solid var(--color-border); border-radius:99px; padding:3px; gap:3px; margin-bottom:var(--space-md);}
+.seg-btn{border:none; background:none; font-family:var(--font); font-size:13px; font-weight:600; color:var(--color-text-sub); padding:6px 18px; border-radius:99px; cursor:pointer;}
+.seg-btn.on{background:var(--color-primary); color:#fff;}
+
+.same-toggle{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--color-text); margin-bottom:var(--space-md); cursor:pointer;}
+.same-toggle input{width:18px; height:18px; accent-color:var(--color-primary);}
+#dirBody.locked, #finBody.locked{opacity:.6;}
+
+.np-card{border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:12px; margin-bottom:10px; background:var(--color-bg);}
+.np-card-h{display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;}
+.np-card-h .np-idx{font-size:12px; font-weight:700; color:var(--color-primary);}
+.np-tip{font-size:11.5px; color:var(--color-text-sub); margin-top:8px; line-height:1.5;}
+.np-sum{font-size:12px; margin-top:8px; font-weight:600;}
+.np-sum.ok{color:var(--color-success);}
+.np-sum.err{color:var(--color-danger);}
+
+.sum-bar{display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-radius:var(--radius-sm); border:1px solid var(--color-border); margin-top:var(--space-md); font-size:13px; font-weight:600;}
+.sum-bar.ok{background:#F0FDF4; border-color:#BBF7D0; color:#166534;}
+.sum-bar.err{background:#FEF2F2; border-color:#FECACA; color:#991B1B;}
+.sum-bar .sum-right{display:flex; align-items:center; gap:8px;}
+.sum-bar b{font-size:16px;}
+.sum-state{font-size:12px; padding:2px 8px; border-radius:99px;}
+.sum-state.ok{background:#BBF7D0; color:#166534;}
+.sum-state.err{background:#FECACA; color:#991B1B;}
+
+.grid2{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+.legal-fields{display:flex; flex-direction:column; gap:12px;}
+@media (max-width:360px){ .grid2{grid-template-columns:1fr;} }
+
+/* ============ OCR 上传 ============ */
+.ocr-row{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:var(--space-md);}
+.ocr-card{
+  border:1.5px dashed var(--color-border); border-radius:var(--radius-sm);
+  min-height:84px; padding:10px; cursor:pointer; text-align:center;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
+  color:var(--color-text-sub); font-size:11.5px; line-height:1.4; background:var(--color-bg);
+  transition:border-color .15s ease;
+}
+.ocr-card:hover{border-color:var(--color-primary);}
+.ocr-card.done{border-style:solid; border-color:var(--color-success); background:#F0FDF4; color:var(--color-success);}
+.ocr-card .ocr-ok{font-size:12px; font-weight:700; display:flex; align-items:center; gap:4px;}
+.ocr-card svg{display:block;}
+
+/* ============ 屏幕5 确认单 ============ */
+.sum-sec{margin-bottom:var(--space-md);}
+.sum-sec-h{display:flex; align-items:center; gap:8px; font-size:13px; font-weight:700; color:var(--color-text-sub); margin-bottom:8px;}
+.sum-sec .edit{
+  margin-left:auto; font-size:12px; font-weight:600; color:var(--color-primary);
+  background:none; border:none; cursor:pointer; font-family:var(--font); display:inline-flex; align-items:center; gap:4px;
+}
+.sum-line{display:flex; gap:12px; font-size:14px; padding:7px 0; border-bottom:1px dashed var(--color-border);}
+.sum-line:last-child{border-bottom:none;}
+.sum-line .k{color:var(--color-text-sub); width:84px; flex-shrink:0;}
+.sum-line .v{color:var(--color-text); flex:1; line-height:1.5;}
+.sum-tags{display:flex; flex-wrap:wrap; gap:6px;}
+.sum-tags span{background:var(--color-primary-soft); color:var(--color-primary); font-size:12px; padding:2px 9px; border-radius:99px;}
+
+/* 提示条 */
+.tip-box{
+  display:flex; align-items:flex-start; gap:8px;
+  border-radius:var(--radius-sm); padding:10px 12px;
+  font-size:12.5px; line-height:1.5;
+}
+.tip-orange{background:#FFFBEB; border:1px solid #FDE68A; color:#92400E;}
+.tip-green{background:#F0FDF4; border:1px solid #BBF7D0; color:#166534;}
+.tip-red{background:#FEF2F2; border:1px solid #FECACA; color:#991B1B;}
+
+.upload-rules{
+  margin-top:var(--space-md);
+  padding:12px 14px;
+  border:1px solid var(--color-border);
+  border-radius:var(--radius-sm);
+  background:var(--color-bg);
+}
+.upload-rules .ur-list{
+  margin:0; padding:0 0 0 1.2em;
+  text-align:left;
+  font-size:12.5px; color:var(--color-text-sub); line-height:1.6;
+}
+.upload-rules .ur-list li{text-align:left; margin:0 0 8px;}
+.upload-rules .ur-list li:last-child{margin-bottom:0;}
+.upload-rules .ur-foot{
+  margin-top:10px; padding-top:10px;
+  border-top:1px dashed var(--color-border);
+  font-size:12px; color:var(--color-text-sub); line-height:1.5; text-align:left;
+}
+
+/* ============ 阶段 B 样式 ============ */
+
+/* 屏幕6: 二维码 */
+.qr-wrap{
+  display:flex; flex-direction:column; align-items:center;
+  padding:var(--space-md) 0 var(--space-lg);
+}
+.qr-frame{
+  width:240px; height:240px;
+  border:8px solid #000;
+  border-radius:8px;
+  background:#fff;
+  padding:6px;
+  display:flex; align-items:center; justify-content:center;
+  box-shadow:0 4px 12px rgba(0,0,0,.08);
+}
+.qr-frame svg{width:100%; height:100%; display:block;}
+.qr-frame .qr-live{width:100%; height:100%; object-fit:contain; display:none; background:#fff;}
+.sync-badge.connecting{background:#fff7ed; color:#c2410c; border-color:#fdba74;}
+.sync-badge.live{background:#f0fdf4; color:#15803d; border-color:#86efac;}
+.sync-badge.stale{background:#fef2f2; color:#b91c1c; border-color:#fca5a5;}
+.qr-hint{margin-top:var(--space-md); padding:14px 16px; border-radius:var(--radius); background:#fff7ed; border:1px solid #fdba74; color:#9a3412;}
+.qr-hint-title{font-size:14px; font-weight:700; margin-bottom:8px;}
+.qr-hint-body{font-size:12.5px; line-height:1.6; color:#7c2d12;}
+.qr-hint-cmd{display:block; background:#1e293b; color:#86efac; padding:10px 12px; border-radius:6px; font-family:'SF Mono','Menlo',monospace; font-size:13px; margin:8px 0; user-select:all;}
+.qr-hint a{color:#1e5fd9; text-decoration:underline; cursor:pointer; font-weight:600;}
+/* 屏6 gov-iframe 全宽布局（同源后默认显示） */
+.gov-status-bar{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; padding:6px 10px; background:var(--color-bg); border-radius:var(--radius-sm); flex-wrap:wrap;}
+.gov-status-bar .qr-helper{font-size:12px; color:var(--color-text-sub); flex:1; min-width:0;}
+.gov-iframe-wrap{border:1px solid var(--color-border); border-radius:var(--radius); overflow:hidden; background:#fff;}
+.gov-iframe-bar{display:flex; align-items:center; justify-content:space-between; padding:8px 12px; background:#f0f4f8; border-bottom:1px solid var(--color-border); font-size:13px;}
+.gov-iframe-title{font-weight:600; color:var(--color-text); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.gov-iframe-loading{font-size:12px; color:#1e5fd9; font-weight:600;}
+.gov-iframe-loading.done{color:#15803d;}
+.gov-iframe-loading.error{color:#b91c1c;}
+.gov-iframe{width:100%; height:580px; border:0; display:block; background:#f8f9fb;}
+.gov-iframe-open-a{font-size:12px; color:#1e5fd9; font-weight:600; text-decoration:none; padding:5px 12px; border:1px solid #c7d7f5; border-radius:99px; background:#fff; white-space:nowrap;}
+.gov-iframe-open-a:hover{background:#E8F0FE;}
+/* RPA QR 弹窗（右上角浮窗，RPA 抓到 QR 时显示） */
+.rpa-qr-popup{position:fixed; top:80px; right:20px; width:200px; background:#fff; border:2px solid #1e5fd9; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.18); z-index:999; overflow:hidden;}
+.rpa-qr-popup-head{display:flex; align-items:center; justify-content:space-between; padding:6px 10px; background:#1e5fd9; color:#fff; font-size:12px; font-weight:600;}
+.rpa-qr-popup-head button{background:transparent; border:0; color:#fff; font-size:18px; cursor:pointer; padding:0 4px; line-height:1;}
+.rpa-qr-popup-body{padding:10px;}
+.rpa-qr-popup-body img{width:100%; height:auto; display:block; background:#fff;}
+.rpa-qr-popup-tip{font-size:11px; color:var(--color-text-sub); margin-top:6px; line-height:1.4;}
+.qr-note{
+  margin-top:var(--space-md);
+  font-size:14px; color:var(--color-text); font-weight:600;
+}
+.qr-note .small{display:block; font-size:11px; color:var(--color-text-sub); font-weight:400; margin-top:2px;}
+.qr-mini{
+  margin-top:var(--space-sm);
+  font-size:11px; color:var(--color-text-sub);
+}
+.qr-foot{
+  font-size:11px; color:var(--color-text-sub);
+  text-align:center; padding:var(--space-sm) var(--space-md);
+  border-top:1px solid var(--color-border);
+  background:var(--color-bg);
+}
+.sync-badge{
+  display:inline-flex; align-items:center; gap:6px;
+  background:#F0FDF4; color:var(--color-success);
+  border:1px solid #BBF7D0; border-radius:99px;
+  padding:4px 10px; font-size:11px; font-weight:600;
+  margin-bottom:var(--space-md);
+}
+
+/* 屏幕7: 进度跟踪 */
+.pipe{
+  background:var(--color-surface); border:1px solid var(--color-border);
+  border-radius:var(--radius); padding:var(--space-md); margin-bottom:var(--space-md);
+}
+.pipe-h{font-size:13px; font-weight:700; margin:0 0 14px; display:flex; align-items:center; gap:8px;}
+.pipe-step{
+  display:flex; align-items:center; gap:12px; padding:10px 0;
+  border-bottom:1px dashed var(--color-border);
+}
+.pipe-step:last-child{border-bottom:none;}
+.pipe-dot{
+  width:24px; height:24px; border-radius:50%; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:12px; font-weight:700;
+}
+.pipe-dot.done{background:var(--color-success); color:#fff;}
+.pipe-dot.run{
+  background:var(--color-primary); color:#fff;
+  animation:spin 1.4s linear infinite;
+}
+.pipe-dot.run::before{
+  content:""; width:6px; height:6px; border-radius:50%; background:#fff;
+  animation:pulse 1.4s ease-in-out infinite;
+}
+.pipe-dot.wait{background:var(--color-bg); border:1.5px solid var(--color-border); color:var(--color-text-sub);}
+.pipe-txt{font-size:13px; font-weight:600;}
+.pipe-txt small{display:block; color:var(--color-text-sub); font-size:11px; font-weight:400; margin-top:1px;}
+@keyframes pulse{0%,100%{opacity:1;} 50%{opacity:.4;}}
+
+/* 屏幕8: 补充字号 */
+.reject{
+  border:1px solid #FECACA; background:#FEF2F2; border-radius:var(--radius);
+  padding:var(--space-md); margin-bottom:var(--space-md);
+}
+.reject-h{display:flex; align-items:center; gap:8px; color:var(--color-danger); font-size:14px; font-weight:700; margin-bottom:8px;}
+.reject-note{font-size:12.5px; color:#7F1D1D; line-height:1.5; margin:0 0 12px;}
+.reject-note b{color:var(--color-danger);}
+
+/* 屏幕9: 完成 */
+.result-hero{
+  text-align:center; padding:var(--space-lg) var(--space-md);
+  background:var(--color-surface); border:1px solid var(--color-border);
+  border-radius:var(--radius); margin-bottom:var(--space-md);
+}
+.result-badge{
+  width:64px; height:64px; border-radius:50%;
+  background:#F0FDF4; color:var(--color-success);
+  display:flex; align-items:center; justify-content:center;
+  margin:0 auto 14px;
+  animation:pop .5s ease;
+}
+@keyframes pop{0%{transform:scale(0);} 60%{transform:scale(1.15);} 100%{transform:scale(1);}}
+.result-hero h3{margin:0 0 6px; font-size:18px; font-weight:700;}
+.result-hero p{margin:0; font-size:13px; color:var(--color-text-sub); line-height:1.5;}
+.next-steps{
+  margin-top:var(--space-md); text-align:left;
+  background:var(--color-bg); border-radius:var(--radius-sm);
+  padding:14px var(--space-md);
+}
+.next-steps h4{
+  margin:0 0 10px; font-size:13px; font-weight:700; color:var(--color-text);
+  display:flex; align-items:center; gap:6px;
+}
+.next-steps ol{margin:0; padding-left:20px; font-size:13px; color:var(--color-text); line-height:1.8;}
+
+/* ============ 底部固定操作区 ============ */
+.footer{
+  flex-shrink:0;
+  background:var(--color-surface);
+  border-top:1px solid var(--color-border);
+  padding:12px var(--space-md) calc(12px + env(safe-area-inset-bottom));
+  display:flex; gap:var(--space-md);
+}
+.footer .btn-ghost{flex:0 0 38%;}
+.footer .btn-primary{flex:1;}
+.footer .btn-primary.full{flex:1;}
+.footer .hidden{display:none;}
+
+/* 屏幕页脚标签 */
+.foot-caption{
+  flex-shrink:0;
+  text-align:center;
+  background:var(--color-bg);
+  border-top:1px solid var(--color-border);
+  padding:8px var(--space-md) calc(8px + env(safe-area-inset-bottom));
+  font-size:11.5px; color:var(--color-text-sub); font-weight:600;
+}
+.foot-caption .num{
+  display:inline-block; min-width:18px; padding:0 4px; margin-right:6px;
+  background:var(--color-primary); color:#fff; border-radius:99px;
+  font-size:11px; text-align:center;
+}
+.foot-caption.phase-b .num{background:var(--color-phase-b-text);}
+.foot-caption .desc{display:inline-block; margin-left:6px; color:var(--color-text);}
+
+/* 可访问性 */
+.btn:focus-visible, .chip:focus-visible, .person-h:focus-visible, .add-card:focus-visible{outline:2px solid var(--color-primary); outline-offset:2px;}
+
+@media (prefers-reduced-motion: reduce){
+  *{animation:none !important; transition:none !important;}
+}
+</style>
+</head>
+<body>
+<div class="phone">
+
+  <!-- iOS 状态栏 -->
+  <div class="status-bar">
+    <span>9:41</span>
+    <span class="sb-right">
+      <svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
+      <svg width="15" height="11" viewBox="0 0 15 11" fill="currentColor"><path d="M7.5 2.2c2.1 0 4.1.8 5.5 2.2l1.2-1.3C12.5 1.2 10.1.3 7.5.3S2.5 1.2.8 3.1l1.2 1.3C3.4 3 5.4 2.2 7.5 2.2z"/><path d="M7.5 6c1.2 0 2.3.5 3.1 1.3l1.2-1.3C10.5 4.9 9.1 4.2 7.5 4.2S4.5 4.9 3.2 6l1.2 1.3C5.2 6.5 6.3 6 7.5 6z"/><circle cx="7.5" cy="9.4" r="1.5"/></svg>
+      <svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor"/><rect x="2" y="2" width="17" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.6" height="4" rx="0.8" fill="currentColor"/></svg>
+    </span>
+  </div>
+
+  <!-- 阶段横幅（按当前屏显示 A 或 B） -->
+  <div class="phase-banner phase-a" id="phaseBanner">
+    <span class="ph-dot"></span>
+    <span id="phaseTitle">阶段 A · 信息采集与提交（约 10-15 分钟）</span>
+    <span class="ph-meta" id="phaseMeta"></span>
+  </div>
+
+  <!-- 顶部品牌栏 -->
+  <header class="brand-bar">
+    <div class="brand-row">
+      <div class="brand-logo">伽</div>
+      <div class="brand-name">伽马注册</div>
+      <div class="brand-sub">上海企业开办 · 一网通办</div>
+    </div>
+    <nav class="steps" id="steps" aria-label="注册步骤"></nav>
+    <div class="progress-track"><div class="progress-fill" id="progress"></div></div>
+  </header>
+
+  <!-- 滚动内容 -->
+  <main class="scroll">
+
+    <!-- ===================== 屏 1：登录授权 ===================== -->
+    <section class="screen active" data-screen="0" data-phase="A">
+      <h2 class="screen-title">欢迎使用伽马注册</h2>
+      <p class="screen-desc">手机上的「企业开办」已为你打通政务通道，授权后即可一键采集与提交。</p>
+
+      <div class="card">
+        <div class="field">
+          <label for="phone">手机号<span class="req">*</span></label>
+          <div class="input-wrap has-prefix">
+            <span class="prefix">+86</span>
+            <input id="phone" type="tel" inputmode="numeric" maxlength="11" placeholder="请输入手机号" data-type="phone" autocomplete="off" />
+          </div>
+          <div class="hint" data-for="phone"></div>
+        </div>
+
+        <div class="field">
+          <label for="code">短信验证码<span class="req">*</span></label>
+          <div class="input-wrap">
+            <input id="code" type="tel" inputmode="numeric" maxlength="6" placeholder="6 位验证码" data-type="code" autocomplete="off" />
+            <button class="suffix-btn" id="getCode" type="button">获取验证码</button>
+          </div>
+          <div class="hint" data-for="code"></div>
+        </div>
+      </div>
+
+      <label class="agree">
+        <input type="checkbox" id="agree" />
+        <span>已阅读并同意<a href="#" onclick="return false">《用户授权协议》</a>，授权伽马注册依法代办企业开办事项。</span>
+      </label>
+    </section>
+
+    <!-- ===================== 屏 2：企业信息 1/4 ===================== -->
+    <section class="screen" data-screen="1" data-phase="A">
+      <h2 class="screen-title">企业信息 1/4</h2>
+      <div class="card">
+        <div class="field">
+          <label>公司字号候选<span class="req">*</span></label>
+          <p class="field-tip">准备3-10个字号作为备选，提高核名通过率</p>
+          <div class="zi-test">
+            <input id="ziInput" type="text" maxlength="6" placeholder="输入字号" />
+            <button class="btn-ghost" id="ziAdd" type="button">添加</button>
+          </div>
+          <div class="hint" id="ziHint"></div>
+          <div class="chips" id="nameChips"><!-- 动态生成 --></div>
+          <div class="counter">已选 <b id="ziCount">0</b> / 建议 3–10 个</div>
+          <button class="btn-soft btn-block" id="aiGenZi" type="button">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.4z"/></svg>
+            AI 一键生成高通过率字号
+          </button>
+        </div>
+
+        <div class="field">
+          <label for="industry">行业表述（如 科技）<span class="req">*</span></label>
+          <input id="industry" type="text" placeholder="如：科技 / 贸易 / 咨询" value="信息科技" data-type="industry" />
+        </div>
+
+        <div class="field">
+          <label for="orgForm">组织形式<span class="req">*</span></label>
+          <select id="orgForm">
+            <option value="有限公司" selected>有限公司</option>
+            <option value="有限责任公司">有限责任公司</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="aiName">公司名称（随字号自动组合）<span class="req">*</span></label>
+          <div class="input-wrap">
+            <input id="aiName" type="text" placeholder="上海××科技有限公司" value="上海鑫慧众盒科技有限公司" data-type="name" />
+          </div>
+          <div class="hint" id="nameHint"></div>
+        </div>
+
+        <div class="field">
+          <label for="capital">注册资本（万元）<span class="req">*</span></label>
+          <div class="input-wrap">
+            <input id="capital" type="number" min="1" value="100" placeholder="如 100" data-type="capital" />
+            <span class="unit">万人民币</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="regAddress">注册地址<span class="req">*</span></label>
+          <input id="regAddress" type="text" placeholder="街道/路/号/室" />
+        </div>
+
+        <div class="field">
+          <label for="postalCode">邮编<span class="req">*</span></label>
+          <input id="postalCode" type="text" inputmode="numeric" maxlength="6" placeholder="6 位邮编" />
+        </div>
+
+        <div class="field">
+          <label for="scope">经营范围<span class="req">*</span></label>
+          <textarea id="scope" placeholder="填写经营范围" rows="4"></textarea>
+        </div>
+      </div>
+
+      <div class="reco" id="reco">
+        <div class="reco-h">AI 推荐公司名组合（基于已选字号）</div>
+        <div id="recoList"><div class="reco-empty">先选 / 生成一个字号，AI 自动给出推荐组合与通过率</div></div>
+      </div>
+    </section>
+
+    <!-- ===================== 屏 3：人员信息 2/4 ===================== -->
+    <section class="screen" data-screen="2" data-phase="A">
+      <h2 class="screen-title">人员信息 2/4</h2>
+
+      <!-- 法人 -->
+      <div class="role-sec">
+        <div class="role-h"><span class="role-dot r-legal"></span>法人（法定代表人）<span class="req">*</span></div>
+        <div class="grid2">
+          <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="legalName" placeholder="如：张伟" value="张伟" /></div>
+          <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="legalMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" value="13984439335" /></div>
+        </div>
+        <div class="inline-note">法人可同时担任董事或财务负责人</div>
+      </div>
+
+      <!-- 自然人 -->
+      <div class="role-sec">
+        <div class="role-h">
+          <span class="role-dot r-sh"></span>
+          自然人（股东）<span class="req">*</span>
+        </div>
+        <div id="npList"></div>
+        <div class="add-card" onclick="addNaturalPerson()">+ 添加自然人</div>
+        <div class="np-tip">自然人可为一人或多人，持股比例总计为100%</div>
+      </div>
+
+      <!-- 董事 -->
+      <div class="role-sec">
+        <div class="role-h"><span class="role-dot r-legal"></span>董事<span class="req">*</span></div>
+        <label class="same-toggle"><input type="checkbox" id="dirSame" onchange="toggleSameLegal('dir')" /> 与法人同一人（身居一职）</label>
+        <div id="dirBody" class="grid2">
+          <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="dirName" placeholder="如：张伟" value="张伟" /></div>
+          <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="dirMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" value="13984439335" /></div>
+        </div>
+      </div>
+
+      <!-- 监事 -->
+      <div class="role-sec">
+        <div class="role-h"><span class="role-dot r-sup"></span>监事<span class="opt">可选</span></div>
+        <div class="seg" id="supSeg">
+          <button type="button" class="seg-btn on" data-v="1" onclick="setSup(1,this)">设立</button>
+          <button type="button" class="seg-btn" data-v="0" onclick="setSup(0,this)">不设立</button>
+        </div>
+        <div id="supBody" class="grid2">
+          <div class="field"><label>姓名</label><input type="text" id="supName" placeholder="如：李娜" value="李娜" /></div>
+          <div class="field"><label>手机号</label><input type="tel" id="supMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" value="13800138000" /></div>
+        </div>
+        <div class="inline-note" id="supNote" style="display:none;">一人有限责任公司可不设监事。</div>
+      </div>
+
+      <!-- 财务负责人 -->
+      <div class="role-sec">
+        <div class="role-h"><span class="role-dot r-fin"></span>财务负责人<span class="req">*</span></div>
+        <label class="same-toggle"><input type="checkbox" id="finSame" onchange="toggleSameLegal('fin')" /> 与法人同一人（身居一职）</label>
+        <div id="finBody" class="grid2">
+          <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="finName" placeholder="如：王芳" value="王芳" /></div>
+          <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="finMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" value="13700137000" /></div>
+        </div>
+      </div>
+
+      <!-- 联络员 -->
+      <div class="role-sec">
+        <div class="role-h"><span class="role-dot r-fin"></span>联络员<span class="req">*</span></div>
+        <div id="liaBody" class="legal-fields">
+          <div class="grid2">
+            <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="liaName" placeholder="如：张伟" value="张伟" /></div>
+            <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="liaMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" value="13984439335" /></div>
+          </div>
+          <div class="field"><label>邮箱<span class="req">*</span></label><input type="text" id="liaEmail" placeholder="如：name@example.com" /></div>
+          <div class="field"><label>住所<span class="req">*</span></label><input type="text" id="liaAddress" placeholder="请填写住所地址" /></div>
+        </div>
+      </div>
+
+      <!-- 最终受益人 -->
+      <div class="role-sec">
+        <div class="role-h"><span class="role-dot r-sup"></span>最终受益人<span class="req">*</span></div>
+        <div class="legal-fields">
+          <div class="grid2">
+            <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="uboName" placeholder="如：张伟" value="张伟" /></div>
+            <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="uboMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" value="13984439335" /></div>
+          </div>
+          <div class="field"><label>身份证有效期<span class="req">*</span></label><input type="text" id="uboIdValid" placeholder="如：2032-06-24" /></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== 屏 4：受益人、证件 3/4 ===================== -->
+    <section class="screen" data-screen="3" data-phase="A">
+      <h2 class="screen-title">受益人、证件 3/4</h2>
+      <p class="screen-desc">等待受益人、控股 / 控股比例、证件有效期。</p>
+
+      <div class="card">
+        <div class="card-h">
+          担任执行 / 监事方式 / 证件有效期
+          <span class="tag">已完成实名核验：「承诺实报」</span>
+        </div>
+
+        <div class="field">
+          <label>身份证原件（每位指派人员）</label>
+          <div class="ocr-row">
+            <div class="ocr-card" onclick="simulateOCR(this, '人选图')">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              <span>人选图</span>
+              <span style="font-size:10.5px;">点击拍照 / 上传</span>
+            </div>
+            <div class="ocr-card done" onclick="simulateOCR(this, '资证图')">
+              <span class="ocr-ok">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                资证图 · 已识别
+              </span>
+              <span style="font-size:10.5px;">310101********8812</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="upload-rules" id="uploadRules">
+          <ol class="ur-list">
+            <li><b>横拍图：</b>身份证、营业执照需横拍，正面朝上、文字可读。</li>
+            <li><b>避免错误：</b>不可倒拍、不可缺边、不可过糊，避免反光遮挡关键字段。</li>
+            <li><b>字迹清晰：</b>姓名、身份证号、住址、有效期等关键信息应完整可见。</li>
+            <li><b>格式与大小：</b>仅支持 jpg/png，单张不超过 500k。</li>
+            <li><b>充满可视区：</b>图片内容应充满取景框，边缘留白不超过 10%。</li>
+          </ol>
+          <div class="ur-foot">识别异常时，OCR 引擎会要求重新上传；本端会自动压缩并保持原始信息。</div>
+        </div>
+
+        <!-- 屏4 占位 ghost 按钮组已删除 -->
+      </div>
+
+      <div class="tip-box tip-orange">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        提示：每位受益人 / 监事须独立采集正反面，否则政务网会驳回。
+      </div>
+    </section>
+
+    <!-- ===================== 屏 5：信息确认单 ===================== -->
+    <section class="screen" data-screen="4" data-phase="A">
+      <h2 class="screen-title">信息确认单</h2>
+      <p class="screen-desc">提交后将自动同步至「政务云脑」，进入阶段 B 扫码协同。</p>
+
+      <div class="card">
+        <div class="sum-sec">
+          <div class="sum-sec-h">
+            企业信息
+            <button class="edit" onclick="go(1)">修改</button>
+          </div>
+          <div class="sum-line"><div class="k">公司名称</div><div class="v" id="sumName">上海鑫慧众盒科技有限公司</div></div>
+          <div class="sum-line"><div class="k">行业</div><div class="v" id="sumIndustry">信息科技</div></div>
+          <div class="sum-line"><div class="k">组织形式</div><div class="v" id="sumOrgForm">有限公司</div></div>
+          <div class="sum-line"><div class="k">注册资本</div><div class="v" id="sumCapital">100 万人民币</div></div>
+          <div class="sum-line"><div class="k">注册地址</div><div class="v" id="sumRegAddress">—</div></div>
+          <div class="sum-line"><div class="k">邮编</div><div class="v" id="sumPostalCode">—</div></div>
+          <div class="sum-line"><div class="k">经营范围</div><div class="v" id="sumScope">一般项目：技术服务、技术开发、技术咨询…</div></div>
+        </div>
+
+        <div class="sum-sec">
+          <div class="sum-sec-h">
+            人员信息
+            <button class="edit" onclick="go(2)">修改</button>
+          </div>
+          <div class="sum-line"><div class="k">法人</div><div class="v" id="sumLegal">张伟</div></div>
+          <div class="sum-line"><div class="k">自然人</div><div class="v" id="sumNp">张伟（100%）</div></div>
+          <div class="sum-line"><div class="k">董事</div><div class="v" id="sumDir">张伟</div></div>
+          <div class="sum-line"><div class="k">监事</div><div class="v" id="sumSup">李娜（可选，已设立）</div></div>
+          <div class="sum-line"><div class="k">财务负责人</div><div class="v" id="sumFin">王芳</div></div>
+          <div class="sum-line"><div class="k">联络员</div><div class="v" id="sumLia">张伟</div></div>
+          <div class="sum-line"><div class="k">最终受益人</div><div class="v" id="sumUbo">张伟</div></div>
+        </div>
+
+        <div class="sum-sec">
+          <div class="sum-sec-h">
+            证件影像
+            <button class="edit" onclick="go(3)">修改</button>
+          </div>
+          <div class="sum-line"><div class="k">OCR 识别</div><div class="v"><span class="sum-tags"><span>张伟·人面</span><span>张伟·国徽</span><span>李娜·人面</span></span></div></div>
+          <div class="sum-line"><div class="k">实名核验</div><div class="v">承诺实报</div></div>
+        </div>
+      </div>
+
+      <div class="tip-box tip-orange">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        提交后将自动推送至政务云脑，需配合阶段 B 扫码授权 RPA 提交。
+      </div>
+    </section>
+
+    <!-- ===================== 屏 6：扫码登录 ===================== -->
+    <!-- 方案 A：屏 6 内嵌 B 页（/qrlogin?sid）。RPA 在 B 页 bind 时由后端自动启动。 -->
+    <section class="screen" data-screen="5" data-phase="B">
+      <h2 class="screen-title">扫码登录</h2>
+
+      <div class="tip-box tip-orange">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        请用「随申办」APP 扫描下方二维码完成政务网授权。扫码成功后将<b>自动跳转</b>下一屏；也可点底部「我已完成扫码」手动继续。
+      </div>
+
+      <div class="gov-iframe-wrap" id="bPageWrap">
+        <div class="gov-iframe-bar">
+          <span class="gov-iframe-title">伽马注册 · 扫码授权（RPA 实时同步）</span>
+          <a id="openAPageBtn" class="gov-iframe-open-a" href="#" target="_blank" rel="noopener">↗ 打开 A 页（监控）</a>
+        </div>
+        <iframe id="bPageFrame" class="gov-iframe" src="about:blank" referrerpolicy="no-referrer"></iframe>
+      </div>
+
+      <button class="btn btn-primary btn-block" id="scannedBtn" type="button" style="margin-top:var(--space-md);">
+        我已完成扫码（手动继续）
+      </button>
+
+      <div class="qr-hint" id="qrBackHint">
+        <div class="qr-hint-title">未在上方看到二维码？</div>
+        <div class="qr-hint-body">说明后端 RPA 未启用，不影响手动扫码：浏览器打开 <code>http://localhost:8766</code> 启动后端；或直接用「随申办」APP 在下方手机页手动扫码。</div>
+      </div>
+    </section>
+
+    <!-- ===================== 屏 7：进度跟踪 ===================== -->
+    <section class="screen" data-screen="6" data-phase="B">
+      <h2 class="screen-title">进度跟踪</h2>
+      <p class="screen-desc">RPA 已接管政务网填报，请保持当前页面打开。</p>
+
+      <div class="pipe" id="pipeBlock">
+        <h4 class="pipe-h">RPA 填报流水线</h4>
+        <div class="pipe-step">
+          <div class="pipe-dot done">✓</div>
+          <div class="pipe-txt">登录政务系统<small>随申办 OAuth 授权成功</small></div>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-dot done">✓</div>
+          <div class="pipe-txt">版本通过<small>企业开办 V3.2 入口校验</small></div>
+        </div>
+        <div class="pipe-step" id="step3">
+          <div class="pipe-dot run"></div>
+          <div class="pipe-txt">自动填报中<small id="step3Tip">正在填写「名称信息」表</small></div>
+        </div>
+        <div class="pipe-step" id="step4">
+          <div class="pipe-dot wait">4</div>
+          <div class="pipe-txt">材料预览 - 提交<small>等待 RPA 完成最后一步</small></div>
+        </div>
+      </div>
+
+      <div class="tip-box tip-orange" id="pendingTip" style="display:none;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span>待办：第 <b>1</b> 个环节未通过核名（不可跳过）</span>
+      </div>
+
+      <button class="btn btn-orange btn-block" id="gotoRefill" type="button" style="display:none; margin-bottom:var(--space-md);">
+        去补充字号
+      </button>
+
+      <div style="font-size:11px; color:var(--color-text-sub); text-align:center; padding:var(--space-sm) 0;">
+        保留 1 个环节未通过核名（不可跳过）
+      </div>
+    </section>
+
+    <!-- ===================== 屏 8：补充字号 ===================== -->
+    <section class="screen" data-screen="7" data-phase="B">
+      <h2 class="screen-title">补充字号</h2>
+      <p class="screen-desc">政务网核名回执已回传，请补充 1-4 个新字号重新申请。</p>
+
+      <div class="reject">
+        <div class="reject-h">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          政务网核名结果回执
+        </div>
+        <div class="reject-note">
+          <b>提示</b>：与「上海鑫慧众盒科技有限公司」字号库近似，已存在同行业企业。
+          <br/>建议重新申请相似名称（≤4 个）。
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">
+          补充新字号（再一次最多 4 个）
+          <span class="tag" id="refillCount">已填 0 / 4</span>
+        </div>
+
+        <div class="field">
+          <label>新字号 1<span class="req">*</span></label>
+          <input id="nm1" type="text" placeholder="如：上海云启数智科技" data-type="refill" />
+        </div>
+        <div class="field">
+          <label>新字号 2<span class="req">*</span></label>
+          <input id="nm2" type="text" placeholder="如：上海沪上慧创科技" data-type="refill" />
+        </div>
+        <div class="field">
+          <label>新字号 3（可选）</label>
+          <input id="nm3" type="text" placeholder="选填" />
+        </div>
+        <div class="field">
+          <label>新字号 4（可选）</label>
+          <input id="nm4" type="text" placeholder="选填" />
+        </div>
+
+        <div class="hint" data-for="refill"></div>
+      </div>
+
+      <div class="tip-box tip-orange" id="refillFooter" style="margin-top:var(--space-md);">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span>实时校验：可用 <b id="okCount">0</b> · 名称冲突 <b id="errCount">0</b></span>
+      </div>
+
+      <div style="font-size:11px; color:var(--color-text-sub); text-align:center; padding:var(--space-sm) 0 0;">
+        第 <b id="refillTimes">2</b> / 5 次，请重新人工填报
+      </div>
+    </section>
+
+    <!-- ===================== 屏 9：办理完成 ===================== -->
+    <section class="screen" data-screen="8" data-phase="B">
+      <h2 class="screen-title">办理完成</h2>
+
+      <div class="result-hero">
+        <div class="result-badge">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <h3>申请材料已提交</h3>
+        <p>共上传 <b>9</b> 个材料到审批处，提交成功</p>
+      </div>
+
+      <div class="next-steps">
+        <h4>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          接下来，电子签章（法人本人确认）：
+        </h4>
+        <ol>
+          <li>已在政务云脑电子签章</li>
+          <li>告知已对政务云脑完成签章</li>
+          <li>需要到政务现场签章</li>
+        </ol>
+      </div>
+
+      <button class="btn btn-primary btn-block" type="button" style="margin-top:var(--space-md);" onclick="alert('演示模式：已记录业务索引 YCT2026-08-05-XYZ，可在一网通办查询进度')">
+        查看业务索引
+      </button>
+
+      <div style="text-align:center; margin-top:var(--space-md); font-size:12px; color:var(--color-text-sub);">
+        电子签章已同步 · 后续可代理
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 底部操作区 -->
+  <div class="footer" id="footer">
+    <button class="btn btn-ghost" id="backBtn" onclick="back()">上一步</button>
+    <button class="btn btn-primary" id="nextBtn" onclick="next()">下一步</button>
+  </div>
+
+  <!-- 屏幕页脚标签 -->
+  <div class="foot-caption phase-a" id="footCap">
+    <span class="num" id="footNum">①</span>
+    <span class="desc" id="footDesc">登录授权</span>
+  </div>
+
+</div>
+
+<script>
+/* ============ 状态机 ============ */
+const TOTAL = 9;
+const PHASE_A_MAX = 4;        // 0..4 是阶段 A
+const STATE = {
+  step: 0,
+  refillTimes: 2,             // 已重填次数
+  pipeRunning: false,
+  sid: null,                  // 屏6 会话钥匙：B 页 bind 时由后端自动触发 RPA
+  sidMock: false,             // 屏6 是否走 mock（默认 false=真实政务网；?mock=1 切测试站）
+  scannedDone: false,         // 扫码成功是否已处理（防止 postMessage 与手动按钮重复触发）
+};
+
+const STEP_META = [
+  { num:'①', phase:'A', desc:'登录授权',           next:'登录 / 进入' },
+  { num:'②', phase:'A', desc:'采集：企业信息',     next:'下一步' },
+  { num:'③', phase:'A', desc:'采集：人员信息',     next:'下一步' },
+  { num:'④', phase:'A', desc:'采集：受益人与证件', next:'下一步' },
+  { num:'⑤', phase:'A', desc:'信息确认单',         next:'确认并建立' },
+  { num:'⑥', phase:'B', desc:'扫码协同页',         next:'我已完成扫码' },
+  { num:'⑦', phase:'B', desc:'进度跟踪页',         next:'等待 RPA' },
+  { num:'⑧', phase:'B', desc:'核名重填页',         next:'重新提交核名' },
+  { num:'⑨', phase:'B', desc:'完成页',             next:'查看业务索引' },
+];
+
+/* ============ 渲染步骤条 ============ */
+function renderSteps(){
+  const stepsEl = document.getElementById('steps');
+  stepsEl.innerHTML = STEP_META.map((m, i)=>{
+    const cls = i<STATE.step ? 'done' : i===STATE.step ? 'active' : 'future';
+    const sep = i===PHASE_A_MAX ? ' phase-sep' : '';
+    return `<div class="step ${cls}${sep}" data-i="${i}">
+      <span class="dot">${i+1}</span><span class="lbl">${m.num}</span>
+    </div>`;
+  }).join('');
+  document.getElementById('progress').style.width = ((STATE.step+1)/TOTAL*100).toFixed(2)+'%';
+}
+
+/* ============ 切换屏幕 ============ */
+function go(i){
+  if(i<0 || i>=TOTAL) return;
+  // 从屏 7(进度) 自动跳到屏 9(核名重填)或屏 9(完成) 由其他函数触发
+  STATE.step = i;
+  document.querySelectorAll('.screen').forEach(el=>el.classList.remove('active'));
+  document.querySelector(`.screen[data-screen="${i}"]`).classList.add('active');
+  if(i===4) syncConfirm();   // 进入信息确认单 → 同步屏1 动态值
+
+  const meta = STEP_META[i];
+  // 阶段横幅
+  const banner = document.getElementById('phaseBanner');
+  if(meta.phase==='A'){
+    banner.className = 'phase-banner phase-a';
+    banner.querySelector('#phaseTitle').textContent = '阶段 A · 信息采集与提交（约 10-15 分钟）';
+    banner.querySelector('#phaseMeta').textContent = '';
+  }else{
+    banner.className = 'phase-banner phase-b';
+    banner.querySelector('#phaseTitle').textContent = '阶段 B · 扫码协同与进度跟踪';
+    banner.querySelector('#phaseMeta').textContent = '';
+  }
+  // 页脚标签
+  const cap = document.getElementById('footCap');
+  cap.className = 'foot-caption phase-' + meta.phase.toLowerCase();
+  cap.querySelector('#footNum').textContent = meta.num;
+  cap.querySelector('#footDesc').textContent = meta.desc;
+  // 底部按钮
+  const back = document.getElementById('backBtn');
+  const next = document.getElementById('nextBtn');
+  if(i===0){ back.classList.add('hidden'); }
+  else { back.classList.remove('hidden'); }
+  next.textContent = meta.next;
+
+  // 特殊屏：底部按钮隐藏
+  if(i===5){
+    document.getElementById('scannedBtn').style.display = '';
+    document.getElementById('footer').style.display = 'none';
+    STATE.scannedDone = false;        // 重置扫码完成标记（支持回屏6 重新扫码）
+    mountBPageFrame();   // 进屏6：挂载 B 页 iframe（/qrlogin?sid），RPA 在 bind 时由后端自动启动
+  }else if(i===6){
+    document.getElementById('footer').style.display = 'none';
+  }else if(i===7){
+    document.getElementById('footer').style.display = '';
+    document.getElementById('refillTimes').textContent = STATE.refillTimes;
+  }else if(i===8){
+    document.getElementById('footer').style.display = 'none';
+  }else{
+    document.getElementById('footer').style.display = '';
+  }
+
+  renderSteps();
+  window.scrollTo(0,0);
+}
+
+function next(){
+  const i = STATE.step;
+  if(i===0){                                  // 0→1 登录校验
+    if(!document.getElementById('agree').checked){ alert('请先勾选同意《用户授权协议》'); return; }
+    if(!/^1\d{10}$/.test(document.getElementById('phone').value)){ alert('请填写有效手机号'); return; }
+    if(document.getElementById('code').value.length!==6){ alert('请填写 6 位验证码'); return; }
+    go(1); return;
+  }
+  if(i===1){                                  // 1→2 企业信息校验
+    if(document.querySelectorAll('#nameChips .chip.zi.on').length < 1){ alert('请至少选择 / 生成一个字号候选'); return; }
+    if(!document.getElementById('regAddress').value.trim()){ alert('请填写注册地址'); return; }
+    if(!document.getElementById('postalCode').value.trim()){ alert('请填写邮编'); return; }
+    if(!document.getElementById('scope').value.trim()){ alert('请填写经营范围'); return; }
+    go(2); return;
+  }
+  if(i===2){                                  // 2→3 人员信息校验
+    if(!validatePersonnel()) return;
+    go(3); return;
+  }
+  if(i===4){ enterPhaseB(); return; }   // 5→6 进入阶段 B
+  if(i===5){ scannedOK(); return; }     // 6→7 模拟扫码成功
+  if(i===7){ resubmit(); return; }      // 8→7 重新提交核名（回进度跟踪）
+  if(i===8){ go(8); return; }           // 9 完成页（无 next）
+  go(i+1);
+}
+function back(){
+  const i = STATE.step;
+  if(i===6 || i===7){ go(5); return; }  // 7/8 回到 6 扫码页
+  if(i<=0) return;
+  go(i-1);
+}
+
+/* ============ 屏 5 → 6：进入阶段 B ============ */
+function enterPhaseB(){
+  STATE.refillTimes = 2;
+  STATE.sid = makeSid();   // 生成会话钥匙：屏6 进入即触发 RPA（B 页 bind 时后端自动启动）
+  go(5);                   // go(5) 内挂载 B 页 iframe（/qrlogin?sid）
+}
+
+/* ============ 屏 6：挂载 B 页（iframe 内 /qrlogin?sid） ============ */
+function makeSid(){
+  return 'sid-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+}
+
+function backendOriginForPrototype(){
+  // 若原型由后端同源托管（http/https），用相对 origin；否则指向 localhost:8766
+  if (location.protocol === 'http:' || location.protocol === 'https:'){
+    return location.origin;
+  }
+  return 'http://localhost:8766';
+}
+
+function mountBPageFrame(){
+  if (!STATE.sid) STATE.sid = makeSid();
+  const params = new URLSearchParams(location.search);
+  // 默认即真实政务网（上海企业登记在线）；?mock=1 / ?mock=true 才走离线测试站
+  const useMock = params.get('mock') === '1' || params.get('mock') === 'true';
+  STATE.sidMock = useMock;
+  const origin = backendOriginForPrototype();
+  const bUrl = origin + '/qrlogin?sid=' + encodeURIComponent(STATE.sid) + (useMock ? '&mock=true' : '');
+  const frame = document.getElementById('bPageFrame');
+  if (frame && frame.getAttribute('data-sid') !== STATE.sid){
+    frame.src = bUrl;                 // B 页 bind 时后端自动启动 RPA（首连者触发）
+    frame.setAttribute('data-sid', STATE.sid);
+  }
+  const openA = document.getElementById('openAPageBtn');
+  if (openA) openA.href = origin + '/acquire?sid=' + encodeURIComponent(STATE.sid) + (useMock ? '&mock=true' : '');
+}
+
+/* 监听 B 页（iframe）扫码成功 → 自动进屏 7 */
+window.addEventListener('message', function(ev){
+  let d; try { d = ev.data; } catch (e) { return; }
+  if (!d || typeof d !== 'object') return;
+  if (d.type === 'login_success' && d.sid === STATE.sid){
+    const btn = document.getElementById('scannedBtn');
+    if (btn) btn.style.display = 'none';
+    scannedOK();
+  }
+});
+
+/* 屏 6 二维码：方案 A 改为由 B 页 iframe（/qrlogin）实时展示 RPA 抓取的真实二维码，旧版本地假二维码 renderQR() 已弃用。 */
+
+/* ============ 屏 6 → 7：模拟扫码成功，启动 RPA 流水线 ============ */
+function scannedOK(){
+  if (STATE.scannedDone) return;          // 防止 postMessage 与手动按钮重复触发
+  STATE.scannedDone = true;
+  go(6);
+  STATE.pipeRunning = true;
+  animatePipe();
+}
+
+/* ============ 屏 7：RPA 流水线动画 ============ */
+function animatePipe(){
+  const step3 = document.getElementById('step3');
+  const step4 = document.getElementById('step4');
+  const tip3 = document.getElementById('step3Tip');
+  const pendingTip = document.getElementById('pendingTip');
+  const refillBtn = document.getElementById('gotoRefill');
+
+  const seq = [
+    { t:0,    tip:'正在填写「名称信息」表' },
+    { t:1500, tip:'正在填写「基本信息」表' },
+    { t:3000, tip:'正在填写「出资情况」表' },
+    { t:4500, tip:'正在填写「人员信息」表' },
+  ];
+  seq.forEach(s=>setTimeout(()=>{ if(STATE.step===6) tip3.textContent = s.tip; }, s.t));
+
+  // 5 秒后随机决定结果（演示：首次必失败 1 次，第二次必成功）
+  setTimeout(()=>{
+    if(STATE.step!==6) return;
+    if(STATE.refillTimes===2){
+      // 首次：模拟核名失败
+      step3.querySelector('.pipe-dot').className = 'pipe-dot done';
+      step3.querySelector('.pipe-dot').textContent = '✓';
+      step4.querySelector('.pipe-dot').className = 'pipe-dot run';
+      tip3.textContent = '核名结果回执已到：未通过';
+      pendingTip.style.display = 'flex';
+      refillBtn.style.display = '';
+    }else{
+      // 重填后：成功
+      step3.querySelector('.pipe-dot').className = 'pipe-dot done';
+      step3.querySelector('.pipe-dot').textContent = '✓';
+      step4.querySelector('.pipe-dot').className = 'pipe-dot run';
+      tip3.textContent = '正在提交至审批处';
+      setTimeout(()=>{
+        if(STATE.step!==6) return;
+        step4.querySelector('.pipe-dot').className = 'pipe-dot done';
+        step4.querySelector('.pipe-dot').textContent = '✓';
+        setTimeout(()=> go(8), 600);
+      }, 1800);
+    }
+  }, 3500);
+}
+
+/* ============ 屏 6：扫码完成按钮（核心修复） ============ */
+document.getElementById('scannedBtn').addEventListener('click', ()=> scannedOK());
+
+/* ============ 屏 7 → 8：去补充字号 ============ */
+document.getElementById('gotoRefill').addEventListener('click', ()=> go(7));
+
+/* ============ 屏 8：重新提交核名 ============ */
+function resubmit(){
+  STATE.refillTimes -= 1;
+  if(STATE.refillTimes <= 0){
+    STATE.refillTimes = 0;
+    alert('演示模式：已达重填次数上限（5/5），将转人工');
+    return;
+  }
+  // 回进度跟踪，RPA 继续
+  go(6);
+  // 重置第 3、4 步
+  const step3 = document.getElementById('step3');
+  step3.querySelector('.pipe-dot').className = 'pipe-dot run';
+  step3.querySelector('.pipe-dot').textContent = '';
+  document.getElementById('step4').querySelector('.pipe-dot').className = 'pipe-dot wait';
+  document.getElementById('step4').querySelector('.pipe-dot').textContent = '4';
+  document.getElementById('pendingTip').style.display = 'none';
+  document.getElementById('gotoRefill').style.display = 'none';
+  // 立即走成功路径（演示）
+  STATE.refillTimes = 0;  // 下一次 animatePipe 走成功分支
+  setTimeout(()=>{
+    if(STATE.step===6) animatePipe();
+  }, 300);
+}
+
+/* ============ 屏 4：OCR 模拟 ============ */
+function simulateOCR(el, label){
+  el.classList.add('done');
+  el.innerHTML = `
+    <span class="ocr-ok">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+      ${label} · 已识别
+    </span>
+    <span style="font-size:10.5px;">310101********8812</span>
+  `;
+}
+
+/* ============ 屏 3：人员信息逻辑 ============ */
+function setSup(v, btn){
+  document.querySelectorAll('#supSeg .seg-btn').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  const show = (v===1);
+  document.getElementById('supBody').style.display = show ? 'grid' : 'none';
+  document.getElementById('supNote').style.display = show ? 'none' : 'block';
+}
+function toggleSameLegal(prefix){
+  const sameEl = document.getElementById(prefix + 'Same');
+  const same = sameEl.checked;
+  // 董事 / 财务负责人「与法人同一人」互斥，只能选一个
+  if(same && (prefix === 'dir' || prefix === 'fin')){
+    const other = prefix === 'dir' ? 'fin' : 'dir';
+    const otherSame = document.getElementById(other + 'Same');
+    if(otherSame && otherSame.checked){
+      otherSame.checked = false;
+      const on = document.getElementById(other + 'Name');
+      const om = document.getElementById(other + 'Mobile');
+      const ob = document.getElementById(other + 'Body');
+      on.readOnly = false; om.readOnly = false;
+      ob.classList.remove('locked');
+    }
+  }
+  const name = document.getElementById(prefix + 'Name');
+  const mobile = document.getElementById(prefix + 'Mobile');
+  const body = document.getElementById(prefix + 'Body');
+  if(same){
+    name.value = document.getElementById('legalName').value;
+    mobile.value = document.getElementById('legalMobile').value;
+    name.readOnly = true; mobile.readOnly = true;
+    body.classList.add('locked');
+  }else{
+    name.readOnly = false; mobile.readOnly = false;
+    body.classList.remove('locked');
+  }
+}
+function requireRole(prefix, label){
+  if(document.getElementById(prefix + 'Same') && document.getElementById(prefix + 'Same').checked) return true;
+  if(!document.getElementById(prefix + 'Name').value.trim()){ alert('请填写' + label + '姓名'); return false; }
+  if(!document.getElementById(prefix + 'Mobile').value.trim()){ alert('请填写' + label + '手机号'); return false; }
+  return true;
+}
+function npCardHtml(idx, data){
+  const d = data || {name:'', ethnicity:'', phone:'', pct:'', address:''};
+  return `<div class="np-card">
+    <div class="np-card-h"><span class="np-idx">自然人 ${idx}</span>
+      <button class="sh-del" type="button" onclick="removeNaturalPerson(this)" aria-label="删除">✕</button>
+    </div>
+    <div class="grid2" style="margin-bottom:12px;">
+      <div class="field"><label>姓名<span class="req">*</span></label><input type="text" class="np-name" placeholder="姓名" value="${d.name||''}" /></div>
+      <div class="field"><label>民族<span class="req">*</span></label><input type="text" class="np-ethnicity" placeholder="如：汉族" value="${d.ethnicity||''}" /></div>
+    </div>
+    <div class="grid2" style="margin-bottom:12px;">
+      <div class="field"><label>电话<span class="req">*</span></label><input type="tel" class="np-phone" inputmode="numeric" maxlength="11" placeholder="电话" value="${d.phone||''}" /></div>
+      <div class="field"><label>持股比例<span class="req">*</span></label>
+        <div class="input-wrap has-suffix">
+          <input type="number" class="np-pct" min="0" max="100" step="1" placeholder="0" value="${d.pct||''}" />
+          <span class="unit">%</span>
+        </div>
+      </div>
+    </div>
+    <div class="field"><label>住所<span class="req">*</span></label><input type="text" class="np-address" placeholder="请填写住所地址" value="${d.address||''}" /></div>
+  </div>`;
+}
+function reindexNp(){
+  document.querySelectorAll('#npList .np-card').forEach((c,i)=>{
+    c.querySelector('.np-idx').textContent = '自然人 ' + (i+1);
+  });
+}
+function addNaturalPerson(data){
+  const list = document.getElementById('npList');
+  const wrap = document.createElement('div');
+  wrap.innerHTML = npCardHtml(list.children.length + 1, data);
+  list.appendChild(wrap.firstElementChild);
+}
+function removeNaturalPerson(btn){
+  const list = document.getElementById('npList');
+  if(list.querySelectorAll('.np-card').length <= 1){ alert('至少需保留 1 名自然人'); return; }
+  btn.closest('.np-card').remove();
+  reindexNp();
+}
+function validatePersonnel(){
+  if(!document.getElementById('legalName').value.trim()){ alert('请填写法人姓名'); return false; }
+  if(!document.getElementById('legalMobile').value.trim()){ alert('请填写法人手机号'); return false; }
+  const cards = document.querySelectorAll('#npList .np-card');
+  if(cards.length === 0){ alert('请至少添加 1 名自然人'); return false; }
+  let npSum = 0;
+  for(const c of cards){
+    if(!c.querySelector('.np-name').value.trim()){ alert('有自然人未填写姓名'); return false; }
+    if(!c.querySelector('.np-ethnicity').value.trim()){ alert('有自然人未填写民族'); return false; }
+    if(!c.querySelector('.np-phone').value.trim()){ alert('有自然人未填写电话'); return false; }
+    if(!c.querySelector('.np-address').value.trim()){ alert('有自然人未填写住所'); return false; }
+    const pct = parseFloat(c.querySelector('.np-pct').value);
+    if(isNaN(pct) || pct <= 0){ alert('有自然人未填写有效持股比例（须 > 0）'); return false; }
+    npSum += pct;
+  }
+  if(Math.abs(npSum - 100) > 0.01){ alert('自然人持股比例合计须为 100%（当前 ' + (Math.round(npSum*100)/100) + '%）'); return false; }
+  if(!requireRole('dir', '董事')) return false;
+  const supOn = document.querySelector('#supSeg .seg-btn.on').dataset.v === '1';
+  if(supOn && !document.getElementById('supName').value.trim()){ alert('已选择设立监事，请填写监事姓名'); return false; }
+  if(!requireRole('fin', '财务负责人')) return false;
+  if(!document.getElementById('liaName').value.trim()){ alert('请填写联络员姓名'); return false; }
+  if(!document.getElementById('liaMobile').value.trim()){ alert('请填写联络员手机号'); return false; }
+  if(!document.getElementById('liaEmail').value.trim()){ alert('请填写联络员邮箱'); return false; }
+  if(!document.getElementById('liaAddress').value.trim()){ alert('请填写联络员住所'); return false; }
+  if(!document.getElementById('uboName').value.trim()){ alert('请填写最终受益人姓名'); return false; }
+  if(!document.getElementById('uboMobile').value.trim()){ alert('请填写最终受益人手机号'); return false; }
+  if(!document.getElementById('uboIdValid').value.trim()){ alert('请填写最终受益人身份证有效期'); return false; }
+  return true;
+}
+
+/* 法人信息变更时，勾选「同法人」的角色联动 */
+['legalName','legalMobile'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', ()=>{
+    ['dir','fin'].forEach(p=>{
+      if(document.getElementById(p + 'Same').checked) toggleSameLegal(p);
+    });
+  });
+});
+addNaturalPerson({name:'张伟', ethnicity:'汉族', phone:'13984439335', pct:'100', address:''});
+
+/* ============ 屏 8：实时校验 ============ */
+['nm1','nm2'].forEach(id=>{
+  const el = document.getElementById(id);
+  el.addEventListener('input', updateRefillHint);
+});
+function updateRefillHint(){
+  const v1 = document.getElementById('nm1').value.trim();
+  const v2 = document.getElementById('nm2').value.trim();
+  const v3 = document.getElementById('nm3') ? document.getElementById('nm3').value.trim() : '';
+  const v4 = document.getElementById('nm4') ? document.getElementById('nm4').value.trim() : '';
+  const filled = (v1?1:0) + (v2?1:0) + (v3?1:0) + (v4?1:0);
+  document.getElementById('okCount').textContent = (v1 && v2) ? 2 : ((v1 || v2) ? 1 : 0);
+  document.getElementById('errCount').textContent = 0;
+  document.getElementById('refillCount').textContent = '已填 ' + filled + ' / 4';
+}
+
+/* ============ 屏 1：登录校验 ============ */
+document.getElementById('phone').addEventListener('input', e=>{
+  const v = e.target.value.replace(/\D/g,'').slice(0,11);
+  e.target.value = v;
+  const h = document.querySelector('.hint[data-for="phone"]');
+  if(!v) { h.className='hint'; h.textContent=''; }
+  else if(!/^1\d{10}$/.test(v)){ h.className='hint err show'; h.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>手机号格式错误'; }
+  else { h.className='hint ok show'; h.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>格式正确'; }
+});
+
+let codeTimer = 60;
+document.getElementById('getCode').addEventListener('click', e=>{
+  const phone = document.getElementById('phone').value;
+  if(!/^1\d{10}$/.test(phone)){ alert('请先填写有效的手机号'); return; }
+  const b = e.target;
+  b.disabled = true;
+  codeTimer = 60;
+  const tick = ()=>{
+    if(codeTimer<=0){ b.disabled=false; b.textContent='获取验证码'; return; }
+    b.textContent = codeTimer + 's 后重发';
+    codeTimer--;
+    setTimeout(tick, 1000);
+  };
+  tick();
+});
+
+/* ============ 屏 1：字号候选 + 实时通过率 ============ */
+// 高频字（重名高）→ 低通过率；稀缺字 → 高通过率
+const ZI_POOL = {
+  '鑫':9,'华':11,'盛':14,'鼎':18,'宏':20,'瑞':24,'昌':27,'泰':30,
+  '启':88,'创':85,'云':82,'智':86,'数':80,'澜':90,'芮':92,'骁':89,'璟':91,'翊':87,'宥':84,'桓':83,'昭':86,'屿':90
+};
+const LOW_SUG = ['启','创','云','智','数','澜'];
+const HIGH = ['启','创','云','智','数','澜','芮','骁','璟','翊','宥','桓','昭','屿'];
+function ziRate(ch){ return ZI_POOL[ch] !== undefined ? ZI_POOL[ch] : 70; } // 未列字默认 70
+function comboRate(str){ // 取各字最低值偏严 + 均值
+  let min=100, sum=0, n=0;
+  for(const ch of str){ if(ZI_POOL[ch] !== undefined){ sum+=ZI_POOL[ch]; n++; min=Math.min(min, ZI_POOL[ch]); } }
+  if(n===0) return 70;
+  return Math.round(min*0.6 + (sum/n)*0.4);
+}
+function addZiChip(zi, rate, selected){
+  const el = document.createElement('span');
+  el.className = 'chip zi' + (selected ? ' on' : '');
+  el.dataset.zi = zi; el.dataset.rate = rate;
+  el.innerHTML = `${zi}<span class="ck">✓</span>`;
+  el.addEventListener('click', ()=>{ el.classList.toggle('on'); updateZiCount(); refreshName(); });
+  document.getElementById('nameChips').appendChild(el);
+  updateZiCount(); refreshName();
+}
+function updateZiCount(){
+  document.getElementById('ziCount').textContent =
+    document.querySelectorAll('#nameChips .chip.zi.on').length;
+}
+function currentOrgForm(){
+  return document.getElementById('orgForm').value || '有限公司';
+}
+function refreshName(){
+  const sel = [...document.querySelectorAll('#nameChips .chip.zi.on')].map(c=>c.dataset.zi).filter(Boolean);
+  const ind = document.getElementById('industry').value || '科技';
+  const org = currentOrgForm();
+  const zi  = sel[0] || '鑫慧众盒';
+  document.getElementById('aiName').value = `上海${zi}${ind}${org}`;
+  const nh = document.getElementById('nameHint');
+  if(sel.length){
+    const r = comboRate(sel[0]);
+    nh.className = r>=80 ? 'hint ok show' : 'hint warn show';
+    nh.innerHTML = r>=80
+      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> 已选 ${sel.length} 个字号，首选「${sel[0]}」组合通过率约 ${r}%`
+      : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> 已选 ${sel.length} 个字号，含低通过率字，建议优先高通过率候选`;
+  } else { nh.className='hint'; nh.innerHTML=''; }
+  updateReco();
+}
+function updateReco(){
+  const sel = [...document.querySelectorAll('#nameChips .chip.zi.on')].map(c=>c.dataset.zi).filter(Boolean);
+  const ind = document.getElementById('industry').value || '科技';
+  const org = currentOrgForm();
+  const list = document.getElementById('recoList');
+  if(sel.length===0){ list.innerHTML = '<div class="reco-empty">先选 / 生成一个字号，AI 自动给出推荐组合与通过率</div>'; return; }
+  list.innerHTML = sel.slice(0,2).map((z,i)=>{
+    const r = comboRate(z);
+    return `<div class="reco-card">
+      <div class="reco-top"><span class="reco-rank">${i+1}</span><span class="reco-name">上海${z}${ind}${org}</span><span class="reco-rate">通过率 ${r}%</span></div>
+      <div class="reco-reason">${r>=80?'重名率极低，建议优先采用。':'含高频字，建议替换为低重名组合。'}</div>
+      <div class="reco-bar"><i style="width:${r}%"></i></div>
+    </div>`;
+  }).join('');
+}
+// 单字实时测重名率
+const ziInput = document.getElementById('ziInput');
+const ziHint  = document.getElementById('ziHint');
+function updateZiHint(){
+  const v = ziInput.value.trim();
+  if(!v){ ziHint.className='hint'; ziHint.innerHTML=''; return; }
+  let minCh=null, minR=100;
+  for(const ch of v){ const r=ziRate(ch); if(r<minR){ minR=r; minCh=ch; } }
+  const combo = comboRate(v);
+  if(minR<30){
+    ziHint.className='hint warn show';
+    ziHint.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> 单字「<b>${minCh}</b>」重名率极高，通过率仅 ${minR}%，建议替换为「${LOW_SUG.slice(0,3).join(' / ')}」等低重名字。`;
+  } else if(combo>=80){
+    ziHint.className='hint ok show';
+    ziHint.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> 组合通过率约 <b>${combo}%</b>，重名风险低，可直接加入候选。`;
+  } else {
+    ziHint.className='hint show';
+    ziHint.innerHTML = `组合通过率约 <b>${combo}%</b>，可加入候选。`;
+  }
+}
+ziInput.addEventListener('input', updateZiHint);
+document.getElementById('ziAdd').addEventListener('click', ()=>{
+  updateZiHint();
+  const v = ziInput.value.trim();
+  if(!v) return;
+  addZiChip(v, comboRate(v));
+  ziInput.value=''; ziHint.className='hint'; ziHint.innerHTML='';
+});
+// AI 一键生成高通过率字号
+function genZiCandidates(){
+  const set = new Set();
+  while(set.size < 10){ set.add(HIGH[Math.floor(Math.random()*HIGH.length)] + HIGH[Math.floor(Math.random()*HIGH.length)]); }
+  document.getElementById('nameChips').innerHTML='';
+  [...set].forEach((c,idx)=> addZiChip(c, comboRate(c), idx<3));
+}
+document.getElementById('aiGenZi').addEventListener('click', genZiCandidates);
+document.getElementById('industry').addEventListener('input', refreshName);
+document.getElementById('orgForm').addEventListener('change', refreshName);
+
+/* ============ 屏 5：确认单同步屏1动态值 ============ */
+function syncConfirm(){
+  const name = document.getElementById('aiName').value;
+  const ind  = document.getElementById('industry').value || '科技';
+  const org  = currentOrgForm();
+  const cap  = document.getElementById('capital').value || '100';
+  const addr = document.getElementById('regAddress').value.trim() || '—';
+  const post = document.getElementById('postalCode').value.trim() || '—';
+  const scope = document.getElementById('scope').value || '（未填写）';
+  document.getElementById('sumName').textContent = name;
+  document.getElementById('sumIndustry').textContent = ind;
+  document.getElementById('sumOrgForm').textContent = org;
+  document.getElementById('sumCapital').textContent = cap + ' 万人民币';
+  document.getElementById('sumRegAddress').textContent = addr;
+  document.getElementById('sumPostalCode').textContent = post;
+  document.getElementById('sumScope').textContent = scope;
+  document.getElementById('sumLegal').textContent = document.getElementById('legalName').value.trim() || '—';
+  const npParts = [...document.querySelectorAll('#npList .np-card')].map(c=>{
+    const n = c.querySelector('.np-name').value.trim() || '—';
+    const p = c.querySelector('.np-pct').value || '0';
+    return `${n}（${p}%）`;
+  });
+  document.getElementById('sumNp').textContent = npParts.length ? npParts.join('、') : '—';
+  document.getElementById('sumDir').textContent = document.getElementById('dirName').value.trim() || '—';
+  const supOn = document.querySelector('#supSeg .seg-btn.on').dataset.v === '1';
+  document.getElementById('sumSup').textContent = supOn
+    ? ((document.getElementById('supName').value.trim() || '—') + '（已设立）')
+    : '不设立';
+  document.getElementById('sumFin').textContent = document.getElementById('finName').value.trim() || '—';
+  document.getElementById('sumLia').textContent = document.getElementById('liaName').value.trim() || '—';
+  document.getElementById('sumUbo').textContent = document.getElementById('uboName').value.trim() || '—';
+}
+
+/* ============ 初始化 ============ */
+genZiCandidates();
+go(0);
+</script>
+</body>
+</html>

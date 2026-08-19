@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>一窗通填报助手</title>
+    <style>
+      /* 只设 color 不设 background，在深色配色下就是深底深字。扩展页面必须自己钉死。 */
+      :root { color-scheme: light; }
+      body { width: 300px; margin: 0; padding: 12px; font: 13px/1.6 -apple-system, "PingFang SC", system-ui, sans-serif; color: #1c2333; background: #fff; }
+      #state { white-space: pre-line; }
+      h1 { margin: 0 0 8px; font-size: 14px; }
+      p { margin: 0 0 8px; color: #57617d; font-size: 12px; }
+      .row { display: flex; gap: 6px; margin-bottom: 8px; }
+      button { flex: 1; padding: 6px 8px; border: 1px solid #c8cfe0; border-radius: 6px; background: #fff; cursor: pointer; font-size: 12px; }
+      button.primary { background: #26356b; color: #fff; border-color: #26356b; }
+      .state { background: #f2f4fa; border-radius: 6px; padding: 8px; font-size: 12px; color: #40496b; }
+      a { color: #26356b; }
+    </style>
+  </head>
+  <body>
+    <h1>一窗通填报助手</h1>
+    <p>在业务页面右侧会出现操作面板。登录、实名、人脸、扫码与电子签名请你本人完成。</p>
+    <div class="row">
+      <button id="observe">只识别当前页</button>
+      <button id="fill" class="primary">按档案填写</button>
+    </div>
+    <div class="row">
+      <button id="open-entry">打开申报入口</button>
+      <button id="options">档案与设置</button>
+    </div>
+    <div class="state" id="state">读取状态中…</div>
+    <script src="popup.js"></script>
+  </body>
+</html>

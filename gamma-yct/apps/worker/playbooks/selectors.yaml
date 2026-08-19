@@ -1,0 +1,98 @@
+# 真机 Playbook
+# 流程：portal_yct → 关弹窗 → 开办 → 企业 → 扫码登录 → 我已知晓
+#      → 企业设立登记（不涉及前置审批事项）→ 字号/行业/组织形式 → 下一步
+# ALLOW_FINAL_SUBMIT 必须保持 false；本配置只支持填到「暂存」。
+
+name_self_declaration:
+  entry_url: "https://online.yct.sh.gov.cn/web-yct-master/?web-name-apply=%2Fweb-name-apply%2F%23%2Fname-declaration#/wujieViews/A1"
+  portal_url: "https://yct.sh.gov.cn/portal_yct/"
+  frame_url_part: "web-name-apply"
+  dismiss_selectors:
+    - ".el-dialog__headerbtn"
+    - ".el-message-box__headerbtn"
+    - "text=暂不需要"
+    - "text=关闭"
+  placeholders:
+    division: "请选择名称区划"
+    trade_name: "请输入名称字号"
+    industry: "请输入行业表述"
+    org_form: "请选择组织形式"
+  defaults:
+    division: "上海"
+    org_form: "有限责任公司"
+  # 企业类型：内资「有限公司」；组织形式：「有限责任公司」
+  org_type_option: "有限公司"
+  org_form_option: "有限责任公司"
+  next_button_text: "下一步"
+  success_text: "比对通过"
+  fail_text: "不予"
+  rare_char_fail: "请修改字号"
+
+fill_establishment:
+  use_heuristics: true
+  frame_url_part: "web-reg-apply"
+  entry_url_hint: "enterprise-info-new"
+  dismiss_selectors:
+    - "text=暂不需要"
+    - ".el-dialog__headerbtn"
+  agent_type: "法定代表人"
+  company_type_one_person: "有限责任公司(自然人独资)"
+  business_term: "不约定期限"
+  authority_suffix: "市场监督管理局"   # 与 registration.district 拼接，如 虹口区市场监督管理局
+  # 基本信息身份证默认路径（桌面文件优先，见 basic_info.py）
+  id_front_path: "C:\\Users\\Lenovo\\Desktop\\身份证正面.jpg"
+  id_back_path: "C:\\Users\\Lenovo\\Desktop\\身份证反面.jpg"
+  # 身份证上传（经办人信息区两个 el-upload）
+  id_upload:
+    front_hint: "人像面"
+    back_hint: "国徽面"
+    accept_wait_ms: 2500
+  # 经营范围弹层
+  business_scope:
+    open_texts:
+      - "选择经营范围"
+    search_placeholders:
+      - "请输入"
+      - "搜索"
+      - "关键字"
+      - "经营范围"
+    confirm_texts:
+      - "确定"
+      - "确 定"
+      - "保存"
+      - "添加"
+      - "完成"
+    # 除 payload.company.businessScope 外的备选关键词
+    fallback_keywords:
+      - "科技"
+      - "技术"
+  save_button_text: "暂存"
+  save_success_text: "暂存成功"
+
+fill_stockholder:
+  frame_url_part: "web-reg-apply"
+  entry_url_hint: "stockholder-info"
+  registered_capital: "100"
+  natural_person_text: "自然人"
+  reuse_person_text: "复用人员信息"
+  investor_type: "自然人股东"
+  ethnicity: "汉族"
+  hukou: ["贵州省", "安顺市", "西秀区"]
+  address: "贵州省安顺市西秀区鸡场乡鸡场散居户"
+  mobile: "13984439335"
+  subscription_method: "货币"
+  subscription_amount: "100"
+  subscription_years: 5
+  add_button_text: "+ 增加 >>"
+  next_button_text: "下一步"
+
+choose_process:
+  # 设立页之后的办理方式；一期若未到此步可跳过
+  full_electronic_option: "全程电子化"
+  confirm_button: "确认"
+
+fill_addons:
+  skip_if_empty: true
+
+save_draft:
+  save_button: "text=暂存"

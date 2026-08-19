@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+data/cases/*/
+!data/cases/.gitkeep
+apps/web/node_modules/
+apps/web/dist/
+*.log
+.playwright/
+test-results/
+_t.jpg
+scripts/_t.jpg

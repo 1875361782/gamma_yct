@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>【Mock】一网通办登录</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;background:#f5f7fa;margin:0;padding:32px;color:#0b2e66;}
+  .container{max-width:420px;margin:0 auto;background:#fff;padding:32px;border-radius:14px;box-shadow:0 4px 20px rgba(0,0,0,.06);}
+  h1{font-size:20px;margin:0 0 6px;font-weight:700;}
+  .url{font-size:12px;color:#5a6b85;margin-bottom:18px;}
+  .qrbox{width:240px;height:240px;margin:18px auto;background:#fafafa;border:1px solid #e5e7eb;border-radius:8px;display:flex;align-items:center;justify-content:center;}
+  .qrbox img{width:100%;height:100%;}
+  .tip{text-align:center;color:#5a6b85;font-size:13px;margin:12px 0;}
+  .timer{text-align:center;color:#1e5fd9;font-size:14px;font-weight:700;}
+  .scanbtn{display:block;width:100%;margin-top:24px;padding:12px;background:#2bb673;color:#fff;border:0;border-radius:8px;font-size:14px;cursor:pointer;font-weight:600;}
+  .scanbtn:hover{background:#26a065;}
+  .scanbtn:disabled{background:#94a3b8;cursor:not-allowed;}
+  .sid{font-size:11px;color:#9ca3af;text-align:center;margin-top:16px;word-break:break-all;}
+  .marker{position:fixed;top:8px;right:8px;background:#fbbf24;color:#0b2e66;font-size:11px;padding:4px 10px;border-radius:6px;font-weight:600;}
+</style>
+</head>
+<body>
+<div class="marker">MOCK</div>
+<div class="container">
+  <h1>【Mock】一网通办登录</h1>
+  <div class="url">zwdtuser.sh.gov.cn · 本地 Mock，仅供伽马注册 RPA 测试</div>
+  <div class="qrbox"><img id="qrImg" src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=mock-initial" alt="QR"></div>
+  <div class="tip">请使用「随申办」APP 扫码</div>
+  <div class="timer" id="timer">二维码 180 秒内有效</div>
+  <button class="scanbtn" id="scanBtn" onclick="markLoggedIn()">🟢 模拟扫码登录成功（仅 Mock）</button>
+  <div class="sid" id="sidBox">sid: -</div>
+</div>
+<script>
+  // 写一个 user-info 元素表示登录成功（login_monitor.py 会检测到）
+  function markLoggedIn() {
+    const div = document.createElement('div');
+    div.className = 'user-info';
+    div.style.display = 'none';
+    div.dataset.user = 'mock-张三';
+    document.body.appendChild(div);
+    document.getElementById('timer').textContent = '✓ 已登录（Mock）';
+    const btn = document.getElementById('scanBtn');
+    btn.disabled = true;
+    btn.textContent = '已登录';
+  }
+  // 倒计时 + QR 刷新
+  let s = 180;
+  setInterval(() => {
+    if (s <= 0) {
+      s = 180;
+      const sid = (new URLSearchParams(location.search)).get('sid') || 'x';
+      document.getElementById('qrImg').src = 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(sid + '-' + Date.now());
+    }
+    s--;
+    document.getElementById('timer').textContent = '二维码 ' + s + ' 秒内有效';
+  }, 1000);
+  // 显示 sid
+  const params = new URLSearchParams(location.search);
+  document.getElementById('sidBox').textContent = 'sid: ' + (params.get('sid') || '-');
+</script>
+</body>
+</html>

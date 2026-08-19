@@ -1,0 +1,70 @@
+{
+    "payload":  {
+                    "investors":  [
+                                      {
+                                          "mobile":  "13984439335",
+                                          "type":  "natural_person",
+                                          "idNumber":  "",
+                                          "investmentMethod":  "货币",
+                                          "name":  "吴文彬",
+                                          "ratio":  100,
+                                          "address":  "贵州省安顺市西秀区鸡场乡鸡场散居户",
+                                          "idType":  "id_card",
+                                          "amount":  10
+                                      }
+                                  ],
+                    "personnel":  {
+                                      "supervisors":  [
+
+                                                      ],
+                                      "legalRepresentative":  {
+                                                                  "idNumber":  "",
+                                                                  "idType":  "id_card",
+                                                                  "fromInvestorIndex":  0,
+                                                                  "name":  "吴文彬",
+                                                                  "mobile":  "13984439335"
+                                                              },
+                                      "financeOfficer":  null,
+                                      "directors":  [
+
+                                                    ],
+                                      "manager":  null
+                                  },
+                    "name":  {
+                                 "fullNamePreview":  "上海盛表玛科技有限公司",
+                                 "adminDivision":  "上海",
+                                 "alternatives":  [
+
+                                                  ],
+                                 "tradeName":  "盛表玛",
+                                 "orgForm":  "有限公司",
+                                 "industry":  "科技"
+                             },
+                    "company":  {
+                                    "capitalUnit":  "万元",
+                                    "capitalCurrency":  "CNY",
+                                    "businessScope":  "科技",
+                                    "businessTermType":  "long_term",
+                                    "registeredCapital":  10,
+                                    "businessScopeCodes":  [
+
+                                                           ]
+                                },
+                    "registration":  {
+                                         "address":  {
+                                                         "detail":  "四川北路1318号4楼室",
+                                                         "province":  "上海市",
+                                                         "district":  "虹口区",
+                                                         "propertyCertNo":  "",
+                                                         "city":  "上海市"
+                                                     },
+                                         "district":  "虹口区",
+                                         "preferredProcess":  "full_electronic",
+                                         "isCentralizedVenue":  false,
+                                         "addressProofFileIds":  [
+
+                                                                 ],
+                                         "addressType":  "lease"
+                                     }
+                }
+}

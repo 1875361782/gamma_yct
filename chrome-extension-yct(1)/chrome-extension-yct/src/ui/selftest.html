@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>一窗通填报助手 · 自检</title>
+    <style>
+      /* 只设 color 不设 background，在深色配色下就是深底深字。扩展页面必须自己钉死。 */
+      :root { color-scheme: light; }
+      body { max-width: 960px; margin: 0 auto; padding: 24px; font: 14px/1.7 -apple-system, "PingFang SC", system-ui, sans-serif; color: #1c2333; background: #fff; }
+      h1 { font-size: 18px; margin: 0 0 4px; }
+      p { color: #57617d; margin: 4px 0 16px; }
+      #summary { padding: 10px 12px; border-radius: 8px; font-weight: 600; margin-bottom: 14px; }
+      #summary.pass { background: #e6f4ea; color: #17632f; }
+      #summary.fail { background: #fdeeee; color: #8d1d1d; }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eef1f7; vertical-align: top; }
+      th { color: #7c88a5; font-weight: 500; }
+      .ok { color: #17632f; font-weight: 600; }
+      .bad { color: #8d1d1d; font-weight: 600; }
+      code { background: #f2f4fa; padding: 1px 4px; border-radius: 3px; font-size: 12px; }
+      /* 自检用的合成 DOM 不参与展示，但必须真实存在且可见——控件分类要读计算样式。 */
+      #fixture { position: fixed; left: -9999px; top: 0; width: 800px; }
+    </style>
+  </head>
+  <body>
+    <h1>自检</h1>
+    <p>
+      这一页在真实浏览器里按 manifest 的顺序加载引擎的每个模块，然后对合成 DOM 跑断言。
+      全绿说明「装上就能跑」这一层没问题；页面表单能不能填得对，仍要在业务页上用「只识别」核对。
+    </p>
+    <div id="summary">运行中…（每条用例 20 秒超时；请保持标签页可见，后台标签的定时器节流会造成假超时）</div>
+    <table>
+      <thead>
+        <tr><th style="width: 70px">结果</th><th style="width: 240px">用例</th><th>说明</th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+
+    <div id="fixture"></div>
+
+    <!-- 解析检查阶段要用的空壳 DOM：popup.js / options.js 在顶层就 getElementById，
+         少一个 id 它们会抛在初始化上，那样就分不清「语法错」和「缺元素」了。 -->
+    <div id="ui-fixture" style="display: none">
+      <div id="state"></div>
+      <button id="observe"></button><button id="fill"></button>
+      <button id="open-entry"></button><button id="options"></button>
+      <textarea id="dossier"></textarea>
+      <div id="dossier-msg"></div><div id="platform-msg"></div>
+      <button id="save"></button><button id="sample"></button><button id="clear-journal"></button>
+      <input id="base-url" /><input id="pairing-code" />
+      <button id="pair"></button><button id="sync"></button>
+      <button id="trusted-enable"></button><button id="trusted-disable"></button>
+      <div id="trusted-msg"></div>
+      <input type="checkbox" id="auto-ack" /><div id="ack-msg"></div>
+    </div>
+
+    <!-- 顺序必须与 manifest.json 的 content_scripts.js 完全一致 -->
+    <script src="../common/namespace.js"></script>
+    <script src="../common/policy.js"></script>
+    <script src="../common/field-map.js"></script>
+    <script src="../common/site-profile.js"></script>
+    <script src="../content/roots.js"></script>
+    <script src="../content/trusted.js"></script>
+    <script src="../content/labels.js"></script>
+    <script src="../content/controls.js"></script>
+    <script src="../content/selects.js"></script>
+    <script src="../content/dialogs.js"></script>
+    <script src="../content/page.js"></script>
+    <script src="../content/planner.js"></script>
+    <script src="../content/runner.js"></script>
+    <script src="../content/panel.js"></script>
+    <!-- 刻意不加载 content/main.js：它是引擎入口，会挂面板、注册消息监听。 -->
+    <script src="selftest.js"></script>
+  </body>
+</html>

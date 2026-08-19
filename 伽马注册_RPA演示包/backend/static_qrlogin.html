@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>伽马注册 · 扫码登录</title>
+<style>
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  :root{
+    --color-primary:#1E5FD9;
+    --color-primary-soft:#E8F0FE;
+    --color-success:#2BB673;
+    --color-success-soft:#F0FDF4;
+    --color-danger:#DC2626;
+    --color-warning:#EA580C;
+    --color-text:#0B2E66;
+    --color-text-sub:#5A6B85;
+    --color-border:#E5E7EB;
+    --color-surface:#fff;
+    --color-bg:#F5F7FA;
+    --radius:14px;
+    --radius-sm:8px;
+    --font:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  body{font-family:var(--font); background:var(--color-bg); color:var(--color-text); margin:0; padding:0; min-height:100vh; display:flex; align-items:center; justify-content:center;}
+  .phone{width:100%; max-width:420px; min-height:100vh; background:var(--color-surface); box-shadow:0 4px 30px rgba(11,46,102,.08); display:flex; flex-direction:column;}
+  @media (min-width:440px){.phone{margin:16px 0; min-height:auto; border-radius:var(--radius); overflow:hidden;}}
+
+  .head{padding:20px 20px 14px; background:linear-gradient(135deg,#1E5FD9 0%,#3B82F6 100%); color:#fff;}
+  .head h1{font-size:20px; margin:0; font-weight:700;}
+  .head .sub{font-size:13px; opacity:.9; margin-top:6px;}
+
+  .status-bar{padding:12px 20px; background:#fff; border-bottom:1px solid var(--color-border); display:flex; align-items:center; justify-content:space-between; gap:10px;}
+  .status{display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:5px 12px; border-radius:99px; background:#fff7ed; color:var(--color-warning); border:1px solid #fdba74;}
+  .status.ok{background:var(--color-success-soft); color:#15803d; border-color:#86efac;}
+  .status.err{background:#fef2f2; color:#b91c1c; border-color:#fca5a5;}
+  .sid{font-size:11px; color:var(--color-text-sub); font-family:'SF Mono',monospace;}
+
+  .body{flex:1; padding:24px 20px; display:flex; flex-direction:column; align-items:center; text-align:center;}
+
+  .step-title{font-size:15px; font-weight:700; margin-bottom:6px;}
+  .step-desc{font-size:13px; color:var(--color-text-sub); line-height:1.6; margin-bottom:22px;}
+
+  .qr-card{
+    width:240px; height:240px; background:#fff; border-radius:var(--radius); border:1px solid var(--color-border);
+    box-shadow:0 8px 24px rgba(11,46,102,.08); display:flex; align-items:center; justify-content:center; padding:16px; position:relative;
+  }
+  .qr-card img{width:100%; height:100%; object-fit:contain;}
+  .qr-placeholder{
+    width:100%; height:100%; border:2px dashed var(--color-border); border-radius:var(--radius-sm);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--color-text-sub); font-size:13px; gap:10px;
+  }
+  .qr-placeholder .spin{width:28px; height:28px; border:3px solid var(--color-primary); border-top-color:transparent; border-radius:50%; animation:spin 1s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .qr-refresh{font-size:12px; color:var(--color-text-sub); margin-top:14px;}
+
+  .tips{width:100%; margin-top:28px; text-align:left; background:#FAFBFC; border-radius:var(--radius-sm); padding:16px; border:1px solid var(--color-border);}
+  .tips-title{font-size:13px; font-weight:700; margin-bottom:10px;}
+  .tips ol{margin:0; padding-left:18px; font-size:12px; color:var(--color-text-sub); line-height:1.8;}
+
+  .success-panel{display:none; flex-direction:column; align-items:center; text-align:center; padding:40px 20px;}
+  .success-icon{width:72px; height:72px; border-radius:50%; background:var(--color-success-soft); color:var(--color-success); display:flex; align-items:center; justify-content:center; font-size:36px; margin-bottom:16px;}
+  .success-title{font-size:18px; font-weight:700; color:#15803d; margin-bottom:8px;}
+  .success-text{font-size:13px; color:var(--color-text-sub); line-height:1.7;}
+
+  .foot{padding:16px 20px 24px; border-top:1px solid var(--color-border); background:#fff;}
+  .btn{width:100%; padding:14px; border-radius:var(--radius-sm); border:0; cursor:pointer; font-family:var(--font); font-size:15px; font-weight:600; display:inline-flex; align-items:center; justify-content:center; gap:8px;}
+  .btn-primary{background:var(--color-primary); color:#fff;}
+  .btn-primary:disabled{background:#94a3b8; cursor:not-allowed;}
+  .btn-ghost{background:#fff; color:var(--color-text); border:1px solid var(--color-border); margin-top:10px; font-weight:500;}
+
+  .hint{font-size:11px; color:var(--color-text-sub); text-align:center; margin-top:10px; line-height:1.5;}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="head">
+    <h1>扫码登录</h1>
+    <div class="sub">伽马注册 · 一网通办授权</div>
+  </div>
+
+  <div class="status-bar">
+    <span class="status" id="statusBadge"><span>●</span> <span id="statusText">等待二维码…</span></span>
+    <span class="sid" id="sidText">sid:...</span>
+  </div>
+
+  <div class="body" id="qrPanel">
+    <div class="step-title">请使用「随申办」APP 扫码</div>
+    <div class="step-desc">A 页（RPA 浏览器）正在自动获取一网通办登录二维码，<br>获取成功后会实时显示在下方。</div>
+
+    <div class="qr-card" id="qrCard">
+      <div class="qr-placeholder" id="qrPlaceholder">
+        <div class="spin"></div>
+        <div>等待 RPA 同步 QR…</div>
+      </div>
+      <img id="qrImg" alt="登录二维码" style="display:none;" />
+    </div>
+
+    <div class="qr-refresh" id="qrRefresh"></div>
+
+    <div class="tips">
+      <div class="tips-title">操作提示</div>
+      <ol>
+        <li>确保 A 页 RPA 流程已启动并进入登录页。</li>
+        <li>二维码出现后，打开「随申办」APP 扫一扫。</li>
+        <li>扫码成功后，A 页会自动跳转到下一步。</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="success-panel" id="successPanel">
+    <div class="success-icon">✓</div>
+    <div class="success-title">扫码成功</div>
+    <div class="success-text">A 页（RPA 浏览器）已检测到登录成功并自动跳转。<br>演示完成。</div>
+  </div>
+
+  <div class="foot">
+    <a id="openA" class="btn btn-ghost" href="#" target="_blank" style="text-decoration:none;">↗ 打开 A 页（RPA 操作端）</a>
+    <button class="btn btn-primary" id="reconnectBtn" type="button">重新连接 RPA</button>
+    <div class="hint">请确保本页与 A 页使用<b>相同的 sid</b>（上方按钮可一键打开对应页面）。</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  var params = new URLSearchParams(location.search);
+  var sid = params.get('sid');
+  if (!sid) {
+    sid = 'demo-' + Date.now().toString(36);
+    params.set('sid', sid);
+    history.replaceState(null, '', location.pathname + '?' + params.toString());
+  }
+  var useMock = params.get('mock') === '1' || params.get('mock') === 'true';
+  document.getElementById('sidText').textContent = 'sid:' + sid + (useMock ? '(mock)' : '');
+  var openA = document.getElementById('openA');
+  if (openA) openA.href = '/acquire?sid=' + encodeURIComponent(sid) + (useMock ? '&mock=true' : '');
+
+  var ws = null, ping = null;
+  var statusBadge = document.getElementById('statusBadge');
+  var statusText = document.getElementById('statusText');
+  var qrImg = document.getElementById('qrImg');
+  var qrPlaceholder = document.getElementById('qrPlaceholder');
+  var qrRefresh = document.getElementById('qrRefresh');
+  var qrPanel = document.getElementById('qrPanel');
+  var successPanel = document.getElementById('successPanel');
+
+  function setStatus(state, text){
+    statusBadge.className = 'status ' + (state === 'ok' ? 'ok' : state === 'err' ? 'err' : '');
+    statusText.textContent = text;
+  }
+
+  function connect(){
+    if (ws) { try{ ws.close(); }catch(e){} ws = null; }
+    if (ping) { clearInterval(ping); ping = null; }
+
+    setStatus('', '连接中…');
+    var wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    var host = (location.hostname && location.hostname !== '') ? location.hostname : 'localhost';
+    var wsUrl = wsProto + '//' + host + ':8766/ws/' + encodeURIComponent(sid);
+
+    try { ws = new WebSocket(wsUrl); }
+    catch(e) { setStatus('err', '连接失败'); return; }
+
+    ws.onopen = function(){
+      ws.send(JSON.stringify({
+        action:'bind',
+        sid:sid,
+        mock:useMock,
+        subscribe:['qr','login','error','step','bound']
+      }));
+      setStatus('', '已连接' + (useMock ? '（mock）' : ''));
+    };
+
+    ws.onmessage = function(ev){
+      var msg; try{ msg = JSON.parse(ev.data); }catch(e){ return; }
+      if (msg.type === 'bound'){
+        setStatus('ok', '已绑定会话');
+      } else if (msg.type === 'step'){
+        if (msg.step === 'qr_captured') setStatus('ok', '二维码已同步');
+        else if (msg.step === 'login_success') setStatus('ok', '登录成功');
+      } else if (msg.type === 'qr_update'){
+        qrImg.src = msg.qr;
+        qrImg.style.display = '';
+        qrPlaceholder.style.display = 'none';
+        setStatus('ok', '请扫码');
+        var t = msg.captured_at ? new Date(msg.captured_at * 1000).toLocaleTimeString('zh-CN', {hour12:false}) : '';
+        qrRefresh.textContent = t ? '同步于 ' + t : '';
+      } else if (msg.type === 'login_success'){
+        setStatus('ok', '扫码成功');
+        qrPanel.style.display = 'none';
+        successPanel.style.display = 'flex';
+        document.querySelector('.foot').style.display = 'none';
+        // 通知父页面（9 屏原型屏 6 iframe）扫码成功 → 自动进下一屏
+        try { window.parent.postMessage({ type:'login_success', sid: sid, user: msg.user || '法人' }, '*'); } catch (e) {}
+      } else if (msg.type === 'error'){
+        setStatus('err', '异常：' + msg.message);
+      }
+    };
+
+    ws.onerror = function(){ setStatus('err', '连接异常'); };
+    ws.onclose = function(){ if (ws) setStatus('err', '连接已断开'); };
+
+    ping = setInterval(function(){
+      if (ws && ws.readyState === 1) ws.send(JSON.stringify({action:'ping'}));
+    }, 25000);
+  }
+
+  document.getElementById('reconnectBtn').addEventListener('click', function(){
+    connect();
+  });
+
+  connect();
+})();
+</script>
+</body>
+</html>

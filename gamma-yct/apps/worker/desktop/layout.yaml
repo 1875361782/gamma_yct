@@ -1,0 +1,65 @@
+# 桌面 RPA 布局（相对「浏览器内容区」的比例坐标 0~1）
+# 校准来源：用户提供的名称申报填报顺序截图（Chrome 最大化、缩放 100%）
+#
+# 名称页正确顺序：
+# 1 区划=上海 → 2 字号 → 3 行业+点自动完成 → 4 组织形式弹层
+# → 5 确认「有限公司」提示 → 6 勾选完整企业名称 → 7 下一步
+
+window_titles:
+  - 上海企业登记
+  - 企业登记在线
+  - 名称申报
+  - online.yct
+  - 一网通办
+
+content_inset:
+  left: 0.0
+  top: 0.12
+  right: 0.0
+  bottom: 0.0
+
+image_confidence: 0.78
+
+name_page:
+  # 四个输入框同一行（侧栏右侧主表单）
+  division: { x: 0.30, y: 0.40 }
+  trade_name: { x: 0.47, y: 0.40 }
+  industry: { x: 0.63, y: 0.40 }
+  org_form: { x: 0.80, y: 0.40 }
+  # 区划下拉「上海」
+  division_option_shanghai: { x: 0.30, y: 0.48 }
+  # 行业自动完成第一项（科技 / 主营行业…）
+  industry_suggest_first: { x: 0.63, y: 0.50 }
+  # 组织形式弹层：1.企业类型「有限公司」 2.组织形式「有限公司」
+  org_type_limited: { x: 0.42, y: 0.48 }
+  org_form_limited: { x: 0.42, y: 0.60 }
+  # 「提示」弹窗 — 确定
+  dialog_confirm: { x: 0.55, y: 0.52 }
+  # 请选择您的企业名称 — 第一项（完整名，含有限公司）
+  name_option_first: { x: 0.48, y: 0.52 }
+  name_option_second: { x: 0.48, y: 0.58 }
+  next_button: { x: 0.50, y: 0.70 }
+  # 告知书/承诺书（比对通过后可能出现）
+  pledge_check: { x: 0.28, y: 0.55 }
+  pledge_next: { x: 0.50, y: 0.72 }
+
+establishment_page:
+  agent_name: { x: 0.35, y: 0.28 }
+  mobile: { x: 0.70, y: 0.28 }
+  id_number: { x: 0.35, y: 0.36 }
+  address_detail: { x: 0.45, y: 0.52 }
+  postal_code: { x: 0.70, y: 0.56 }
+  capital: { x: 0.35, y: 0.62 }
+  legal_name: { x: 0.35, y: 0.72 }
+  save_button: { x: 0.12, y: 0.92 }
+
+timings:
+  after_focus_ms: 600
+  after_paste_ms: 400
+  after_next_ms: 2800
+  after_save_ms: 2000
+  between_fields_ms: 500
+  after_dropdown_ms: 700
+  after_suggest_ms: 900
+  after_org_ms: 800
+  after_dialog_ms: 600
