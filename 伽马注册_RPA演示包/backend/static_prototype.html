@@ -845,7 +845,15 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
             <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="uboName" placeholder="如：张伟" value="张伟" /></div>
             <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="uboMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" value="13984439335" /></div>
           </div>
-          <div class="field"><label>身份证有效期<span class="req">*</span></label><input type="text" id="uboIdValid" placeholder="如：2032-06-24" /></div>
+          <div class="grid2">
+            <div class="field"><label>身份证有效期<span class="req">*</span></label><input type="text" id="uboIdValid" placeholder="如：2032-06-24" /></div>
+            <div class="field"><label>持股比例<span class="req">*</span></label>
+              <div class="input-wrap has-suffix">
+                <input type="number" id="uboPct" min="0" max="100" step="1" placeholder="0" />
+                <span class="unit">%</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -1495,6 +1503,8 @@ function validatePersonnel(){
   if(!document.getElementById('uboName').value.trim()){ alert('请填写最终受益人姓名'); return false; }
   if(!document.getElementById('uboMobile').value.trim()){ alert('请填写最终受益人手机号'); return false; }
   if(!document.getElementById('uboIdValid').value.trim()){ alert('请填写最终受益人身份证有效期'); return false; }
+  const uboPct = parseFloat(document.getElementById('uboPct').value);
+  if(isNaN(uboPct) || uboPct <= 0){ alert('请填写最终受益人有效持股比例（须 > 0）'); return false; }
   return true;
 }
 
