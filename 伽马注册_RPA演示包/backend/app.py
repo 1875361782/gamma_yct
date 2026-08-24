@@ -8,10 +8,11 @@
 from __future__ import annotations
 import asyncio
 import json
+import re
 import time
 import uuid
 from pathlib import Path
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, Form, UploadFile
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 
@@ -22,6 +23,7 @@ from .protocol import (
     msg_login_success, msg_login_failed, msg_error, msg_pong,
     msg_step, msg_screenshot,
 )
+from .relay import relay_hub
 
 
 # ---------- 配置 ----------
@@ -110,7 +112,11 @@ async def prototype():
     """9 屏原型（同源托管，屏 6 内嵌 /qrlogin）。"""
     if not PROTOTYPE_HTML.exists():
         return JSONResponse({"error": "prototype not found (expected backend/static_prototype.html)"}, status_code=404)
-    return FileResponse(PROTOTYPE_HTML, media_type="text/html")
+    return FileResponse(
+        PROTOTYPE_HTML,
+        media_type="text/html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+    )
 
 
 @app.get("/acquire", include_in_schema=False)
@@ -128,7 +134,11 @@ async def qrlogin():
     qr_path = BACKEND_DIR / "static_qrlogin.html"
     if not qr_path.exists():
         return JSONResponse({"error": "QR login page not found"}, status_code=404)
-    return FileResponse(qr_path, media_type="text/html")
+    return FileResponse(
+        qr_path,
+        media_type="text/html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+    )
 
 
 # ---------- REST ----------
@@ -147,6 +157,419 @@ async def health():
             "qrlogin": "http://localhost:8766/qrlogin",
             "index": "http://localhost:8766/",
         },
+    }
+
+
+REPO_ROOT = BACKEND_DIR.parents[1]  # …/伽马账（backend → 演示包 → 仓库根）
+GAMMA_CASES_DIR = REPO_ROOT / "gamma-yct" / "data" / "cases"
+DEFAULT_CASE_ID = "GM202608062231EF"
+
+
+def _deep_merge(base: dict, patch: dict) -> dict:
+    out = dict(base)
+    for k, v in patch.items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = _deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def _save_case_upload(case_id: str, filename: str, content: bytes) -> str:
+    uploads = GAMMA_CASES_DIR / case_id / "uploads"
+    uploads.mkdir(parents=True, exist_ok=True)
+    safe = re.sub(r"[^\w.\-]", "_", filename or "upload.bin")
+    file_id = f"{uuid.uuid4().hex[:10]}_{safe}"
+    (uploads / file_id).write_bytes(content)
+    return file_id
+
+
+def _merge_id_cards(base_cards: list, patch_cards: list) -> list:
+    """按 personKey 合并证件附件，保留已上传 fileId。"""
+    by_key: dict[str, dict] = {}
+    order: list[str] = []
+
+    def _ingest(cards: list, prefer_files: bool) -> None:
+        for c in cards:
+            if not isinstance(c, dict):
+                continue
+            key = str(c.get("personKey") or "").strip()
+            if not key:
+                name = str(c.get("personName") or "").strip()
+                key = f"p_{name}" if name else ""
+            if not key:
+                continue
+            if key not in by_key:
+                by_key[key] = {
+                    "personKey": key,
+                    "personName": str(c.get("personName") or ""),
+                    "roles": list(c.get("roles") or []),
+                    "frontFileId": "",
+                    "backFileId": "",
+                }
+                order.append(key)
+            cur = by_key[key]
+            if c.get("personName"):
+                cur["personName"] = str(c.get("personName"))
+            roles = c.get("roles") or []
+            if roles:
+                seen = set(cur.get("roles") or [])
+                for r in roles:
+                    if r not in seen:
+                        cur.setdefault("roles", []).append(r)
+                        seen.add(r)
+            if prefer_files or c.get("frontFileId"):
+                if c.get("frontFileId"):
+                    cur["frontFileId"] = c["frontFileId"]
+            if prefer_files or c.get("backFileId"):
+                if c.get("backFileId"):
+                    cur["backFileId"] = c["backFileId"]
+
+    _ingest(base_cards or [], prefer_files=True)
+    _ingest(patch_cards or [], prefer_files=True)
+    # patch 列表顺序优先（反映当前表单去重人员）
+    if patch_cards:
+        patch_order = []
+        for c in patch_cards:
+            if not isinstance(c, dict):
+                continue
+            key = str(c.get("personKey") or "").strip()
+            if not key:
+                name = str(c.get("personName") or "").strip()
+                key = f"p_{name}" if name else ""
+            if key and key not in patch_order:
+                patch_order.append(key)
+        if patch_order:
+            order = [k for k in patch_order if k in by_key] + [k for k in order if k not in patch_order]
+    return [by_key[k] for k in order if k in by_key]
+
+
+def _patch_id_card_attachment(
+    case_id: str,
+    side: str,
+    file_id: str,
+    *,
+    person_key: str,
+    person_name: str = "",
+    roles: list | None = None,
+) -> dict:
+    """写入指定 personKey 的 front/backFileId。"""
+    case_dir = GAMMA_CASES_DIR / case_id
+    case_dir.mkdir(parents=True, exist_ok=True)
+    payload_path = case_dir / "payload.json"
+    if payload_path.exists():
+        try:
+            payload = json.loads(payload_path.read_text(encoding="utf-8"))
+        except Exception:
+            payload = {}
+    else:
+        payload = {"schemaVersion": "1.0"}
+    attachments = payload.setdefault("attachments", {})
+    cards = attachments.setdefault("idCards", [])
+    if not isinstance(cards, list):
+        cards = []
+        attachments["idCards"] = cards
+    target = None
+    for c in cards:
+        if isinstance(c, dict) and str(c.get("personKey") or "") == person_key:
+            target = c
+            break
+    if target is None:
+        target = {
+            "personKey": person_key,
+            "personName": person_name or "",
+            "roles": list(roles or []),
+            "frontFileId": "",
+            "backFileId": "",
+        }
+        cards.append(target)
+    if person_name:
+        target["personName"] = person_name
+    if roles:
+        target["roles"] = list(roles)
+    key = "frontFileId" if side == "front" else "backFileId"
+    target[key] = file_id
+    payload_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return target
+
+
+@app.post("/api/cases/{case_id}/id-card")
+async def upload_id_card(
+    case_id: str,
+    side: str = Form(...),
+    file: UploadFile = File(...),
+    personKey: str = Form(""),
+    personName: str = Form(""),
+    roles: str = Form(""),
+):
+    """按人上传身份证人像面(front)或国徽面(back)。"""
+    case_id = (case_id or DEFAULT_CASE_ID).strip() or DEFAULT_CASE_ID
+    side = (side or "").strip().lower()
+    if side not in ("front", "back"):
+        return JSONResponse({"ok": False, "error": "side must be front or back"}, status_code=400)
+    person_key = (personKey or "").strip()
+    person_name = (personName or "").strip()
+    if not person_key:
+        person_key = f"p_{person_name}" if person_name else "p_unknown"
+    role_list: list[str] = []
+    if roles.strip():
+        try:
+            parsed = json.loads(roles)
+            if isinstance(parsed, list):
+                role_list = [str(x) for x in parsed if str(x).strip()]
+            else:
+                role_list = [x.strip() for x in roles.split(",") if x.strip()]
+        except Exception:
+            role_list = [x.strip() for x in roles.split(",") if x.strip()]
+
+    content = await file.read()
+    if not content:
+        return JSONResponse({"ok": False, "error": "empty file"}, status_code=400)
+    if len(content) > 5 * 1024 * 1024:
+        return JSONResponse({"ok": False, "error": "文件不能超过 5MB"}, status_code=400)
+
+    name = file.filename or f"id_{side}.jpg"
+    lower = name.lower()
+    if not (lower.endswith(".jpg") or lower.endswith(".jpeg") or lower.endswith(".png")):
+        return JSONResponse({"ok": False, "error": "仅支持 jpg/png"}, status_code=400)
+
+    file_id = _save_case_upload(case_id, name, content)
+    card = _patch_id_card_attachment(
+        case_id,
+        side,
+        file_id,
+        person_key=person_key,
+        person_name=person_name,
+        roles=role_list,
+    )
+    return {
+        "ok": True,
+        "caseId": case_id,
+        "side": side,
+        "fileId": file_id,
+        "fileName": name,
+        "size": len(content),
+        "personKey": person_key,
+        "idCard": card,
+    }
+
+
+@app.post("/api/case-payload")
+async def sync_case_payload(body: dict):
+    """把原型表单组装的 gamma-yct payload 写入本地案件（默认 GM202608062231EF）。"""
+    case_id = str(body.get("caseId") or DEFAULT_CASE_ID).strip() or DEFAULT_CASE_ID
+    patch = body.get("payload")
+    if not isinstance(patch, dict):
+        return JSONResponse({"ok": False, "error": "payload must be object"}, status_code=400)
+
+    case_dir = GAMMA_CASES_DIR / case_id
+    case_dir.mkdir(parents=True, exist_ok=True)
+    (case_dir / "uploads").mkdir(exist_ok=True)
+    (case_dir / "screenshots").mkdir(exist_ok=True)
+
+    payload_path = case_dir / "payload.json"
+    meta_path = case_dir / "meta.json"
+
+    if payload_path.exists():
+        try:
+            base = json.loads(payload_path.read_text(encoding="utf-8"))
+        except Exception:
+            base = {}
+    else:
+        base = {}
+    # 先合并表单；证件附件按 personKey 合并，保留已上传 fileId
+    merged = _deep_merge(base, patch)
+    base_cards = ((base.get("attachments") or {}).get("idCards") or [])
+    patch_cards = ((patch.get("attachments") or {}).get("idCards") or [])
+    merged.setdefault("attachments", {})["idCards"] = _merge_id_cards(base_cards, patch_cards)
+
+    # 尽量用 gamma-yct schema 校验结构（不强制业务 validate_payload）
+    try:
+        import sys
+
+        gamma_root = str(REPO_ROOT / "gamma-yct")
+        if gamma_root not in sys.path:
+            sys.path.insert(0, gamma_root)
+        from apps.api.payload import CasePayload
+
+        merged = CasePayload.model_validate(merged).model_dump()
+    except Exception as e:
+        return JSONResponse(
+            {"ok": False, "error": f"payload schema invalid: {e}", "caseId": case_id},
+            status_code=400,
+        )
+
+    payload_path.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    now = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except Exception:
+            meta = {}
+    else:
+        meta = {
+            "caseId": case_id,
+            "flow": "name_declaration_v1",
+            "createdAt": now,
+            "artifacts": {"qrImageUrl": None, "screenshots": []},
+            "result": {},
+            "reason": None,
+        }
+    meta["caseId"] = case_id
+    meta["status"] = "draft"
+    meta["customerMessage"] = "草稿：已从原型同步表单字段"
+    meta["currentStep"] = 1
+    meta["updatedAt"] = now
+    meta["workerLocked"] = False
+    meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    return {
+        "ok": True,
+        "caseId": case_id,
+        "path": str(payload_path),
+        "tradeName": ((merged.get("name") or {}).get("tradeName") or ""),
+        "ownershipRatio": ((merged.get("beneficialOwner") or {}).get("ownershipRatio") or 0),
+        "idCardCount": len(((merged.get("attachments") or {}).get("idCards") or [])),
+        "idCards": [
+            {
+                "personKey": c.get("personKey"),
+                "personName": c.get("personName"),
+                "roles": c.get("roles") or [],
+                "ready": bool(c.get("frontFileId") and c.get("backFileId")),
+            }
+            for c in ((merged.get("attachments") or {}).get("idCards") or [])
+            if isinstance(c, dict)
+        ],
+        "district": (
+            (merged.get("registration") or {}).get("district")
+            or ((merged.get("registration") or {}).get("address") or {}).get("district")
+            or ""
+        ),
+    }
+
+
+@app.post("/api/start-automation")
+async def start_automation(body: dict):
+    """同步案件后启动可见 Chrome 填报，并把二维码中继到 sid。"""
+    case_id = str(body.get("caseId") or DEFAULT_CASE_ID).strip() or DEFAULT_CASE_ID
+    sid = str(body.get("sid") or "").strip()
+    if not sid:
+        return JSONResponse({"ok": False, "error": "sid required"}, status_code=400)
+
+    payload_path = GAMMA_CASES_DIR / case_id / "payload.json"
+    if not payload_path.exists():
+        return JSONResponse(
+            {"ok": False, "error": f"payload missing for {case_id}; call /api/case-payload first"},
+            status_code=400,
+        )
+
+    gamma_root = str(REPO_ROOT / "gamma-yct")
+    # 默认可见窗口，便于确认自动化已启动；二维码仍投射到演示页
+    headless = bool(body.get("headless", False))
+    await relay_hub.ensure_job(sid, case_id)
+    started = relay_hub.start_fill_thread(sid, case_id, gamma_root, headless=headless)
+    return {
+        "ok": True,
+        "caseId": case_id,
+        "sid": sid,
+        "started": started,
+        "mode": "relay_visible" if not headless else "relay_headless",
+        "headless": headless,
+        "message": (
+            "已启动后台 Chrome 窗口填报" if started and not headless
+            else ("已启动后台无头填报" if started else "同 sid 填报已在运行")
+        ),
+    }
+
+
+@app.get("/api/automation/{sid}")
+async def automation_status(sid: str):
+    job = await relay_hub.get(sid)
+    if job is None:
+        return JSONResponse({"ok": False, "error": "unknown sid"}, status_code=404)
+
+    progress = "等待填报进度…"
+    case_status = ""
+    customer_message = ""
+    reason = ""
+    name_failed = False
+    stage = "pending"
+    stages_done: list[str] = []
+
+    case_id = (job.case_id or "").strip()
+    if case_id:
+        case_dir = GAMMA_CASES_DIR / case_id
+        meta_path = case_dir / "meta.json"
+        if meta_path.exists():
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                case_status = str(meta.get("status") or "")
+                customer_message = str(meta.get("customerMessage") or "")
+                reason = str(meta.get("reason") or "")
+            except Exception:
+                pass
+
+        stage_files = [
+            ("name", "fill-name-result.json", "名称信息"),
+            ("basic", "fill-basic-info-result.json", "基本信息"),
+            ("capital", "fill-capital-result.json", "出资情况"),
+            ("personnel", "fill-personnel-result.json", "人员信息"),
+            ("opening", "fill-opening-result.json", "企业开办"),
+        ]
+        for key, fname, _label in stage_files:
+            if (case_dir / fname).exists():
+                stages_done.append(key)
+
+        stage = "done" if len(stages_done) >= len(stage_files) else "pending"
+        for key, fname, label in stage_files:
+            if key not in stages_done:
+                stage = key
+                if not customer_message:
+                    progress = f"正在填写「{label}」表"
+                break
+
+        if customer_message:
+            progress = customer_message
+        elif job.logged_in and stage == "pending" and not stages_done:
+            progress = "登录成功，正在进入名称申报…"
+        elif not job.logged_in and bool(job.thread and job.thread.is_alive()):
+            progress = "等待扫码登录…"
+        elif not progress:
+            progress = "正在同步填报进度…"
+
+        name_failed = case_status == "name_failed" or (
+            "比对未通过" in reason or "名称未通过" in reason or "生僻字" in reason
+        )
+        if name_failed:
+            progress = reason or customer_message or "名称核验未通过，请补充字号"
+
+    fill_ok = bool(job.ok) or case_status in {
+        "ready_for_user_submit",
+        "name_next_reached",
+    }
+    # 核名失败不算填报成功
+    if name_failed:
+        fill_ok = False
+
+    return {
+        "ok": True,
+        "sid": sid,
+        "caseId": job.case_id,
+        "hasQr": bool(job.qr_b64),
+        "qr": job.qr_b64 if job.qr_b64 else None,
+        "loggedIn": job.logged_in,
+        "finished": job.finished,
+        "fillOk": fill_ok,
+        "error": job.error or (reason if job.finished and not fill_ok else None),
+        "running": bool(job.thread and job.thread.is_alive()),
+        "caseStatus": case_status,
+        "progress": progress,
+        "customerMessage": customer_message,
+        "reason": reason,
+        "nameFailed": name_failed,
+        "stage": stage,
+        "stagesDone": stages_done,
     }
 
 
@@ -203,12 +626,46 @@ async def websocket_endpoint(websocket: WebSocket, sid: str):
         return
 
     subscribe = set(data.get("subscribe", ["qr", "login", "error", "step", "screenshot", "bound"]))
+    relay_mode = bool(data.get("relay")) or str(data.get("mode") or "") == "relay"
 
     async def safe_send(text: str):
         try:
             await websocket.send_text(text)
         except Exception:
             pass
+
+    # 通知客户端：会话已绑定
+    await safe_send(msg_bound(sid, expires_at=time.time() + 600))
+
+    # ---------- relay：只收填报推送的 QR/登录，不启演示包门户 RPA ----------
+    if relay_mode:
+        job = await relay_hub.add_client(sid, lid, safe_send, subscribe)
+        if job is None:
+            await safe_send(msg_error("relay 初始化失败"))
+            await websocket.close(code=1011)
+            return
+        await safe_send(msg_step("relay_ready", "已连接中继，等待后台自动化推送二维码"))
+        try:
+            while True:
+                msg = await websocket.receive_text()
+                try:
+                    data = json.loads(msg)
+                except json.JSONDecodeError:
+                    continue
+                action = data.get("action")
+                if action == "ping":
+                    await safe_send(msg_pong())
+                elif action == "stop":
+                    break
+        except WebSocketDisconnect:
+            pass
+        finally:
+            await relay_hub.remove_client(sid, lid)
+            try:
+                await websocket.close()
+            except Exception:
+                pass
+        return
 
     listener = Listener(
         lid=lid,
@@ -220,9 +677,6 @@ async def websocket_endpoint(websocket: WebSocket, sid: str):
         step_callback=lambda s, step, data: safe_send(msg_step(step, data.get("message", ""), data)),
         screenshot_callback=lambda s, b64: safe_send(msg_screenshot(b64)),
     )
-
-    # 通知客户端：会话已绑定
-    await safe_send(msg_bound(sid, expires_at=time.time() + 600))
 
     # 启动 RPA 会话（如已存在则复用并追加监听器）
     try:
@@ -314,6 +768,7 @@ async def _cleanup_loop():
 
 @app.on_event("startup")
 async def _on_startup():
+    relay_hub.bind_loop(asyncio.get_running_loop())
     app.state.cleanup_task = asyncio.create_task(_cleanup_loop())
 
 

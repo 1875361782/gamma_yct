@@ -22,9 +22,13 @@
     --radius-sm:8px;
     --font:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
   }
-  body{font-family:var(--font); background:var(--color-bg); color:var(--color-text); margin:0; padding:0; min-height:100vh; display:flex; align-items:center; justify-content:center;}
-  .phone{width:100%; max-width:420px; min-height:100vh; background:var(--color-surface); box-shadow:0 4px 30px rgba(11,46,102,.08); display:flex; flex-direction:column;}
-  @media (min-width:440px){.phone{margin:16px 0; min-height:auto; border-radius:var(--radius); overflow:hidden;}}
+  body{font-family:var(--font); background:var(--color-bg); color:var(--color-text); margin:0; padding:0; min-height:100%; height:100%; display:flex; align-items:stretch; justify-content:stretch;}
+  html{height:100%;}
+  .phone{width:100%; max-width:none; min-height:100%; height:100%; background:var(--color-surface); box-shadow:none; display:flex; flex-direction:column;}
+  @media (min-width:720px){
+    body{background:var(--color-bg); padding:0;}
+    .phone{max-width:none; border-radius:0; margin:0;}
+  }
 
   .head{padding:20px 20px 14px; background:linear-gradient(135deg,#1E5FD9 0%,#3B82F6 100%); color:#fff;}
   .head h1{font-size:20px; margin:0; font-weight:700;}
@@ -36,14 +40,19 @@
   .status.err{background:#fef2f2; color:#b91c1c; border-color:#fca5a5;}
   .sid{font-size:11px; color:var(--color-text-sub); font-family:'SF Mono',monospace;}
 
-  .body{flex:1; padding:24px 20px; display:flex; flex-direction:column; align-items:center; text-align:center;}
+  .body{flex:1; padding:24px clamp(16px, 4vw, 32px); display:flex; flex-direction:column; align-items:center; text-align:center; overflow-y:auto; width:100%; max-width:720px; margin:0 auto; box-sizing:border-box;}
 
   .step-title{font-size:15px; font-weight:700; margin-bottom:6px;}
   .step-desc{font-size:13px; color:var(--color-text-sub); line-height:1.6; margin-bottom:22px;}
 
   .qr-card{
-    width:240px; height:240px; background:#fff; border-radius:var(--radius); border:1px solid var(--color-border);
+    width:min(280px, 72vw); height:min(280px, 72vw); max-width:320px; max-height:320px;
+    aspect-ratio:1; background:#fff; border-radius:var(--radius); border:1px solid var(--color-border);
     box-shadow:0 8px 24px rgba(11,46,102,.08); display:flex; align-items:center; justify-content:center; padding:16px; position:relative;
+  }
+  @media (min-width:720px){
+    .qr-card{width:300px; height:300px;}
+    .step-title{font-size:18px;}
   }
   .qr-card img{width:100%; height:100%; object-fit:contain;}
   .qr-placeholder{
@@ -64,7 +73,8 @@
   .success-title{font-size:18px; font-weight:700; color:#15803d; margin-bottom:8px;}
   .success-text{font-size:13px; color:var(--color-text-sub); line-height:1.7;}
 
-  .foot{padding:16px 20px 24px; border-top:1px solid var(--color-border); background:#fff;}
+  .foot{padding:16px clamp(16px, 4vw, 32px) 24px; border-top:1px solid var(--color-border); background:#fff; width:100%; box-sizing:border-box;}
+  .foot-inner{width:100%; max-width:720px; margin:0 auto;}
   .btn{width:100%; padding:14px; border-radius:var(--radius-sm); border:0; cursor:pointer; font-family:var(--font); font-size:15px; font-weight:600; display:inline-flex; align-items:center; justify-content:center; gap:8px;}
   .btn-primary{background:var(--color-primary); color:#fff;}
   .btn-primary:disabled{background:#94a3b8; cursor:not-allowed;}
@@ -87,7 +97,7 @@
 
   <div class="body" id="qrPanel">
     <div class="step-title">请使用「随申办」APP 扫码</div>
-    <div class="step-desc">A 页（RPA 浏览器）正在自动获取一网通办登录二维码，<br>获取成功后会实时显示在下方。</div>
+    <div class="step-desc" id="stepDesc">后台正在获取一网通办登录二维码，<br>获取成功后会实时显示在下方，请用「随申办」扫码。</div>
 
     <div class="qr-card" id="qrCard">
       <div class="qr-placeholder" id="qrPlaceholder">
@@ -116,9 +126,11 @@
   </div>
 
   <div class="foot">
+    <div class="foot-inner">
     <a id="openA" class="btn btn-ghost" href="#" target="_blank" style="text-decoration:none;">↗ 打开 A 页（RPA 操作端）</a>
     <button class="btn btn-primary" id="reconnectBtn" type="button">重新连接 RPA</button>
     <div class="hint">请确保本页与 A 页使用<b>相同的 sid</b>（上方按钮可一键打开对应页面）。</div>
+    </div>
   </div>
 </div>
 
@@ -134,11 +146,12 @@
     history.replaceState(null, '', location.pathname + '?' + params.toString());
   }
   var useMock = params.get('mock') === '1' || params.get('mock') === 'true';
-  document.getElementById('sidText').textContent = 'sid:' + sid + (useMock ? '(mock)' : '');
+  var useRelay = params.get('relay') === '1' || params.get('relay') === 'true';
+  document.getElementById('sidText').textContent = 'sid:' + sid + (useMock ? '(mock)' : '') + (useRelay ? '(relay)' : '');
   var openA = document.getElementById('openA');
   if (openA) openA.href = '/acquire?sid=' + encodeURIComponent(sid) + (useMock ? '&mock=true' : '');
 
-  var ws = null, ping = null;
+  var ws = null, ping = null, poll = null, reconnectTimer = null;
   var statusBadge = document.getElementById('statusBadge');
   var statusText = document.getElementById('statusText');
   var qrImg = document.getElementById('qrImg');
@@ -146,32 +159,77 @@
   var qrRefresh = document.getElementById('qrRefresh');
   var qrPanel = document.getElementById('qrPanel');
   var successPanel = document.getElementById('successPanel');
+  var gotQr = false;
+  var gotLogin = false;
 
   function setStatus(state, text){
     statusBadge.className = 'status ' + (state === 'ok' ? 'ok' : state === 'err' ? 'err' : '');
     statusText.textContent = text;
   }
 
+  function showQr(dataUrl){
+    if (!dataUrl) return;
+    gotQr = true;
+    qrImg.src = dataUrl;
+    qrImg.style.display = '';
+    qrPlaceholder.style.display = 'none';
+    setStatus('ok', '请扫码');
+    qrRefresh.textContent = '同步于 ' + new Date().toLocaleTimeString('zh-CN', {hour12:false});
+  }
+
+  function onLoginSuccess(user){
+    if (gotLogin) return;
+    gotLogin = true;
+    setStatus('ok', '扫码成功');
+    qrPanel.style.display = 'none';
+    successPanel.style.display = 'flex';
+    var foot = document.querySelector('.foot');
+    if (foot) foot.style.display = 'none';
+    try { window.parent.postMessage({ type:'login_success', sid: sid, user: user || '法人' }, '*'); } catch (e) {}
+  }
+
+  function startPoll(){
+    if (poll) return;
+    poll = setInterval(function(){
+      if (gotLogin) return;
+      fetch('/api/automation/' + encodeURIComponent(sid))
+        .then(function(r){ return r.json(); })
+        .then(function(st){
+          if (!st || !st.ok) return;
+          if (st.qr) showQr(st.qr);
+          if (st.loggedIn) onLoginSuccess('法人');
+          if (st.error && !st.hasQr && !st.running) setStatus('err', '异常：' + st.error);
+          else if (st.running && !gotQr) setStatus('', '后台自动化运行中…');
+        })
+        .catch(function(){});
+    }, 2000);
+  }
+
   function connect(){
     if (ws) { try{ ws.close(); }catch(e){} ws = null; }
     if (ping) { clearInterval(ping); ping = null; }
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
 
     setStatus('', '连接中…');
     var wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    var host = (location.hostname && location.hostname !== '') ? location.hostname : 'localhost';
-    var wsUrl = wsProto + '//' + host + ':8766/ws/' + encodeURIComponent(sid);
+    var wsHost = (location.protocol === 'http:' || location.protocol === 'https:')
+      ? location.host
+      : ((location.hostname || 'localhost') + ':8766');
+    var wsUrl = wsProto + '//' + wsHost + '/ws/' + encodeURIComponent(sid);
 
     try { ws = new WebSocket(wsUrl); }
-    catch(e) { setStatus('err', '连接失败'); return; }
+    catch(e) { setStatus('err', '连接失败'); scheduleReconnect(); return; }
 
     ws.onopen = function(){
       ws.send(JSON.stringify({
         action:'bind',
         sid:sid,
         mock:useMock,
+        relay: useRelay || true,
         subscribe:['qr','login','error','step','bound']
       }));
-      setStatus('', '已连接' + (useMock ? '（mock）' : ''));
+      setStatus('', '已连接' + (useRelay ? '（中继）' : ''));
+      startPoll();
     };
 
     ws.onmessage = function(ev){
@@ -181,31 +239,34 @@
       } else if (msg.type === 'step'){
         if (msg.step === 'qr_captured') setStatus('ok', '二维码已同步');
         else if (msg.step === 'login_success') setStatus('ok', '登录成功');
+        else if (msg.step === 'relay_ready') setStatus('', msg.message || '等待二维码…');
       } else if (msg.type === 'qr_update'){
-        qrImg.src = msg.qr;
-        qrImg.style.display = '';
-        qrPlaceholder.style.display = 'none';
-        setStatus('ok', '请扫码');
-        var t = msg.captured_at ? new Date(msg.captured_at * 1000).toLocaleTimeString('zh-CN', {hour12:false}) : '';
-        qrRefresh.textContent = t ? '同步于 ' + t : '';
+        showQr(msg.qr);
       } else if (msg.type === 'login_success'){
-        setStatus('ok', '扫码成功');
-        qrPanel.style.display = 'none';
-        successPanel.style.display = 'flex';
-        document.querySelector('.foot').style.display = 'none';
-        // 通知父页面（9 屏原型屏 6 iframe）扫码成功 → 自动进下一屏
-        try { window.parent.postMessage({ type:'login_success', sid: sid, user: msg.user || '法人' }, '*'); } catch (e) {}
+        onLoginSuccess(msg.user);
       } else if (msg.type === 'error'){
         setStatus('err', '异常：' + msg.message);
       }
     };
 
     ws.onerror = function(){ setStatus('err', '连接异常'); };
-    ws.onclose = function(){ if (ws) setStatus('err', '连接已断开'); };
+    ws.onclose = function(){
+      if (gotLogin) return;
+      setStatus('err', '连接已断开，重连中…');
+      scheduleReconnect();
+    };
 
     ping = setInterval(function(){
       if (ws && ws.readyState === 1) ws.send(JSON.stringify({action:'ping'}));
-    }, 25000);
+    }, 15000);
+  }
+
+  function scheduleReconnect(){
+    if (gotLogin || reconnectTimer) return;
+    reconnectTimer = setTimeout(function(){
+      reconnectTimer = null;
+      connect();
+    }, 2000);
   }
 
   document.getElementById('reconnectBtn').addEventListener('click', function(){
@@ -213,6 +274,7 @@
   });
 
   connect();
+  startPoll();
 })();
 </script>
 </body>

@@ -19,10 +19,11 @@ name_self_declaration:
     org_form: "请选择组织形式"
   defaults:
     division: "上海"
-    org_form: "有限责任公司"
-  # 企业类型：内资「有限公司」；组织形式：「有限责任公司」
+    org_form: "有限公司"
+  # 企业类型（弹层第1步）：内资「有限公司」
+  # 组织形式（弹层第2步）：优先用 payload.name.orgForm；此处仅为缺省回退
   org_type_option: "有限公司"
-  org_form_option: "有限责任公司"
+  org_form_option: "有限公司"
   next_button_text: "下一步"
   success_text: "比对通过"
   fail_text: "不予"

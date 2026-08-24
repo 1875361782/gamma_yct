@@ -916,6 +916,68 @@ def _wait_ocr(frame: Frame, timeout_sec: float = 90) -> dict[str, Any]:
     return info
 
 
+def _district_from_payload(payload: dict[str, Any]) -> str:
+    reg = payload.get("registration") or {}
+    addr = reg.get("address") or {}
+    for raw in (reg.get("district"), addr.get("district"), addr.get("detail"), reg.get("authority")):
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        m = re.search(r"([\u4e00-\u9fff]{1,6}区)", text)
+        if m:
+            return m.group(1)
+        if text.endswith("区") and 1 < len(text) <= 8:
+            return text
+    return ""
+
+
+def _authority_candidates(payload: dict[str, Any]) -> list[str]:
+    reg = payload.get("registration") or {}
+    explicit = str(reg.get("authority") or "").strip()
+    district = _district_from_payload(payload)
+    out: list[str] = []
+    if explicit:
+        out.append(explicit)
+    if district:
+        out.extend(
+            [
+                f"{district}市场监督管理局",
+                f"{district}市场监管局",
+                district,
+            ]
+        )
+    # 兜底：仍保留虹口，避免无区时完全无法选
+    for x in ("虹口区市场监督管理局", "虹口区市场监管局", "虹口区"):
+        if x not in out:
+            out.append(x)
+    return out
+
+
+def _parse_shanghai_address(detail: str) -> dict[str, str]:
+    """从详细地址尽量拆出街道/路/号/室；解析失败则返回空字段。"""
+    text = re.sub(r"\s+", "", (detail or "").strip())
+    out = {"street": "", "road": "", "number": "", "room": ""}
+    if not text:
+        return out
+    m = re.search(
+        r"(?:上海市)?(?:[\u4e00-\u9fff]+区)?"
+        r"(?P<street>[\u4e00-\u9fff]+(?:街道|镇|乡))?"
+        r"(?P<road>[\u4e00-\u9fff0-9]+(?:路|街|道|巷|弄))?"
+        r"(?P<number>\d+号)?"
+        r"(?P<room>.+)?$",
+        text,
+    )
+    if not m:
+        return out
+    out["street"] = (m.group("street") or "").strip()
+    out["road"] = (m.group("road") or "").strip()
+    num = (m.group("number") or "").strip()
+    out["number"] = num.replace("号", "") if num else ""
+    room = (m.group("room") or "").strip()
+    out["room"] = room
+    return out
+
+
 def _fill_address_dialog(
     page: Page, frame: Frame, payload: dict[str, Any], case_id: str
 ) -> dict[str, Any]:
@@ -955,11 +1017,16 @@ def _fill_address_dialog(
     result["opened"] = True
     _shot(page, case_id, "address-dialog")
 
-    street = "四川北路街道"
-    road = "四川北路"
-    number = "1318"
-    room = "4楼"
+    detail = str(addr.get("detail") or "").strip()
+    parsed = _parse_shanghai_address(detail)
+    # payload 有 detail 则优先用解析结果；解析不全时回落原演示默认（虹口四川北路）
+    street = parsed["street"] or "四川北路街道"
+    road = parsed["road"] or "四川北路"
+    number = parsed["number"] or "1318"
+    room = parsed["room"] or "4楼"
     postal = (addr.get("postalCode") or "200081").strip()
+    result["detailSource"] = detail or "(fallback)"
+    result["parsed"] = parsed
 
     # 街道/乡镇
     try:
@@ -1014,7 +1081,7 @@ def _fill_address_dialog(
                 inp.click(timeout=2000)
                 inp.fill(road)
                 page.wait_for_timeout(600)
-                # 点建议「四川北路」
+                # 点建议路名
                 for scope in (page, frame, dialog):
                     sug = scope.get_by_text(road, exact=True).first
                     if _visible(sug):
@@ -1046,8 +1113,8 @@ def _fill_address_dialog(
         except Exception:
             return False
 
-    result["number"] = _fill_before_label("号", number) or _fill_before_label("号", "1318号")
-    result["room"] = _fill_before_label("室", room) or _fill_before_label("室", "4楼室")
+    result["number"] = _fill_before_label("号", number) or _fill_before_label("号", f"{number}号")
+    result["room"] = _fill_before_label("室", room) or _fill_before_label("室", f"{room}室")
 
     # 邮编
     try:
@@ -2359,19 +2426,15 @@ def run_basic_info_flow(case_id: str, page: Page, payload: dict[str, Any]) -> di
     _shot(page, case_id, "basic-info-page")
     result: dict[str, Any] = {"dialogs": dialogs, "ok": False}
 
-    # 身份证路径（用户指定桌面文件优先）
-    front = DEFAULT_ID_FRONT if DEFAULT_ID_FRONT.exists() else None
-    back = DEFAULT_ID_BACK if DEFAULT_ID_BACK.exists() else None
-    if front is None or back is None:
-        cards = (payload.get("attachments") or {}).get("idCards") or []
-        if cards:
-            try:
-                if front is None and cards[0].get("frontFileId"):
-                    front = store.upload_path(case_id, cards[0]["frontFileId"])
-                if back is None and cards[0].get("backFileId"):
-                    back = store.upload_path(case_id, cards[0]["backFileId"])
-            except FileNotFoundError:
-                pass
+    # 身份证：优先匹配法人姓名的已上传图
+    lr = (payload.get("personnel") or {}).get("legalRepresentative") or {}
+    front, back = store.resolve_id_card_images(
+        case_id,
+        payload,
+        person_name=str(lr.get("name") or "").strip() or None,
+        fallback_front=DEFAULT_ID_FRONT,
+        fallback_back=DEFAULT_ID_BACK,
+    )
 
     id_upload: dict[str, Any] = {
         "front": False,
@@ -2414,11 +2477,9 @@ def run_basic_info_flow(case_id: str, page: Page, payload: dict[str, Any]) -> di
     page.wait_for_timeout(400)
 
     # 企业信息
-    result["authority"] = _pick_select(
-        frame,
-        "申请机关",
-        ["虹口区市场监督管理局", "虹口区市场监管局", "虹口区"],
-    )
+    authority_opts = _authority_candidates(payload)
+    result["authorityCandidates"] = authority_opts
+    result["authority"] = _pick_select(frame, "申请机关", authority_opts)
     page.wait_for_timeout(500)
     # 受理点：选可见第一项
     try:

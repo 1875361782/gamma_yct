@@ -24,6 +24,7 @@ export function emptyPayload() {
         district: '',
         detail: '',
         propertyCertNo: '',
+        postalCode: '',
       },
       authority: '',
       acceptPoint: '',
@@ -50,6 +51,7 @@ export function emptyPayload() {
         ratio: 100,
         investmentMethod: '货币',
         address: '',
+        ethnicity: '',
       },
     ],
     personnel: {
@@ -62,8 +64,24 @@ export function emptyPayload() {
       },
       directors: [] as unknown[],
       supervisors: [] as unknown[],
+      establishSupervisor: false,
       manager: null,
       financeOfficer: null,
+      liaisonOfficer: null as null | {
+        name: string
+        idType: string
+        idNumber: string
+        mobile: string
+        email: string
+        address: string
+      },
+    },
+    beneficialOwner: {
+      name: '',
+      mobile: '',
+      idValidUntil: '',
+      ownershipRatio: 0,
+      address: '',
     },
     seals: {
       needPhysical: true,

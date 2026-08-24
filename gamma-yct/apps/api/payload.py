@@ -62,6 +62,7 @@ class Investor(BaseModel):
     ratio: float = 0
     investmentMethod: str = "货币"
     address: str = ""
+    ethnicity: str = ""
 
 
 class PersonBrief(BaseModel):
@@ -72,12 +73,31 @@ class PersonBrief(BaseModel):
     fromInvestorIndex: Optional[int] = None
 
 
+class LiaisonOfficer(BaseModel):
+    name: str = ""
+    idType: str = "id_card"
+    idNumber: str = ""
+    mobile: str = ""
+    email: str = ""
+    address: str = ""
+
+
+class BeneficialOwner(BaseModel):
+    name: str = ""
+    mobile: str = ""
+    idValidUntil: str = ""
+    ownershipRatio: float = 0
+    address: str = ""
+
+
 class PersonnelBlock(BaseModel):
     legalRepresentative: PersonBrief = Field(default_factory=PersonBrief)
     directors: list[PersonBrief] = Field(default_factory=list)
     supervisors: list[PersonBrief] = Field(default_factory=list)
+    establishSupervisor: bool = False
     manager: Optional[PersonBrief] = None
     financeOfficer: Optional[PersonBrief] = None
+    liaisonOfficer: Optional[LiaisonOfficer] = None
 
 
 class SealsBlock(BaseModel):
@@ -107,6 +127,8 @@ class BankAppointmentBlock(BaseModel):
 
 class IdCardAttachment(BaseModel):
     personKey: str = ""
+    personName: str = ""
+    roles: list[str] = Field(default_factory=list)
     frontFileId: str = ""
     backFileId: str = ""
 
@@ -126,6 +148,7 @@ class CasePayload(BaseModel):
     company: CompanyBlock = Field(default_factory=CompanyBlock)
     investors: list[Investor] = Field(default_factory=list)
     personnel: PersonnelBlock = Field(default_factory=PersonnelBlock)
+    beneficialOwner: BeneficialOwner = Field(default_factory=BeneficialOwner)
     seals: SealsBlock = Field(default_factory=SealsBlock)
     tax: TaxBlock = Field(default_factory=TaxBlock)
     socialInsurance: SocialInsuranceBlock = Field(default_factory=SocialInsuranceBlock)

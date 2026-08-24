@@ -302,7 +302,7 @@ def _dismiss_known_info_dialog(page: Page, frame: Frame | None = None) -> bool:
 
 
 def _select_org_form_two_step(frame: Frame, type_opt: str, form_opt: str) -> bool:
-    """组织形式弹层：先点内资「有限公司」，再点组织形式「有限责任公司」。"""
+    """组织形式弹层：先点内资企业类型（如「有限公司」），再点组织形式（与表格 orgForm 一致）。"""
     page = frame.page
     page.wait_for_timeout(500)
     scopes: list[Any] = []
@@ -352,7 +352,7 @@ def _select_org_form_two_step(frame: Frame, type_opt: str, form_opt: str) -> boo
         return False
 
     def _click_form(scope) -> bool:
-        # 在「2. 请选择组织形式」下点「有限责任公司」
+        # 在「2. 请选择组织形式」下点表格指定的组织形式（如「有限公司」）
         try:
             heading = scope.get_by_text("请选择组织形式", exact=False).first
             if _visible(heading):
@@ -368,11 +368,14 @@ def _select_org_form_two_step(frame: Frame, type_opt: str, form_opt: str) -> boo
                     return True
         except Exception:
             pass
+        # 兜底：仅在「组织形式」区域内找，避免点回第一级同名「有限公司」
         try:
-            btn = scope.get_by_text(form_opt, exact=True).first
-            if _visible(btn):
-                btn.click(timeout=3000)
-                return True
+            form_zone = scope.locator("div,section").filter(has_text="请选择组织形式")
+            for i in range(min(form_zone.count(), 6)):
+                btn = form_zone.nth(i).get_by_text(form_opt, exact=True).first
+                if _visible(btn):
+                    btn.click(timeout=3000)
+                    return True
         except Exception:
             pass
         return False
@@ -613,11 +616,11 @@ def _run_name_declaration(case_id: str, page: Page, name_sel: dict[str, Any], pa
         store.set_status(case_id, statuses.NEED_HUMAN, reason=industry_match or "行业建议未点选")
         return ""
 
-    # 组织形式：内资企业「有限公司」→ 组织形式「有限公司」
+    # 组织形式：内资企业类型（默认「有限公司」）→ 第二级按表格 name.orgForm
     filled_org = False
     org_readback = ""
     type_opt = name_sel.get("org_type_option") or "有限公司"
-    form_opt = name_sel.get("org_form_option") or "有限责任公司"
+    form_opt = org or name_sel.get("org_form_option") or "有限公司"
     if _open_select_by_placeholder(frame, ph.get("org_form") or "请选择组织形式"):
         filled_org = _select_org_form_two_step(frame, type_opt, form_opt)
         if not filled_org:
@@ -637,12 +640,14 @@ def _run_name_declaration(case_id: str, page: Page, name_sel: dict[str, Any], pa
             org_readback = (org_item.inner_text(timeout=800) or "").strip()
         except Exception:
             pass
-    if not filled_org or (org and org not in org_readback and "有限" not in org_readback):
+    # 必须回读到表格指定的组织形式，不能再用宽泛的「有限」放过错选
+    org_matched = bool(org) and org in org_readback
+    if not filled_org or not org_matched:
         _shot(page, case_id, "organization-selection-failed")
         store.set_status(
             case_id,
             statuses.NEED_HUMAN,
-            reason=f"未能完成企业类型/组织形式选择（回读={org_readback or '空'}）",
+            reason=f"组织形式未按表格填写（期望={org or '空'}，回读={org_readback or '空'}）",
         )
         return ""
 

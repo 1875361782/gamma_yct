@@ -160,6 +160,53 @@ def upload_path(case_id: str, file_id: str) -> Path:
     return path
 
 
+def resolve_id_card_images(
+    case_id: str,
+    payload: dict | None = None,
+    *,
+    person_key: str | None = None,
+    person_name: str | None = None,
+    fallback_front: Path | None = None,
+    fallback_back: Path | None = None,
+) -> tuple[Path | None, Path | None]:
+    """按 personKey / 姓名匹配 attachments.idCards；缺省回退首张或桌面文件。"""
+    front = back = None
+    cards = ((payload or {}).get("attachments") or {}).get("idCards") or []
+    card: dict | None = None
+    if cards:
+        if person_key:
+            for c in cards:
+                if isinstance(c, dict) and str(c.get("personKey") or "") == person_key:
+                    card = c
+                    break
+        if card is None and person_name:
+            want = str(person_name).strip()
+            for c in cards:
+                if isinstance(c, dict) and str(c.get("personName") or "").strip() == want:
+                    card = c
+                    break
+        if card is None and isinstance(cards[0], dict):
+            card = cards[0]
+    if card:
+        try:
+            fid = str(card.get("frontFileId") or "").strip()
+            if fid:
+                front = upload_path(case_id, fid)
+        except FileNotFoundError:
+            pass
+        try:
+            bid = str(card.get("backFileId") or "").strip()
+            if bid:
+                back = upload_path(case_id, bid)
+        except FileNotFoundError:
+            pass
+    if front is None and fallback_front is not None and fallback_front.exists():
+        front = fallback_front
+    if back is None and fallback_back is not None and fallback_back.exists():
+        back = fallback_back
+    return front, back
+
+
 def case_dir(case_id: str) -> Path:
     return _case_dir(case_id)
 

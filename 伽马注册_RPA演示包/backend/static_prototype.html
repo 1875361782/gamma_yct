@@ -23,17 +23,14 @@
   --color-warning:#F59E0B;
   --color-danger:#DC2626;
   --color-info:#3B82F6;
-  --color-phase-a:#EAF1FD;          /* 阶段 A 横幅浅蓝 */
-  --color-phase-a-text:#1E5FD9;
-  --color-phase-b:#FFF7E6;          /* 阶段 B 横幅浅橙 */
-  --color-phase-b-text:#D97706;
   --radius:14px; --radius-sm:10px;
   --space-xs:4px; --space-sm:8px; --space-md:16px; --space-lg:24px;
   --shadow-card:0 1px 3px rgba(0,0,0,.06);
   --shadow-float:0 6px 20px rgba(0,0,0,.10);
   --font: "PingFang SC","Helvetica Neue",Arial,sans-serif;
   --touch:44px;
-  --phone-w:420px;
+  --content-max:720px;
+  --page-pad:16px;
 }
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
 html,body{height:100%;}
@@ -41,54 +38,45 @@ body{
   margin:0;
   font-family:var(--font);
   color:var(--color-text);
-  background:#dde2ea;
-  display:flex; justify-content:center; align-items:stretch;
+  background:var(--color-bg);
+  display:flex; justify-content:stretch; align-items:stretch;
+  min-height:100dvh;
+  height:100dvh;
+  overflow:hidden;
 }
 
-/* ============ 手机外框 ============ */
+/* ============ 全屏壳（原手机外框，现自适应视口） ============ */
 .phone{
   position:relative;
-  width:100%; max-width:var(--phone-w);
+  width:100%;
+  max-width:none;
+  height:100%;
+  min-height:100dvh;
   background:var(--color-bg);
-  min-height:100vh;
   display:flex; flex-direction:column;
   overflow:hidden;
-  box-shadow:0 0 0 1px #cfd5df, 0 20px 60px rgba(15,23,42,.18);
+  box-shadow:none;
 }
 
-/* ============ iOS 状态栏 ============ */
-.status-bar{
-  flex-shrink:0; height:34px;
-  display:flex; align-items:center; justify-content:space-between;
-  padding:0 20px; font-size:13px; font-weight:600; color:var(--color-text);
-  background:var(--color-surface);
-}
-.status-bar .sb-right{display:flex; align-items:center; gap:6px;}
-.status-bar svg{display:block;}
-
-/* ============ 阶段横幅 ============ */
-.phase-banner{
-  flex-shrink:0;
-  padding:10px var(--space-md);
-  font-size:13px; font-weight:700;
-  display:flex; align-items:center; gap:8px;
-}
-.phase-a{ background:var(--color-phase-a); color:var(--color-phase-a-text); }
-.phase-b{ background:var(--color-phase-b); color:var(--color-phase-b-text); }
-.phase-banner .ph-dot{
-  width:8px; height:8px; border-radius:50%;
-  background:currentColor; flex-shrink:0;
-}
-.phase-banner .ph-meta{margin-left:auto; font-size:11px; font-weight:600; opacity:.75;}
-
-/* ============ 顶部品牌栏 + 步骤条 ============ */
+/* ============ 顶部导航（品牌 + 步骤条，固定贴顶） ============ */
 .brand-bar{
+  position:sticky;
+  top:0;
+  z-index:50;
   flex-shrink:0;
   background:var(--color-surface);
-  padding:var(--space-sm) var(--space-md);
+  padding:calc(var(--space-sm) + env(safe-area-inset-top, 0px)) var(--page-pad) var(--space-sm);
   border-bottom:1px solid var(--color-border);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  box-shadow:0 1px 0 rgba(0,0,0,.03);
 }
-.brand-row{display:flex; align-items:center; gap:10px;}
+.brand-bar > *{
+  width:100%;
+  max-width:var(--content-max);
+}
+.brand-row{display:flex; align-items:center; gap:10px; min-height:36px;}
 .brand-logo{
   width:30px; height:30px; border-radius:8px;
   background:var(--color-primary); color:#fff;
@@ -140,9 +128,16 @@ body{
 .scroll{
   flex:1 1 auto; overflow-y:auto;
   -webkit-overflow-scrolling:touch;
-  padding:var(--space-md) var(--space-md) calc(var(--space-lg) + 8px);
+  padding:var(--space-md) var(--page-pad) calc(var(--space-lg) + 8px);
+  width:100%;
 }
-.screen{display:none; animation:fade .25s ease;}
+.screen{
+  display:none;
+  animation:fade .25s ease;
+  width:100%;
+  max-width:var(--content-max);
+  margin:0 auto;
+}
 .screen.active{display:block;}
 @keyframes fade{from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:none;}}
 
@@ -173,7 +168,7 @@ body{
   position:absolute; left:12px; font-size:14px; color:var(--color-text-sub);
   font-weight:600; pointer-events:none;
 }
-input[type=text], input[type=tel], input[type=number], textarea, select{
+input[type=text], input[type=tel], input[type=number], input[type=date], textarea, select{
   width:100%; min-height:var(--touch);
   border:1px solid var(--color-border);
   border-radius:var(--radius-sm);
@@ -183,6 +178,14 @@ input[type=text], input[type=tel], input[type=number], textarea, select{
   padding:10px 12px;
   transition:border-color .15s ease, box-shadow .15s ease;
   outline:none;
+}
+input[type=date]{
+  display:block;
+  height:var(--touch);
+  box-sizing:border-box;
+  -webkit-appearance:none;
+  appearance:none;
+  line-height:normal;
 }
 .input-wrap.has-prefix input{padding-left:46px;}
 textarea{resize:vertical; min-height:96px; line-height:1.5; padding:12px;}
@@ -399,19 +402,52 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
 .legal-fields{display:flex; flex-direction:column; gap:12px;}
 @media (max-width:360px){ .grid2{grid-template-columns:1fr;} }
 
-/* ============ OCR 上传 ============ */
-.ocr-row{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:var(--space-md);}
+/* ============ 按人身份证上传 ============ */
+.id-people{display:flex; flex-direction:column; gap:14px; margin-top:var(--space-md);}
+.id-person{
+  border:1px solid var(--color-border);
+  border-radius:var(--radius-sm);
+  padding:12px;
+  background:var(--color-surface);
+}
+.id-person-h{
+  display:flex; align-items:flex-start; justify-content:space-between; gap:10px;
+  margin-bottom:10px;
+}
+.id-person-name{font-size:14px; font-weight:700; color:var(--color-text);}
+.id-person-roles{display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;}
+.id-person-roles span{
+  font-size:11px; font-weight:600; padding:1px 8px; border-radius:99px;
+  background:var(--color-primary-soft); color:var(--color-primary);
+}
+.id-person-status{font-size:11px; font-weight:600; color:var(--color-text-sub); white-space:nowrap;}
+.id-person-status.ok{color:var(--color-success);}
+.ocr-row{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
 .ocr-card{
   border:1.5px dashed var(--color-border); border-radius:var(--radius-sm);
-  min-height:84px; padding:10px; cursor:pointer; text-align:center;
+  min-height:110px; padding:10px; cursor:pointer; text-align:center;
   display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
   color:var(--color-text-sub); font-size:11.5px; line-height:1.4; background:var(--color-bg);
-  transition:border-color .15s ease;
+  transition:border-color .15s ease; position:relative; overflow:hidden;
 }
 .ocr-card:hover{border-color:var(--color-primary);}
 .ocr-card.done{border-style:solid; border-color:var(--color-success); background:#F0FDF4; color:var(--color-success);}
+.ocr-card.uploading{opacity:.7; pointer-events:none;}
 .ocr-card .ocr-ok{font-size:12px; font-weight:700; display:flex; align-items:center; gap:4px;}
 .ocr-card svg{display:block;}
+.ocr-card .ocr-preview{
+  width:100%; max-height:72px; object-fit:contain; border-radius:6px; background:#fff;
+}
+.ocr-card input[type=file]{display:none;}
+input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
+.ocr-card .ocr-name{font-size:10.5px; color:var(--color-text-sub); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.ocr-card.done .ocr-name{color:#15803d;}
+.ocr-side-label{font-size:12px; font-weight:700; color:var(--color-text);}
+.ocr-card.done .ocr-side-label{color:#15803d;}
+.id-people-empty{
+  padding:16px; text-align:center; color:var(--color-text-sub); font-size:13px;
+  border:1px dashed var(--color-border); border-radius:var(--radius-sm); background:var(--color-bg);
+}
 
 /* ============ 屏幕5 确认单 ============ */
 .sum-sec{margin-bottom:var(--space-md);}
@@ -486,15 +522,48 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
 /* 屏6 gov-iframe 全宽布局（同源后默认显示） */
 .gov-status-bar{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; padding:6px 10px; background:var(--color-bg); border-radius:var(--radius-sm); flex-wrap:wrap;}
 .gov-status-bar .qr-helper{font-size:12px; color:var(--color-text-sub); flex:1; min-width:0;}
-.gov-iframe-wrap{border:1px solid var(--color-border); border-radius:var(--radius); overflow:hidden; background:#fff;}
-.gov-iframe-bar{display:flex; align-items:center; justify-content:space-between; padding:8px 12px; background:#f0f4f8; border-bottom:1px solid var(--color-border); font-size:13px;}
-.gov-iframe-title{font-weight:600; color:var(--color-text); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-.gov-iframe-loading{font-size:12px; color:#1e5fd9; font-weight:600;}
-.gov-iframe-loading.done{color:#15803d;}
-.gov-iframe-loading.error{color:#b91c1c;}
-.gov-iframe{width:100%; height:580px; border:0; display:block; background:#f8f9fb;}
-.gov-iframe-open-a{font-size:12px; color:#1e5fd9; font-weight:600; text-decoration:none; padding:5px 12px; border:1px solid #c7d7f5; border-radius:99px; background:#fff; white-space:nowrap;}
-.gov-iframe-open-a:hover{background:#E8F0FE;}
+.gov-iframe-wrap{
+  border:1px solid var(--color-border);
+  border-radius:var(--radius);
+  overflow:hidden;
+  background:#fff;
+  padding:24px 20px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:16px;
+}
+.gov-iframe-wrap .btn{width:100%; max-width:480px; margin:0;}
+.gov-iframe-hidden{position:absolute; width:0; height:0; border:0; opacity:0; pointer-events:none;}
+.gov-iframe-bar{display:none;}
+.gov-iframe{display:none;}
+.gov-iframe-open-a{display:none;}
+.tip-box > span{flex:1; min-width:0;}
+.qr-hint{display:none;}
+.qr-panel{display:flex; flex-direction:column; align-items:center; gap:12px; width:100%;}
+.qr-panel .qr-frame{
+  width:min(260px, 72vw); height:min(260px, 72vw);
+  border:1px solid var(--color-border);
+  border-radius:var(--radius);
+  background:#fff;
+  padding:14px;
+  display:flex; align-items:center; justify-content:center;
+  box-shadow:var(--shadow-card);
+  position:relative;
+}
+.qr-panel .qr-live{width:100%; height:100%; object-fit:contain; display:none;}
+.qr-panel .qr-placeholder{
+  position:absolute; inset:14px;
+  display:flex; align-items:center; justify-content:center; text-align:center;
+  font-size:13px; color:var(--color-text-sub); line-height:1.5;
+  border:1.5px dashed var(--color-border); border-radius:8px; padding:12px;
+}
+.qr-panel.has-qr .qr-placeholder{display:none;}
+.qr-panel.has-qr .qr-live{display:block;}
+.qr-status{font-size:13px; color:var(--color-text-sub); text-align:center;}
+.qr-status.ok{color:var(--color-success); font-weight:600;}
+.qr-status.err{color:var(--color-danger);}
 /* RPA QR 弹窗（右上角浮窗，RPA 抓到 QR 时显示） */
 .rpa-qr-popup{position:fixed; top:80px; right:20px; width:200px; background:#fff; border:2px solid #1e5fd9; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.18); z-index:999; overflow:hidden;}
 .rpa-qr-popup-head{display:flex; align-items:center; justify-content:space-between; padding:6px 10px; background:#1e5fd9; color:#fff; font-size:12px; font-weight:600;}
@@ -541,18 +610,21 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
   display:flex; align-items:center; justify-content:center;
   font-size:12px; font-weight:700;
 }
-.pipe-dot.done{background:var(--color-success); color:#fff;}
+.pipe-dot.done{background:var(--color-success); color:#fff; border:0; animation:none;}
+.pipe-dot.fail{background:var(--color-danger); color:#fff; border:0; animation:none;}
 .pipe-dot.run{
-  background:var(--color-primary); color:#fff;
-  animation:spin 1.4s linear infinite;
+  background:transparent;
+  border:2.5px solid #c7d7f5;
+  border-top-color:var(--color-primary);
+  color:transparent;
+  font-size:0;
+  animation:pipe-spin .75s linear infinite;
 }
-.pipe-dot.run::before{
-  content:""; width:6px; height:6px; border-radius:50%; background:#fff;
-  animation:pulse 1.4s ease-in-out infinite;
-}
-.pipe-dot.wait{background:var(--color-bg); border:1.5px solid var(--color-border); color:var(--color-text-sub);}
+.pipe-dot.run::before{content:none;}
+.pipe-dot.wait{background:var(--color-bg); border:1.5px solid var(--color-border); color:var(--color-text-sub); animation:none;}
 .pipe-txt{font-size:13px; font-weight:600;}
 .pipe-txt small{display:block; color:var(--color-text-sub); font-size:11px; font-weight:400; margin-top:1px;}
+@keyframes pipe-spin{to{transform:rotate(360deg);}}
 @keyframes pulse{0%,100%{opacity:1;} 50%{opacity:.4;}}
 
 /* 屏幕8: 补充字号 */
@@ -596,33 +668,37 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
   flex-shrink:0;
   background:var(--color-surface);
   border-top:1px solid var(--color-border);
-  padding:12px var(--space-md) calc(12px + env(safe-area-inset-bottom));
+  padding:12px var(--page-pad) calc(12px + env(safe-area-inset-bottom, 0px));
   display:flex; gap:var(--space-md);
+  justify-content:center;
+  width:100%;
 }
-.footer .btn-ghost{flex:0 0 38%;}
-.footer .btn-primary{flex:1;}
-.footer .btn-primary.full{flex:1;}
+.footer .btn-ghost{flex:0 0 38%; max-width:220px;}
+.footer .btn-primary{flex:1; max-width:480px;}
+.footer .btn-primary.full{flex:1; max-width:var(--content-max);}
 .footer .hidden{display:none;}
-
-/* 屏幕页脚标签 */
-.foot-caption{
-  flex-shrink:0;
-  text-align:center;
-  background:var(--color-bg);
-  border-top:1px solid var(--color-border);
-  padding:8px var(--space-md) calc(8px + env(safe-area-inset-bottom));
-  font-size:11.5px; color:var(--color-text-sub); font-weight:600;
-}
-.foot-caption .num{
-  display:inline-block; min-width:18px; padding:0 4px; margin-right:6px;
-  background:var(--color-primary); color:#fff; border-radius:99px;
-  font-size:11px; text-align:center;
-}
-.foot-caption.phase-b .num{background:var(--color-phase-b-text);}
-.foot-caption .desc{display:inline-block; margin-left:6px; color:var(--color-text);}
 
 /* 可访问性 */
 .btn:focus-visible, .chip:focus-visible, .person-h:focus-visible, .add-card:focus-visible{outline:2px solid var(--color-primary); outline-offset:2px;}
+
+/* ============ 响应式：手机 / 平板 / 桌面 ============ */
+@media (max-width:480px){
+  :root{ --page-pad:14px; --content-max:100%; }
+  .brand-sub{display:none;}
+  .step .lbl{font-size:9px;}
+}
+@media (min-width:640px){
+  :root{ --page-pad:24px; --content-max:720px; }
+  .screen-title{font-size:22px;}
+}
+@media (min-width:960px){
+  :root{ --page-pad:32px; --content-max:880px; }
+  .screen[data-screen="5"],
+  .screen[data-screen="6"]{ max-width:min(960px, 100%); }
+}
+@media (min-width:1280px){
+  :root{ --content-max:960px; }
+}
 
 @media (prefers-reduced-motion: reduce){
   *{animation:none !important; transition:none !important;}
@@ -632,25 +708,8 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
 <body>
 <div class="phone">
 
-  <!-- iOS 状态栏 -->
-  <div class="status-bar">
-    <span>9:41</span>
-    <span class="sb-right">
-      <svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>
-      <svg width="15" height="11" viewBox="0 0 15 11" fill="currentColor"><path d="M7.5 2.2c2.1 0 4.1.8 5.5 2.2l1.2-1.3C12.5 1.2 10.1.3 7.5.3S2.5 1.2.8 3.1l1.2 1.3C3.4 3 5.4 2.2 7.5 2.2z"/><path d="M7.5 6c1.2 0 2.3.5 3.1 1.3l1.2-1.3C10.5 4.9 9.1 4.2 7.5 4.2S4.5 4.9 3.2 6l1.2 1.3C5.2 6.5 6.3 6 7.5 6z"/><circle cx="7.5" cy="9.4" r="1.5"/></svg>
-      <svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor"/><rect x="2" y="2" width="17" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.6" height="4" rx="0.8" fill="currentColor"/></svg>
-    </span>
-  </div>
-
-  <!-- 阶段横幅（按当前屏显示 A 或 B） -->
-  <div class="phase-banner phase-a" id="phaseBanner">
-    <span class="ph-dot"></span>
-    <span id="phaseTitle">阶段 A · 信息采集与提交（约 10-15 分钟）</span>
-    <span class="ph-meta" id="phaseMeta"></span>
-  </div>
-
-  <!-- 顶部品牌栏 -->
-  <header class="brand-bar">
+  <!-- 顶部导航栏 -->
+  <header class="brand-bar" role="banner">
     <div class="brand-row">
       <div class="brand-logo">伽</div>
       <div class="brand-name">伽马注册</div>
@@ -715,14 +774,15 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
         </div>
 
         <div class="field">
-          <label for="industry">行业表述（如 科技）<span class="req">*</span></label>
-          <input id="industry" type="text" placeholder="如：科技 / 贸易 / 咨询" value="信息科技" data-type="industry" />
+          <label for="industry">行业表述（如：科技）<span class="req">*</span></label>
+          <input id="industry" type="text" placeholder="如：科技 / 贸易 / 咨询" data-type="industry" />
         </div>
 
         <div class="field">
           <label for="orgForm">组织形式<span class="req">*</span></label>
           <select id="orgForm">
-            <option value="有限公司" selected>有限公司</option>
+            <option value="" selected disabled>请选择组织形式</option>
+            <option value="有限公司">有限公司</option>
             <option value="有限责任公司">有限责任公司</option>
           </select>
         </div>
@@ -730,7 +790,7 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
         <div class="field">
           <label for="aiName">公司名称（随字号自动组合）<span class="req">*</span></label>
           <div class="input-wrap">
-            <input id="aiName" type="text" placeholder="上海××科技有限公司" value="上海鑫慧众盒科技有限公司" data-type="name" />
+            <input id="aiName" type="text" placeholder="上海××科技有限公司" data-type="name" />
           </div>
           <div class="hint" id="nameHint"></div>
         </div>
@@ -738,7 +798,7 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
         <div class="field">
           <label for="capital">注册资本（万元）<span class="req">*</span></label>
           <div class="input-wrap">
-            <input id="capital" type="number" min="1" value="100" placeholder="如 100" data-type="capital" />
+            <input id="capital" type="number" min="1" placeholder="如 100" data-type="capital" />
             <span class="unit">万人民币</span>
           </div>
         </div>
@@ -773,8 +833,8 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
       <div class="role-sec">
         <div class="role-h"><span class="role-dot r-legal"></span>法人（法定代表人）<span class="req">*</span></div>
         <div class="grid2">
-          <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="legalName" placeholder="如：张伟" value="张伟" /></div>
-          <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="legalMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" value="13984439335" /></div>
+          <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="legalName" placeholder="如：张伟" /></div>
+          <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="legalMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" /></div>
         </div>
         <div class="inline-note">法人可同时担任董事或财务负责人</div>
       </div>
@@ -795,8 +855,8 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
         <div class="role-h"><span class="role-dot r-legal"></span>董事<span class="req">*</span></div>
         <label class="same-toggle"><input type="checkbox" id="dirSame" onchange="toggleSameLegal('dir')" /> 与法人同一人（身居一职）</label>
         <div id="dirBody" class="grid2">
-          <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="dirName" placeholder="如：张伟" value="张伟" /></div>
-          <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="dirMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" value="13984439335" /></div>
+          <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="dirName" placeholder="如：张伟" /></div>
+          <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="dirMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" /></div>
         </div>
       </div>
 
@@ -808,8 +868,8 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
           <button type="button" class="seg-btn" data-v="0" onclick="setSup(0,this)">不设立</button>
         </div>
         <div id="supBody" class="grid2">
-          <div class="field"><label>姓名</label><input type="text" id="supName" placeholder="如：李娜" value="李娜" /></div>
-          <div class="field"><label>手机号</label><input type="tel" id="supMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" value="13800138000" /></div>
+          <div class="field"><label>姓名</label><input type="text" id="supName" placeholder="如：李娜" /></div>
+          <div class="field"><label>手机号</label><input type="tel" id="supMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" /></div>
         </div>
         <div class="inline-note" id="supNote" style="display:none;">一人有限责任公司可不设监事。</div>
       </div>
@@ -819,8 +879,8 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
         <div class="role-h"><span class="role-dot r-fin"></span>财务负责人<span class="req">*</span></div>
         <label class="same-toggle"><input type="checkbox" id="finSame" onchange="toggleSameLegal('fin')" /> 与法人同一人（身居一职）</label>
         <div id="finBody" class="grid2">
-          <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="finName" placeholder="如：王芳" value="王芳" /></div>
-          <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="finMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" value="13700137000" /></div>
+          <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="finName" placeholder="如：王芳" /></div>
+          <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="finMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" /></div>
         </div>
       </div>
 
@@ -829,8 +889,8 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
         <div class="role-h"><span class="role-dot r-fin"></span>联络员<span class="req">*</span></div>
         <div id="liaBody" class="legal-fields">
           <div class="grid2">
-            <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="liaName" placeholder="如：张伟" value="张伟" /></div>
-            <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="liaMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" value="13984439335" /></div>
+            <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="liaName" placeholder="如：张伟" /></div>
+            <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="liaMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" /></div>
           </div>
           <div class="field"><label>邮箱<span class="req">*</span></label><input type="text" id="liaEmail" placeholder="如：name@example.com" /></div>
           <div class="field"><label>住所<span class="req">*</span></label><input type="text" id="liaAddress" placeholder="请填写住所地址" /></div>
@@ -842,11 +902,11 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
         <div class="role-h"><span class="role-dot r-sup"></span>最终受益人<span class="req">*</span></div>
         <div class="legal-fields">
           <div class="grid2">
-            <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="uboName" placeholder="如：张伟" value="张伟" /></div>
-            <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="uboMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" value="13984439335" /></div>
+            <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="uboName" placeholder="如：张伟" /></div>
+            <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="uboMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" /></div>
           </div>
           <div class="grid2">
-            <div class="field"><label>身份证有效期<span class="req">*</span></label><input type="text" id="uboIdValid" placeholder="如：2032-06-24" /></div>
+            <div class="field"><label>身份证有效期<span class="req">*</span></label><input type="date" id="uboIdValid" /></div>
             <div class="field"><label>持股比例<span class="req">*</span></label>
               <div class="input-wrap has-suffix">
                 <input type="number" id="uboPct" min="0" max="100" step="1" placeholder="0" />
@@ -860,30 +920,13 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
 
     <!-- ===================== 屏 4：受益人、证件 3/4 ===================== -->
     <section class="screen" data-screen="3" data-phase="A">
-      <h2 class="screen-title">受益人、证件 3/4</h2>
-      <p class="screen-desc">等待受益人、控股 / 控股比例、证件有效期。</p>
+      <h2 class="screen-title">证件 3/4</h2>
 
       <div class="card">
-        <div class="card-h">
-          担任执行 / 监事方式 / 证件有效期
-          <span class="tag">已完成实名核验：「承诺实报」</span>
-        </div>
-
-        <div class="field">
-          <label>身份证原件（每位指派人员）</label>
-          <div class="ocr-row">
-            <div class="ocr-card" onclick="simulateOCR(this, '人选图')">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-              <span>人选图</span>
-              <span style="font-size:10.5px;">点击拍照 / 上传</span>
-            </div>
-            <div class="ocr-card done" onclick="simulateOCR(this, '资证图')">
-              <span class="ocr-ok">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-                资证图 · 已识别
-              </span>
-              <span style="font-size:10.5px;">310101********8812</span>
-            </div>
+        <div class="field" style="margin-top:0;margin-bottom:0;">
+          <label>身份证原件（按人上传；同一人多角色只需上传一次）</label>
+          <div class="id-people" id="idPeopleList">
+            <div class="id-people-empty">请先完成人员信息，再返回本页上传证件</div>
           </div>
         </div>
 
@@ -897,13 +940,11 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
           </ol>
           <div class="ur-foot">识别异常时，OCR 引擎会要求重新上传；本端会自动压缩并保持原始信息。</div>
         </div>
-
-        <!-- 屏4 占位 ghost 按钮组已删除 -->
       </div>
 
       <div class="tip-box tip-orange">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        提示：每位受益人 / 监事须独立采集正反面，否则政务网会驳回。
+        提示：同一人兼任多角色只需上传一套正反面；不同人员须各自上传，否则政务网会驳回。
       </div>
     </section>
 
@@ -918,10 +959,10 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
             企业信息
             <button class="edit" onclick="go(1)">修改</button>
           </div>
-          <div class="sum-line"><div class="k">公司名称</div><div class="v" id="sumName">上海鑫慧众盒科技有限公司</div></div>
-          <div class="sum-line"><div class="k">行业</div><div class="v" id="sumIndustry">信息科技</div></div>
-          <div class="sum-line"><div class="k">组织形式</div><div class="v" id="sumOrgForm">有限公司</div></div>
-          <div class="sum-line"><div class="k">注册资本</div><div class="v" id="sumCapital">100 万人民币</div></div>
+          <div class="sum-line"><div class="k">公司名称</div><div class="v" id="sumName">—</div></div>
+          <div class="sum-line"><div class="k">行业</div><div class="v" id="sumIndustry">—</div></div>
+          <div class="sum-line"><div class="k">组织形式</div><div class="v" id="sumOrgForm">—</div></div>
+          <div class="sum-line"><div class="k">注册资本</div><div class="v" id="sumCapital">—</div></div>
           <div class="sum-line"><div class="k">注册地址</div><div class="v" id="sumRegAddress">—</div></div>
           <div class="sum-line"><div class="k">邮编</div><div class="v" id="sumPostalCode">—</div></div>
           <div class="sum-line"><div class="k">经营范围</div><div class="v" id="sumScope">一般项目：技术服务、技术开发、技术咨询…</div></div>
@@ -932,13 +973,13 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
             人员信息
             <button class="edit" onclick="go(2)">修改</button>
           </div>
-          <div class="sum-line"><div class="k">法人</div><div class="v" id="sumLegal">张伟</div></div>
-          <div class="sum-line"><div class="k">自然人</div><div class="v" id="sumNp">张伟（100%）</div></div>
-          <div class="sum-line"><div class="k">董事</div><div class="v" id="sumDir">张伟</div></div>
-          <div class="sum-line"><div class="k">监事</div><div class="v" id="sumSup">李娜（可选，已设立）</div></div>
-          <div class="sum-line"><div class="k">财务负责人</div><div class="v" id="sumFin">王芳</div></div>
-          <div class="sum-line"><div class="k">联络员</div><div class="v" id="sumLia">张伟</div></div>
-          <div class="sum-line"><div class="k">最终受益人</div><div class="v" id="sumUbo">张伟</div></div>
+          <div class="sum-line"><div class="k">法人</div><div class="v" id="sumLegal">—</div></div>
+          <div class="sum-line"><div class="k">自然人</div><div class="v" id="sumNp">—</div></div>
+          <div class="sum-line"><div class="k">董事</div><div class="v" id="sumDir">—</div></div>
+          <div class="sum-line"><div class="k">监事</div><div class="v" id="sumSup">—</div></div>
+          <div class="sum-line"><div class="k">财务负责人</div><div class="v" id="sumFin">—</div></div>
+          <div class="sum-line"><div class="k">联络员</div><div class="v" id="sumLia">—</div></div>
+          <div class="sum-line"><div class="k">最终受益人</div><div class="v" id="sumUbo">—</div></div>
         </div>
 
         <div class="sum-sec">
@@ -946,7 +987,7 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
             证件影像
             <button class="edit" onclick="go(3)">修改</button>
           </div>
-          <div class="sum-line"><div class="k">OCR 识别</div><div class="v"><span class="sum-tags"><span>张伟·人面</span><span>张伟·国徽</span><span>李娜·人面</span></span></div></div>
+          <div class="sum-line"><div class="k">身份证上传</div><div class="v"><span class="sum-tags" id="sumIdCards"><span>未上传</span></span></div></div>
           <div class="sum-line"><div class="k">实名核验</div><div class="v">承诺实报</div></div>
         </div>
       </div>
@@ -964,24 +1005,19 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
 
       <div class="tip-box tip-orange">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        请用「随申办」APP 扫描下方二维码完成政务网授权。扫码成功后将<b>自动跳转</b>下一屏；也可点底部「我已完成扫码」手动继续。
+        <span>请用「随申办」APP 扫描二维码完成政务网授权。扫码成功后将自动跳转至下一屏；也可点击下方「我已完成扫码」继续。</span>
       </div>
 
       <div class="gov-iframe-wrap" id="bPageWrap">
-        <div class="gov-iframe-bar">
-          <span class="gov-iframe-title">伽马注册 · 扫码授权（RPA 实时同步）</span>
-          <a id="openAPageBtn" class="gov-iframe-open-a" href="#" target="_blank" rel="noopener">↗ 打开 A 页（监控）</a>
+        <div class="qr-panel" id="qrPanel">
+          <div class="qr-frame" id="qrFrame">
+            <div class="qr-placeholder" id="qrPlaceholder">正在获取登录二维码…</div>
+            <img id="qrLive" class="qr-live" alt="登录二维码" />
+          </div>
+          <div class="qr-status" id="qrStatus">等待 RPA 同步二维码</div>
         </div>
-        <iframe id="bPageFrame" class="gov-iframe" src="about:blank" referrerpolicy="no-referrer"></iframe>
-      </div>
-
-      <button class="btn btn-primary btn-block" id="scannedBtn" type="button" style="margin-top:var(--space-md);">
-        我已完成扫码（手动继续）
-      </button>
-
-      <div class="qr-hint" id="qrBackHint">
-        <div class="qr-hint-title">未在上方看到二维码？</div>
-        <div class="qr-hint-body">说明后端 RPA 未启用，不影响手动扫码：浏览器打开 <code>http://localhost:8766</code> 启动后端；或直接用「随申办」APP 在下方手机页手动扫码。</div>
+        <button class="btn btn-primary btn-block" id="scannedBtn" type="button">我已完成扫码</button>
+        <iframe id="bPageFrame" class="gov-iframe-hidden" src="about:blank" referrerpolicy="no-referrer" title="扫码中继"></iframe>
       </div>
     </section>
 
@@ -1012,15 +1048,15 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
 
       <div class="tip-box tip-orange" id="pendingTip" style="display:none;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <span>待办：第 <b>1</b> 个环节未通过核名（不可跳过）</span>
+        <span id="pendingTipText">待办：名称核验未通过，请补充字号后重试</span>
       </div>
 
       <button class="btn btn-orange btn-block" id="gotoRefill" type="button" style="display:none; margin-bottom:var(--space-md);">
         去补充字号
       </button>
 
-      <div style="font-size:11px; color:var(--color-text-sub); text-align:center; padding:var(--space-sm) 0;">
-        保留 1 个环节未通过核名（不可跳过）
+      <div id="nameFailNote" style="display:none; font-size:11px; color:var(--color-text-sub); text-align:center; padding:var(--space-sm) 0;">
+        核名未通过时需补充字号后重新申报
       </div>
     </section>
 
@@ -1117,12 +1153,6 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
     <button class="btn btn-primary" id="nextBtn" onclick="next()">下一步</button>
   </div>
 
-  <!-- 屏幕页脚标签 -->
-  <div class="foot-caption phase-a" id="footCap">
-    <span class="num" id="footNum">①</span>
-    <span class="desc" id="footDesc">登录授权</span>
-  </div>
-
 </div>
 
 <script>
@@ -1136,6 +1166,11 @@ const STATE = {
   sid: null,                  // 屏6 会话钥匙：B 页 bind 时由后端自动触发 RPA
   sidMock: false,             // 屏6 是否走 mock（默认 false=真实政务网；?mock=1 切测试站）
   scannedDone: false,         // 扫码成功是否已处理（防止 postMessage 与手动按钮重复触发）
+  caseId: 'GM202608062231EF',
+  // personKey -> { personKey, personName, roles, frontFileId, backFileId, frontName, backName, frontPreview, backPreview }
+  idUploads: {},
+  qrPollTimer: null,
+  fillPollTimer: null,
 };
 
 const STEP_META = [
@@ -1171,24 +1206,9 @@ function go(i){
   document.querySelectorAll('.screen').forEach(el=>el.classList.remove('active'));
   document.querySelector(`.screen[data-screen="${i}"]`).classList.add('active');
   if(i===4) syncConfirm();   // 进入信息确认单 → 同步屏1 动态值
+  if(i===3) refreshIdPeopleUploads();  // 屏4：按当前人员去重渲染上传位
 
   const meta = STEP_META[i];
-  // 阶段横幅
-  const banner = document.getElementById('phaseBanner');
-  if(meta.phase==='A'){
-    banner.className = 'phase-banner phase-a';
-    banner.querySelector('#phaseTitle').textContent = '阶段 A · 信息采集与提交（约 10-15 分钟）';
-    banner.querySelector('#phaseMeta').textContent = '';
-  }else{
-    banner.className = 'phase-banner phase-b';
-    banner.querySelector('#phaseTitle').textContent = '阶段 B · 扫码协同与进度跟踪';
-    banner.querySelector('#phaseMeta').textContent = '';
-  }
-  // 页脚标签
-  const cap = document.getElementById('footCap');
-  cap.className = 'foot-caption phase-' + meta.phase.toLowerCase();
-  cap.querySelector('#footNum').textContent = meta.num;
-  cap.querySelector('#footDesc').textContent = meta.desc;
   // 底部按钮
   const back = document.getElementById('backBtn');
   const next = document.getElementById('nextBtn');
@@ -1221,12 +1241,15 @@ function next(){
   const i = STATE.step;
   if(i===0){                                  // 0→1 登录校验
     if(!document.getElementById('agree').checked){ alert('请先勾选同意《用户授权协议》'); return; }
-    if(!/^1\d{10}$/.test(document.getElementById('phone').value)){ alert('请填写有效手机号'); return; }
+    if(!requireMobile(document.getElementById('phone').value, '手机号')) return;
     if(document.getElementById('code').value.length!==6){ alert('请填写 6 位验证码'); return; }
     go(1); return;
   }
   if(i===1){                                  // 1→2 企业信息校验
     if(document.querySelectorAll('#nameChips .chip.zi.on').length < 1){ alert('请至少选择 / 生成一个字号候选'); return; }
+    if(!document.getElementById('industry').value.trim()){ alert('请填写行业表述'); return; }
+    if(!document.getElementById('orgForm').value){ alert('请选择组织形式'); return; }
+    if(!document.getElementById('capital').value || !(parseFloat(document.getElementById('capital').value) > 0)){ alert('请填写注册资本'); return; }
     if(!document.getElementById('regAddress').value.trim()){ alert('请填写注册地址'); return; }
     if(!document.getElementById('postalCode').value.trim()){ alert('请填写邮编'); return; }
     if(!document.getElementById('scope').value.trim()){ alert('请填写经营范围'); return; }
@@ -1235,6 +1258,18 @@ function next(){
   if(i===2){                                  // 2→3 人员信息校验
     if(!validatePersonnel()) return;
     go(3); return;
+  }
+  if(i===3){                                  // 3→4 每位去重人员须双面齐全
+    refreshIdPeopleUploads();
+    const missing = collectIdPeople().filter(p => {
+      const u = STATE.idUploads[p.personKey] || {};
+      return !(u.frontFileId && u.backFileId);
+    });
+    if(missing.length){
+      alert('请为以下人员上传身份证正反面：' + missing.map(p => p.personName + '（' + p.roles.join('、') + '）').join('、'));
+      return;
+    }
+    go(4); return;
   }
   if(i===4){ enterPhaseB(); return; }   // 5→6 进入阶段 B
   if(i===5){ scannedOK(); return; }     // 6→7 模拟扫码成功
@@ -1250,10 +1285,214 @@ function back(){
 }
 
 /* ============ 屏 5 → 6：进入阶段 B ============ */
-function enterPhaseB(){
+function parseDistrictFromAddress(addr){
+  const t = String(addr || '').replace(/\s+/g, '');
+  const m = t.match(/([\u4e00-\u9fff]{1,6}区)/);
+  return m ? m[1] : '';
+}
+
+function buildCasePayload(){
+  const tradeChip = document.querySelector('#nameChips .chip.zi.on');
+  const tradeName = (tradeChip && tradeChip.dataset.zi) || '';
+  const industry = (document.getElementById('industry').value || '').trim();
+  const orgForm = (document.getElementById('orgForm').value || '').trim();
+  const capital = parseFloat(document.getElementById('capital').value) || 0;
+  const detail = (document.getElementById('regAddress').value || '').trim();
+  const postalCode = (document.getElementById('postalCode').value || '').trim();
+  const district = parseDistrictFromAddress(detail);
+  const scope = (document.getElementById('scope').value || '').trim() || industry;
+
+  const legalName = (document.getElementById('legalName').value || '').trim();
+  const legalMobile = (document.getElementById('legalMobile').value || '').trim();
+
+  const investors = [...document.querySelectorAll('#npList .np-card')].map(c => {
+    const ratio = parseFloat(c.querySelector('.np-pct').value) || 0;
+    const amount = capital > 0 && ratio > 0 ? Math.round(capital * ratio) / 100 : 0;
+    return {
+      type: 'natural_person',
+      name: (c.querySelector('.np-name').value || '').trim(),
+      idType: 'id_card',
+      idNumber: '',
+      mobile: (c.querySelector('.np-phone').value || '').trim(),
+      amount,
+      ratio,
+      investmentMethod: '货币',
+      address: (c.querySelector('.np-address').value || '').trim(),
+      ethnicity: (c.querySelector('.np-ethnicity').value || '').trim(),
+    };
+  });
+
+  const dirSame = document.getElementById('dirSame').checked;
+  const finSame = document.getElementById('finSame').checked;
+  const dirName = dirSame ? legalName : (document.getElementById('dirName').value || '').trim();
+  const dirMobile = dirSame ? legalMobile : (document.getElementById('dirMobile').value || '').trim();
+  const finName = finSame ? legalName : (document.getElementById('finName').value || '').trim();
+  const finMobile = finSame ? legalMobile : (document.getElementById('finMobile').value || '').trim();
+
+  const supOn = document.querySelector('#supSeg .seg-btn.on')?.dataset?.v === '1';
+  const supervisors = [];
+  if(supOn){
+    const sn = (document.getElementById('supName').value || '').trim();
+    if(sn){
+      supervisors.push({
+        name: sn,
+        idType: 'id_card',
+        idNumber: '',
+        mobile: (document.getElementById('supMobile').value || '').trim(),
+      });
+    }
+  }
+
+  const uboPct = parseFloat(document.getElementById('uboPct').value) || 0;
+  const authority = district ? (district + '市场监督管理局') : '';
+
+  return {
+    schemaVersion: '1.0',
+    enterpriseType: 'limited_company',
+    preApproval: false,
+    name: {
+      adminDivision: '上海市',
+      tradeName,
+      industry,
+      orgForm,
+      fullNamePreview: (document.getElementById('aiName').value || '').trim(),
+      alternatives: [],
+    },
+    registration: {
+      district,
+      addressType: 'lease',
+      isCentralizedVenue: false,
+      address: {
+        province: '上海市',
+        city: '上海市',
+        district,
+        detail,
+        propertyCertNo: '',
+        postalCode,
+      },
+      authority,
+      acceptPoint: '',
+      preferredProcess: 'full_electronic',
+      addressProofFileIds: [],
+    },
+    company: {
+      registeredCapital: capital,
+      capitalCurrency: 'CNY',
+      capitalUnit: '万元',
+      businessTermType: 'long_term',
+      businessTermYears: null,
+      businessScope: scope,
+      businessScopeCodes: [],
+    },
+    investors,
+    personnel: {
+      legalRepresentative: {
+        name: legalName,
+        idType: 'id_card',
+        idNumber: '',
+        mobile: legalMobile,
+        fromInvestorIndex: 0,
+      },
+      directors: dirName ? [{
+        name: dirName,
+        idType: 'id_card',
+        idNumber: '',
+        mobile: dirMobile,
+        fromInvestorIndex: null,
+      }] : [],
+      supervisors,
+      establishSupervisor: !!supOn,
+      manager: null,
+      financeOfficer: finName ? {
+        name: finName,
+        idType: 'id_card',
+        idNumber: '',
+        mobile: finMobile,
+        fromInvestorIndex: null,
+      } : null,
+      liaisonOfficer: {
+        name: (document.getElementById('liaName').value || '').trim(),
+        idType: 'id_card',
+        idNumber: '',
+        mobile: (document.getElementById('liaMobile').value || '').trim(),
+        email: (document.getElementById('liaEmail').value || '').trim(),
+        address: (document.getElementById('liaAddress').value || '').trim(),
+      },
+    },
+    beneficialOwner: {
+      name: (document.getElementById('uboName').value || '').trim(),
+      mobile: (document.getElementById('uboMobile').value || '').trim(),
+      idValidUntil: (document.getElementById('uboIdValid').value || '').trim(),
+      ownershipRatio: uboPct,
+      address: '',
+    },
+    attachments: {
+      idCards: collectIdPeople().map(p => {
+        const u = STATE.idUploads[p.personKey] || {};
+        return {
+          personKey: p.personKey,
+          personName: p.personName,
+          roles: p.roles.slice(),
+          frontFileId: u.frontFileId || '',
+          backFileId: u.backFileId || '',
+        };
+      }),
+      addressProof: [],
+      other: [],
+    },
+  };
+}
+
+async function syncCasePayloadToGamma(){
+  const payload = buildCasePayload();
+  const origin = backendOriginForPrototype();
+  const res = await fetch(origin + '/api/case-payload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ caseId: 'GM202608062231EF', payload }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if(!res.ok || !data.ok){
+    throw new Error((data && data.error) || ('同步案件失败 HTTP ' + res.status));
+  }
+  return data;
+}
+
+async function enterPhaseB(){
   STATE.refillTimes = 2;
-  STATE.sid = makeSid();   // 生成会话钥匙：屏6 进入即触发 RPA（B 页 bind 时后端自动启动）
-  go(5);                   // go(5) 内挂载 B 页 iframe（/qrlogin?sid）
+  STATE.sid = makeSid();
+  STATE.automationRelay = true;
+  try{
+    const sync = await syncCasePayloadToGamma();
+    console.log('[enterPhaseB] case synced', sync);
+    STATE.syncedCaseId = sync.caseId || 'GM202608062231EF';
+  }catch(err){
+    console.warn('[enterPhaseB] sync case failed', err);
+    alert('写入 gamma-yct 案件失败：' + (err && err.message ? err.message : err));
+    STATE.syncedCaseId = STATE.syncedCaseId || 'GM202608062231EF';
+  }
+  try{
+    const origin = backendOriginForPrototype();
+    const res = await fetch(origin + '/api/start-automation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: STATE.syncedCaseId || 'GM202608062231EF',
+        sid: STATE.sid,
+        headless: false,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok || !data.ok){
+      throw new Error((data && data.error) || ('启动自动化失败 HTTP ' + res.status));
+    }
+    console.log('[enterPhaseB] automation started', data);
+  }catch(err){
+    console.warn('[enterPhaseB] start automation failed', err);
+    alert('启动后台填报失败：' + (err && err.message ? err.message : err) + '\n请确认已启动演示后端（:8766），然后重试「确认并建立」。');
+    return; // 未启动自动化则不进扫码页，避免空等
+  }
+  go(5);
 }
 
 /* ============ 屏 6：挂载 B 页（iframe 内 /qrlogin?sid） ============ */
@@ -1269,21 +1508,84 @@ function backendOriginForPrototype(){
   return 'http://localhost:8766';
 }
 
+function showLiveQr(dataUrl){
+  const panel = document.getElementById('qrPanel');
+  const img = document.getElementById('qrLive');
+  const status = document.getElementById('qrStatus');
+  if(!panel || !img) return;
+  if(!dataUrl){
+    panel.classList.remove('has-qr');
+    img.removeAttribute('src');
+    if(status){ status.className = 'qr-status'; status.textContent = '等待 RPA 同步二维码'; }
+    return;
+  }
+  const src = dataUrl.startsWith('data:') ? dataUrl : ('data:image/png;base64,' + dataUrl);
+  img.src = src;
+  panel.classList.add('has-qr');
+  if(status){ status.className = 'qr-status ok'; status.textContent = '请使用「随申办」扫码'; }
+}
+
+function stopQrPolling(){
+  if(STATE.qrPollTimer){
+    clearInterval(STATE.qrPollTimer);
+    STATE.qrPollTimer = null;
+  }
+}
+
+function startQrPolling(){
+  stopQrPolling();
+  const sid = STATE.sid;
+  if(!sid) return;
+  const origin = backendOriginForPrototype();
+  const tick = async () => {
+    if(STATE.step !== 5 || STATE.sid !== sid){ stopQrPolling(); return; }
+    try{
+      const res = await fetch(origin + '/api/automation/' + encodeURIComponent(sid));
+      const data = await res.json().catch(() => ({}));
+      if(!res.ok || !data.ok){
+        const st = document.getElementById('qrStatus');
+        if(st && !document.getElementById('qrPanel')?.classList.contains('has-qr')){
+          st.className = 'qr-status';
+          st.textContent = (data && data.error) ? ('等待中：' + data.error) : '等待自动化就绪…';
+        }
+        return;
+      }
+      if(data.hasQr && data.qr) showLiveQr(data.qr);
+      if(data.loggedIn){
+        stopQrPolling();
+        const st = document.getElementById('qrStatus');
+        if(st){ st.className = 'qr-status ok'; st.textContent = '扫码成功，正在进入下一步…'; }
+        scannedOK();
+      }
+    }catch(err){
+      const st = document.getElementById('qrStatus');
+      if(st && !document.getElementById('qrPanel')?.classList.contains('has-qr')){
+        st.className = 'qr-status err';
+        st.textContent = '二维码同步失败，请稍后重试或点下方按钮继续';
+      }
+    }
+  };
+  tick();
+  STATE.qrPollTimer = setInterval(tick, 1500);
+}
+
 function mountBPageFrame(){
   if (!STATE.sid) STATE.sid = makeSid();
   const params = new URLSearchParams(location.search);
-  // 默认即真实政务网（上海企业登记在线）；?mock=1 / ?mock=true 才走离线测试站
   const useMock = params.get('mock') === '1' || params.get('mock') === 'true';
   STATE.sidMock = useMock;
   const origin = backendOriginForPrototype();
-  const bUrl = origin + '/qrlogin?sid=' + encodeURIComponent(STATE.sid) + (useMock ? '&mock=true' : '');
+  let bUrl = origin + '/qrlogin?sid=' + encodeURIComponent(STATE.sid) + '&relay=1&v=2';
+  if (useMock) bUrl += '&mock=true';
   const frame = document.getElementById('bPageFrame');
-  if (frame && frame.getAttribute('data-sid') !== STATE.sid){
-    frame.src = bUrl;                 // B 页 bind 时后端自动启动 RPA（首连者触发）
+  if (frame){
+    frame.src = bUrl;
     frame.setAttribute('data-sid', STATE.sid);
   }
   const openA = document.getElementById('openAPageBtn');
   if (openA) openA.href = origin + '/acquire?sid=' + encodeURIComponent(STATE.sid) + (useMock ? '&mock=true' : '');
+  showLiveQr('');
+  startQrPolling();
 }
 
 /* 监听 B 页（iframe）扫码成功 → 自动进屏 7 */
@@ -1303,95 +1605,449 @@ window.addEventListener('message', function(ev){
 function scannedOK(){
   if (STATE.scannedDone) return;          // 防止 postMessage 与手动按钮重复触发
   STATE.scannedDone = true;
+  stopQrPolling();
   go(6);
   STATE.pipeRunning = true;
-  animatePipe();
+  startFillProgressPolling();
 }
 
-/* ============ 屏 7：RPA 流水线动画 ============ */
-function animatePipe(){
-  const step3 = document.getElementById('step3');
-  const step4 = document.getElementById('step4');
+/* ============ 屏 7：真实填报进度（转圈 + 实时文案；核名失败才提示补字号） ============ */
+function setPipeDot(stepEl, mode, text){
+  if(!stepEl) return;
+  const dot = stepEl.querySelector('.pipe-dot');
+  if(!dot) return;
+  dot.className = 'pipe-dot ' + mode;
+  if(mode === 'run') dot.textContent = '';
+  else if(mode === 'wait') dot.textContent = text || '4';
+  else dot.textContent = text || '✓';
+}
+
+function resetPipeProgressUI(){
   const tip3 = document.getElementById('step3Tip');
   const pendingTip = document.getElementById('pendingTip');
   const refillBtn = document.getElementById('gotoRefill');
-
-  const seq = [
-    { t:0,    tip:'正在填写「名称信息」表' },
-    { t:1500, tip:'正在填写「基本信息」表' },
-    { t:3000, tip:'正在填写「出资情况」表' },
-    { t:4500, tip:'正在填写「人员信息」表' },
-  ];
-  seq.forEach(s=>setTimeout(()=>{ if(STATE.step===6) tip3.textContent = s.tip; }, s.t));
-
-  // 5 秒后随机决定结果（演示：首次必失败 1 次，第二次必成功）
-  setTimeout(()=>{
-    if(STATE.step!==6) return;
-    if(STATE.refillTimes===2){
-      // 首次：模拟核名失败
-      step3.querySelector('.pipe-dot').className = 'pipe-dot done';
-      step3.querySelector('.pipe-dot').textContent = '✓';
-      step4.querySelector('.pipe-dot').className = 'pipe-dot run';
-      tip3.textContent = '核名结果回执已到：未通过';
-      pendingTip.style.display = 'flex';
-      refillBtn.style.display = '';
-    }else{
-      // 重填后：成功
-      step3.querySelector('.pipe-dot').className = 'pipe-dot done';
-      step3.querySelector('.pipe-dot').textContent = '✓';
-      step4.querySelector('.pipe-dot').className = 'pipe-dot run';
-      tip3.textContent = '正在提交至审批处';
-      setTimeout(()=>{
-        if(STATE.step!==6) return;
-        step4.querySelector('.pipe-dot').className = 'pipe-dot done';
-        step4.querySelector('.pipe-dot').textContent = '✓';
-        setTimeout(()=> go(8), 600);
-      }, 1800);
-    }
-  }, 3500);
+  const note = document.getElementById('nameFailNote');
+  setPipeDot(document.getElementById('step3'), 'run');
+  setPipeDot(document.getElementById('step4'), 'wait', '4');
+  if(tip3) tip3.textContent = '正在同步填报进度…';
+  if(pendingTip) pendingTip.style.display = 'none';
+  if(refillBtn) refillBtn.style.display = 'none';
+  if(note) note.style.display = 'none';
 }
 
-/* ============ 屏 6：扫码完成按钮（核心修复） ============ */
+function showNameFailUI(reason){
+  const tip3 = document.getElementById('step3Tip');
+  const pendingTip = document.getElementById('pendingTip');
+  const pendingText = document.getElementById('pendingTipText');
+  const refillBtn = document.getElementById('gotoRefill');
+  const note = document.getElementById('nameFailNote');
+  setPipeDot(document.getElementById('step3'), 'fail', '!');
+  setPipeDot(document.getElementById('step4'), 'wait', '4');
+  if(tip3) tip3.textContent = reason || '名称核验未通过';
+  if(pendingText) pendingText.textContent = '待办：名称核验未通过（' + (reason || '请补充字号后重试') + '）';
+  if(pendingTip) pendingTip.style.display = 'flex';
+  if(refillBtn) refillBtn.style.display = '';
+  if(note) note.style.display = '';
+}
+
+function stopFillProgressPolling(){
+  if(STATE.fillPollTimer){
+    clearInterval(STATE.fillPollTimer);
+    STATE.fillPollTimer = null;
+  }
+  STATE.pipeRunning = false;
+}
+
+function startFillProgressPolling(){
+  stopFillProgressPolling();
+  STATE.pipeRunning = true;
+  resetPipeProgressUI();
+  const sid = STATE.sid;
+  if(!sid){
+    const tip3 = document.getElementById('step3Tip');
+    if(tip3) tip3.textContent = '未关联自动化会话，请返回扫码页重试';
+    return;
+  }
+  const origin = backendOriginForPrototype();
+
+  const tick = async () => {
+    if(STATE.step !== 6 || STATE.sid !== sid){ stopFillProgressPolling(); return; }
+    try{
+      const res = await fetch(origin + '/api/automation/' + encodeURIComponent(sid));
+      const data = await res.json().catch(() => ({}));
+      if(!res.ok || !data.ok){
+        const tip3 = document.getElementById('step3Tip');
+        if(tip3) tip3.textContent = (data && data.error) || '等待自动化状态…';
+        return;
+      }
+      const tip3 = document.getElementById('step3Tip');
+      if(data.progress && tip3) tip3.textContent = data.progress;
+
+      if(data.nameFailed){
+        stopFillProgressPolling();
+        showNameFailUI(data.reason || data.progress || data.error);
+        return;
+      }
+
+      if(data.running || (!data.finished && !data.fillOk)){
+        setPipeDot(document.getElementById('step3'), 'run');
+        setPipeDot(document.getElementById('step4'), 'wait', '4');
+      }
+
+      if(data.fillOk && (data.finished || (data.stagesDone || []).length >= 4)){
+        stopFillProgressPolling();
+        setPipeDot(document.getElementById('step3'), 'done', '✓');
+        setPipeDot(document.getElementById('step4'), 'run');
+        if(tip3) tip3.textContent = data.progress || '填报完成，正在整理结果…';
+        setTimeout(()=>{
+          if(STATE.step !== 6) return;
+          setPipeDot(document.getElementById('step4'), 'done', '✓');
+          setTimeout(()=> go(8), 500);
+        }, 700);
+        return;
+      }
+
+      if(data.finished && !data.fillOk && !data.nameFailed){
+        stopFillProgressPolling();
+        setPipeDot(document.getElementById('step3'), 'fail', '!');
+        if(tip3) tip3.textContent = data.error || data.reason || data.progress || '填报中断，需人工处理';
+        const pendingTip = document.getElementById('pendingTip');
+        const pendingText = document.getElementById('pendingTipText');
+        if(pendingText) pendingText.textContent = '待办：' + (data.error || data.reason || '填报异常，请查看截图或联系协助');
+        if(pendingTip) pendingTip.style.display = 'flex';
+      }
+    }catch(err){
+      const tip3 = document.getElementById('step3Tip');
+      if(tip3) tip3.textContent = '进度同步失败，将自动重试…';
+    }
+  };
+
+  tick();
+  STATE.fillPollTimer = setInterval(tick, 1500);
+}
+
+/* ============ 屏 6：扫码完成按钮 ============ */
 document.getElementById('scannedBtn').addEventListener('click', ()=> scannedOK());
 
 /* ============ 屏 7 → 8：去补充字号 ============ */
 document.getElementById('gotoRefill').addEventListener('click', ()=> go(7));
 
 /* ============ 屏 8：重新提交核名 ============ */
-function resubmit(){
-  STATE.refillTimes -= 1;
-  if(STATE.refillTimes <= 0){
-    STATE.refillTimes = 0;
-    alert('演示模式：已达重填次数上限（5/5），将转人工');
-    return;
-  }
-  // 回进度跟踪，RPA 继续
+async function resubmit(){
+  STATE.refillTimes = Math.max(0, (STATE.refillTimes || 1) - 1);
+  if(STATE.refillTimes < 0) STATE.refillTimes = 0;
   go(6);
-  // 重置第 3、4 步
-  const step3 = document.getElementById('step3');
-  step3.querySelector('.pipe-dot').className = 'pipe-dot run';
-  step3.querySelector('.pipe-dot').textContent = '';
-  document.getElementById('step4').querySelector('.pipe-dot').className = 'pipe-dot wait';
-  document.getElementById('step4').querySelector('.pipe-dot').textContent = '4';
-  document.getElementById('pendingTip').style.display = 'none';
-  document.getElementById('gotoRefill').style.display = 'none';
-  // 立即走成功路径（演示）
-  STATE.refillTimes = 0;  // 下一次 animatePipe 走成功分支
-  setTimeout(()=>{
-    if(STATE.step===6) animatePipe();
-  }, 300);
+  resetPipeProgressUI();
+  try{
+    await syncCasePayloadToGamma();
+  }catch(err){
+    console.warn('[resubmit] sync failed', err);
+  }
+  try{
+    const origin = backendOriginForPrototype();
+    if(!STATE.sid) STATE.sid = makeSid();
+    const res = await fetch(origin + '/api/start-automation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: STATE.syncedCaseId || STATE.caseId || 'GM202608062231EF',
+        sid: STATE.sid,
+        headless: false,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok || !data.ok){
+      throw new Error((data && data.error) || ('重启填报失败 HTTP ' + res.status));
+    }
+  }catch(err){
+    alert('重新启动填报失败：' + (err && err.message ? err.message : err));
+  }
+  STATE.pipeRunning = true;
+  startFillProgressPolling();
 }
 
-/* ============ 屏 4：OCR 模拟 ============ */
-function simulateOCR(el, label){
-  el.classList.add('done');
-  el.innerHTML = `
-    <span class="ocr-ok">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-      ${label} · 已识别
-    </span>
-    <span style="font-size:10.5px;">310101********8812</span>
+/* ============ 屏 4：按人去重上传身份证 ============ */
+function personKeyOf(name, mobile){
+  const n = String(name || '').trim();
+  const m = String(mobile || '').trim();
+  // 同名同号视为同一人；key 仅用 ASCII，避免 HTML id / dataset 异常
+  const raw = (n + '|' + m).toLowerCase();
+  let hash = 2166136261;
+  for(let i = 0; i < raw.length; i++){
+    hash ^= raw.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return 'p' + (hash >>> 0).toString(36);
+}
+
+function isValidMobile(v){
+  return /^1\d{10}$/.test(String(v || '').trim());
+}
+
+function requireMobile(value, label){
+  const v = String(value || '').trim();
+  if(!v){ alert('请填写' + label); return false; }
+  if(!isValidMobile(v)){ alert(label + '须为 11 位手机号'); return false; }
+  return true;
+}
+
+function bindGlobalMobileValidation(){
+  const mark = (el) => {
+    if(!el || el.dataset.mobileBound === '1') return;
+    if(el.id === 'code') return; // 验证码不是手机号
+    el.dataset.mobileBound = '1';
+    el.setAttribute('maxlength', '11');
+    el.setAttribute('inputmode', 'numeric');
+    el.addEventListener('input', () => {
+      el.value = el.value.replace(/\D/g, '').slice(0, 11);
+      el.classList.toggle('invalid', el.value.length > 0 && !isValidMobile(el.value));
+    });
+    el.addEventListener('blur', () => {
+      const v = el.value.trim();
+      if(!v){ el.classList.remove('invalid'); return; }
+      if(!isValidMobile(v)){
+        el.classList.add('invalid');
+        alert('手机号须为 11 位，当前不满足要求');
+      }else{
+        el.classList.remove('invalid');
+      }
+    });
+  };
+  document.querySelectorAll('input[type=tel]').forEach(mark);
+  // 动态股东电话
+  const npList = document.getElementById('npList');
+  if(npList && !npList.dataset.mobileObs){
+    npList.dataset.mobileObs = '1';
+    new MutationObserver(() => {
+      npList.querySelectorAll('input.np-phone, input[type=tel]').forEach(mark);
+    }).observe(npList, { childList: true, subtree: true });
+  }
+}
+
+function collectIdPeople(){
+  const map = new Map();
+  const add = (role, name, mobile) => {
+    const personName = String(name || '').trim();
+    if(!personName) return;
+    const key = personKeyOf(personName, mobile);
+    if(!map.has(key)){
+      map.set(key, { personKey: key, personName, mobile: String(mobile || '').trim(), roles: [] });
+    }
+    const item = map.get(key);
+    if(role && !item.roles.includes(role)) item.roles.push(role);
+  };
+
+  const legalName = (document.getElementById('legalName').value || '').trim();
+  const legalMobile = (document.getElementById('legalMobile').value || '').trim();
+  add('法人', legalName, legalMobile);
+
+  document.querySelectorAll('#npList .np-card').forEach(c => {
+    add(
+      '股东',
+      (c.querySelector('.np-name').value || '').trim(),
+      (c.querySelector('.np-phone').value || '').trim()
+    );
+  });
+
+  const dirSame = document.getElementById('dirSame').checked;
+  add(
+    '董事',
+    dirSame ? legalName : (document.getElementById('dirName').value || '').trim(),
+    dirSame ? legalMobile : (document.getElementById('dirMobile').value || '').trim()
+  );
+
+  const supOn = document.querySelector('#supSeg .seg-btn.on')?.dataset?.v === '1';
+  if(supOn){
+    add(
+      '监事',
+      (document.getElementById('supName').value || '').trim(),
+      (document.getElementById('supMobile').value || '').trim()
+    );
+  }
+
+  const finSame = document.getElementById('finSame').checked;
+  add(
+    '财务',
+    finSame ? legalName : (document.getElementById('finName').value || '').trim(),
+    finSame ? legalMobile : (document.getElementById('finMobile').value || '').trim()
+  );
+
+  add(
+    '联络员',
+    (document.getElementById('liaName').value || '').trim(),
+    (document.getElementById('liaMobile').value || '').trim()
+  );
+  add(
+    '最终受益人',
+    (document.getElementById('uboName').value || '').trim(),
+    (document.getElementById('uboMobile').value || '').trim()
+  );
+
+  return [...map.values()];
+}
+
+function ensureIdUploadRecord(person){
+  if(!STATE.idUploads[person.personKey]){
+    STATE.idUploads[person.personKey] = {
+      personKey: person.personKey,
+      personName: person.personName,
+      roles: person.roles.slice(),
+      frontFileId: '',
+      backFileId: '',
+      frontName: '',
+      backName: '',
+      frontPreview: '',
+      backPreview: '',
+    };
+  }else{
+    const u = STATE.idUploads[person.personKey];
+    u.personName = person.personName;
+    u.roles = person.roles.slice();
+  }
+  return STATE.idUploads[person.personKey];
+}
+
+function renderPersonIdSlot(personKey, side){
+  const u = STATE.idUploads[personKey] || {};
+  const isFront = side === 'front';
+  const fileId = isFront ? u.frontFileId : u.backFileId;
+  const fileName = isFront ? u.frontName : u.backName;
+  const preview = isFront ? u.frontPreview : u.backPreview;
+  const title = isFront ? '人像面' : '国徽面';
+  const hint = isFront ? '点击上传正面（人像）' : '点击上传反面（国徽）';
+  const inputId = `idFile_${personKey}_${side}`;
+  const cardId = `idCard_${personKey}_${side}`;
+  const done = !!fileId;
+  return `
+    <div class="ocr-card${done ? ' done' : ''}" id="${cardId}" role="button" tabindex="0"
+      data-person-key="${personKey}" data-side="${side}">
+      <input type="file" id="${inputId}" accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+        data-person-key="${personKey}" data-side="${side}" />
+      ${preview ? `<img class="ocr-preview" src="${preview}" alt="${title}" />` : ''}
+      ${done ? `
+        <span class="ocr-ok">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+          ${title} · 已上传
+        </span>
+        <span class="ocr-name" title="${fileName || fileId}">${fileName || fileId}</span>
+      ` : `
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        <span class="ocr-side-label">${title}</span>
+        <span class="ocr-hint" style="font-size:10.5px;">${hint}</span>
+      `}
+    </div>
   `;
+}
+
+function refreshIdPeopleUploads(){
+  const list = document.getElementById('idPeopleList');
+  if(!list) return;
+  const people = collectIdPeople();
+  people.forEach(ensureIdUploadRecord);
+  if(!people.length){
+    list.innerHTML = '<div class="id-people-empty">请先完成人员信息，再返回本页上传证件</div>';
+    return;
+  }
+  list.innerHTML = people.map(p => {
+    const u = STATE.idUploads[p.personKey] || {};
+    const ok = !!(u.frontFileId && u.backFileId);
+    return `
+      <div class="id-person" data-person-key="${p.personKey}">
+        <div class="id-person-h">
+          <div>
+            <div class="id-person-name">${p.personName}</div>
+            <div class="id-person-roles">${p.roles.map(r => `<span>${r}</span>`).join('')}</div>
+          </div>
+          <div class="id-person-status${ok ? ' ok' : ''}">${ok ? '正反面已齐' : '待上传'}</div>
+        </div>
+        <div class="ocr-row">
+          ${renderPersonIdSlot(p.personKey, 'front')}
+          ${renderPersonIdSlot(p.personKey, 'back')}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  list.querySelectorAll('.ocr-card[data-person-key]').forEach(card => {
+    const input = card.querySelector('input[type=file]');
+    if(!input) return;
+    const openPicker = (e) => {
+      if(e.target === input) return;
+      e.preventDefault();
+      input.click();
+    };
+    card.addEventListener('click', openPicker);
+    card.addEventListener('keydown', (e) => {
+      if(e.key === 'Enter' || e.key === ' '){ openPicker(e); }
+    });
+    input.addEventListener('change', () => {
+      onPersonIdSelected(input.dataset.personKey, input.dataset.side, input);
+    });
+  });
+}
+
+async function onPersonIdSelected(personKey, side, input){
+  const people = collectIdPeople();
+  const person = people.find(p => p.personKey === personKey);
+  if(!person){ alert('人员信息已变更，请返回上一步核对'); refreshIdPeopleUploads(); return; }
+  const u = ensureIdUploadRecord(person);
+  const file = input && input.files && input.files[0];
+  if(!file){ alert('未选择文件'); return; }
+  const card = document.getElementById('idCard_' + personKey + '_' + side) || input.closest('.ocr-card');
+  if(!/^image\/(jpeg|png|jpg)$/i.test(file.type || '') && !/\.(jpe?g|png)$/i.test(file.name || '')){
+    alert('仅支持 jpg/png 图片');
+    input.value = '';
+    return;
+  }
+  if(file.size > 5 * 1024 * 1024){
+    alert('单张不超过 5MB');
+    input.value = '';
+    return;
+  }
+  if(card) card.classList.add('uploading');
+  const localUrl = URL.createObjectURL(file);
+  if(side === 'front') u.frontPreview = localUrl;
+  else u.backPreview = localUrl;
+  try{
+    const fd = new FormData();
+    fd.append('side', side);
+    fd.append('file', file, file.name);
+    fd.append('personKey', person.personKey);
+    fd.append('personName', person.personName);
+    fd.append('roles', JSON.stringify(person.roles));
+    const origin = backendOriginForPrototype();
+    const caseId = STATE.caseId || STATE.syncedCaseId || 'GM202608062231EF';
+    const res = await fetch(origin + '/api/cases/' + encodeURIComponent(caseId) + '/id-card', {
+      method: 'POST',
+      body: fd,
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok || !data.ok){
+      throw new Error((data && (data.error || data.detail)) || ('上传失败 HTTP ' + res.status));
+    }
+    if(side === 'front'){
+      u.frontFileId = data.fileId || '';
+      u.frontName = data.fileName || file.name;
+    }else{
+      u.backFileId = data.fileId || '';
+      u.backName = data.fileName || file.name;
+    }
+    if(!(side === 'front' ? u.frontFileId : u.backFileId)){
+      throw new Error('服务未返回文件 ID');
+    }
+    STATE.caseId = data.caseId || caseId;
+    refreshIdPeopleUploads();
+  }catch(err){
+    if(side === 'front'){ u.frontPreview = ''; u.frontFileId = ''; u.frontName = ''; }
+    else { u.backPreview = ''; u.backFileId = ''; u.backName = ''; }
+    if(card) card.classList.remove('uploading');
+    alert('身份证上传失败：' + (err && err.message ? err.message : err));
+    refreshIdPeopleUploads();
+  }
+}
+
+function bindIdCardUploads(){
+  refreshIdPeopleUploads();
 }
 
 /* ============ 屏 3：人员信息逻辑 ============ */
@@ -1434,7 +2090,7 @@ function toggleSameLegal(prefix){
 function requireRole(prefix, label){
   if(document.getElementById(prefix + 'Same') && document.getElementById(prefix + 'Same').checked) return true;
   if(!document.getElementById(prefix + 'Name').value.trim()){ alert('请填写' + label + '姓名'); return false; }
-  if(!document.getElementById(prefix + 'Mobile').value.trim()){ alert('请填写' + label + '手机号'); return false; }
+  if(!requireMobile(document.getElementById(prefix + 'Mobile').value, label + '手机号')) return false;
   return true;
 }
 function npCardHtml(idx, data){
@@ -1478,14 +2134,14 @@ function removeNaturalPerson(btn){
 }
 function validatePersonnel(){
   if(!document.getElementById('legalName').value.trim()){ alert('请填写法人姓名'); return false; }
-  if(!document.getElementById('legalMobile').value.trim()){ alert('请填写法人手机号'); return false; }
+  if(!requireMobile(document.getElementById('legalMobile').value, '法人手机号')) return false;
   const cards = document.querySelectorAll('#npList .np-card');
   if(cards.length === 0){ alert('请至少添加 1 名自然人'); return false; }
   let npSum = 0;
   for(const c of cards){
     if(!c.querySelector('.np-name').value.trim()){ alert('有自然人未填写姓名'); return false; }
     if(!c.querySelector('.np-ethnicity').value.trim()){ alert('有自然人未填写民族'); return false; }
-    if(!c.querySelector('.np-phone').value.trim()){ alert('有自然人未填写电话'); return false; }
+    if(!requireMobile(c.querySelector('.np-phone').value, '自然人电话')) return false;
     if(!c.querySelector('.np-address').value.trim()){ alert('有自然人未填写住所'); return false; }
     const pct = parseFloat(c.querySelector('.np-pct').value);
     if(isNaN(pct) || pct <= 0){ alert('有自然人未填写有效持股比例（须 > 0）'); return false; }
@@ -1493,16 +2149,25 @@ function validatePersonnel(){
   }
   if(Math.abs(npSum - 100) > 0.01){ alert('自然人持股比例合计须为 100%（当前 ' + (Math.round(npSum*100)/100) + '%）'); return false; }
   if(!requireRole('dir', '董事')) return false;
+  if(!document.getElementById('dirSame').checked){
+    if(!requireMobile(document.getElementById('dirMobile').value, '董事手机号')) return false;
+  }
   const supOn = document.querySelector('#supSeg .seg-btn.on').dataset.v === '1';
-  if(supOn && !document.getElementById('supName').value.trim()){ alert('已选择设立监事，请填写监事姓名'); return false; }
+  if(supOn){
+    if(!document.getElementById('supName').value.trim()){ alert('已选择设立监事，请填写监事姓名'); return false; }
+    if(!requireMobile(document.getElementById('supMobile').value, '监事手机号')) return false;
+  }
   if(!requireRole('fin', '财务负责人')) return false;
+  if(!document.getElementById('finSame').checked){
+    if(!requireMobile(document.getElementById('finMobile').value, '财务负责人手机号')) return false;
+  }
   if(!document.getElementById('liaName').value.trim()){ alert('请填写联络员姓名'); return false; }
-  if(!document.getElementById('liaMobile').value.trim()){ alert('请填写联络员手机号'); return false; }
+  if(!requireMobile(document.getElementById('liaMobile').value, '联络员手机号')) return false;
   if(!document.getElementById('liaEmail').value.trim()){ alert('请填写联络员邮箱'); return false; }
   if(!document.getElementById('liaAddress').value.trim()){ alert('请填写联络员住所'); return false; }
   if(!document.getElementById('uboName').value.trim()){ alert('请填写最终受益人姓名'); return false; }
-  if(!document.getElementById('uboMobile').value.trim()){ alert('请填写最终受益人手机号'); return false; }
-  if(!document.getElementById('uboIdValid').value.trim()){ alert('请填写最终受益人身份证有效期'); return false; }
+  if(!requireMobile(document.getElementById('uboMobile').value, '最终受益人手机号')) return false;
+  if(!document.getElementById('uboIdValid').value.trim()){ alert('请选择最终受益人身份证有效期'); return false; }
   const uboPct = parseFloat(document.getElementById('uboPct').value);
   if(isNaN(uboPct) || uboPct <= 0){ alert('请填写最终受益人有效持股比例（须 > 0）'); return false; }
   return true;
@@ -1516,7 +2181,9 @@ function validatePersonnel(){
     });
   });
 });
-addNaturalPerson({name:'张伟', ethnicity:'汉族', phone:'13984439335', pct:'100', address:''});
+addNaturalPerson();
+bindGlobalMobileValidation();
+bindIdCardUploads();
 
 /* ============ 屏 8：实时校验 ============ */
 ['nm1','nm2'].forEach(id=>{
@@ -1589,28 +2256,33 @@ function updateZiCount(){
     document.querySelectorAll('#nameChips .chip.zi.on').length;
 }
 function currentOrgForm(){
-  return document.getElementById('orgForm').value || '有限公司';
+  return (document.getElementById('orgForm').value || '').trim();
 }
 function refreshName(){
   const sel = [...document.querySelectorAll('#nameChips .chip.zi.on')].map(c=>c.dataset.zi).filter(Boolean);
-  const ind = document.getElementById('industry').value || '科技';
+  const ind = (document.getElementById('industry').value || '').trim();
   const org = currentOrgForm();
-  const zi  = sel[0] || '鑫慧众盒';
-  document.getElementById('aiName').value = `上海${zi}${ind}${org}`;
   const nh = document.getElementById('nameHint');
-  if(sel.length){
-    const r = comboRate(sel[0]);
-    nh.className = r>=80 ? 'hint ok show' : 'hint warn show';
-    nh.innerHTML = r>=80
-      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> 已选 ${sel.length} 个字号，首选「${sel[0]}」组合通过率约 ${r}%`
-      : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> 已选 ${sel.length} 个字号，含低通过率字，建议优先高通过率候选`;
-  } else { nh.className='hint'; nh.innerHTML=''; }
+  if(!sel.length || !ind || !org){
+    document.getElementById('aiName').value = '';
+    nh.className = 'hint';
+    nh.innerHTML = '';
+    updateReco();
+    return;
+  }
+  const zi = sel[0];
+  document.getElementById('aiName').value = `上海${zi}${ind}${org}`;
+  const r = comboRate(zi);
+  nh.className = r>=80 ? 'hint ok show' : 'hint warn show';
+  nh.innerHTML = r>=80
+    ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> 已选 ${sel.length} 个字号，首选「${sel[0]}」组合通过率约 ${r}%`
+    : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> 已选 ${sel.length} 个字号，含低通过率字，建议优先高通过率候选`;
   updateReco();
 }
 function updateReco(){
   const sel = [...document.querySelectorAll('#nameChips .chip.zi.on')].map(c=>c.dataset.zi).filter(Boolean);
-  const ind = document.getElementById('industry').value || '科技';
-  const org = currentOrgForm();
+  const ind = (document.getElementById('industry').value || '').trim() || '科技';
+  const org = currentOrgForm() || '有限公司';
   const list = document.getElementById('recoList');
   if(sel.length===0){ list.innerHTML = '<div class="reco-empty">先选 / 生成一个字号，AI 自动给出推荐组合与通过率</div>'; return; }
   list.innerHTML = sel.slice(0,2).map((z,i)=>{
@@ -1655,7 +2327,7 @@ function genZiCandidates(){
   const set = new Set();
   while(set.size < 10){ set.add(HIGH[Math.floor(Math.random()*HIGH.length)] + HIGH[Math.floor(Math.random()*HIGH.length)]); }
   document.getElementById('nameChips').innerHTML='';
-  [...set].forEach((c,idx)=> addZiChip(c, comboRate(c), idx<3));
+  [...set].forEach((c)=> addZiChip(c, comboRate(c), false));
 }
 document.getElementById('aiGenZi').addEventListener('click', genZiCandidates);
 document.getElementById('industry').addEventListener('input', refreshName);
@@ -1664,16 +2336,16 @@ document.getElementById('orgForm').addEventListener('change', refreshName);
 /* ============ 屏 5：确认单同步屏1动态值 ============ */
 function syncConfirm(){
   const name = document.getElementById('aiName').value;
-  const ind  = document.getElementById('industry').value || '科技';
-  const org  = currentOrgForm();
-  const cap  = document.getElementById('capital').value || '100';
+  const ind  = document.getElementById('industry').value.trim() || '—';
+  const org  = currentOrgForm() || '—';
+  const cap  = document.getElementById('capital').value;
   const addr = document.getElementById('regAddress').value.trim() || '—';
   const post = document.getElementById('postalCode').value.trim() || '—';
   const scope = document.getElementById('scope').value || '（未填写）';
-  document.getElementById('sumName').textContent = name;
+  document.getElementById('sumName').textContent = name || '—';
   document.getElementById('sumIndustry').textContent = ind;
   document.getElementById('sumOrgForm').textContent = org;
-  document.getElementById('sumCapital').textContent = cap + ' 万人民币';
+  document.getElementById('sumCapital').textContent = cap ? (cap + ' 万人民币') : '—';
   document.getElementById('sumRegAddress').textContent = addr;
   document.getElementById('sumPostalCode').textContent = post;
   document.getElementById('sumScope').textContent = scope;
@@ -1692,6 +2364,12 @@ function syncConfirm(){
   document.getElementById('sumFin').textContent = document.getElementById('finName').value.trim() || '—';
   document.getElementById('sumLia').textContent = document.getElementById('liaName').value.trim() || '—';
   document.getElementById('sumUbo').textContent = document.getElementById('uboName').value.trim() || '—';
+  const tags = collectIdPeople().map(p => {
+    const u = STATE.idUploads[p.personKey] || {};
+    const ok = !!(u.frontFileId && u.backFileId);
+    return `<span>${p.personName}·${ok ? '已齐' : '待传'}（${p.roles.join('/')}）</span>`;
+  });
+  document.getElementById('sumIdCards').innerHTML = tags.length ? tags.join('') : '<span>未上传</span>';
 }
 
 /* ============ 初始化 ============ */

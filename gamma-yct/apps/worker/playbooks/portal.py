@@ -287,14 +287,20 @@ def _click_scan_login(page: Page) -> tuple[bool, Page]:
     return False, page
 
 
-def wait_qr_login(case_id: str, page: Page) -> Page:
+def wait_qr_login(
+    case_id: str,
+    page: Page,
+    *,
+    on_qr=None,
+    on_login=None,
+) -> Page:
     """强制扫码：必须点到扫码入口并等待登录成功（不跳过）。"""
-    from apps.worker.playbooks.qr_login import _capture_qr
+    from apps.worker.playbooks.qr_login import _capture_qr, capture_qr_data_uri
 
     store.set_status(
         case_id,
         statuses.AWAITING_QR_LOGIN,
-        customer_message="请使用随申办扫描浏览器中的二维码登录一网通办",
+        customer_message="请使用随申办扫描演示页中的二维码登录一网通办",
     )
 
     clicked, page = _click_scan_login(page)
@@ -313,16 +319,29 @@ def wait_qr_login(case_id: str, page: Page) -> Page:
                 statuses.LOGGED_IN,
                 reason="企业入口后已是登录态，未再出现扫码页",
             )
+            if on_login:
+                try:
+                    on_login()
+                except Exception:
+                    pass
             return page
         _shot(page, case_id, "qr-login-missing")
         raise RuntimeError("扫码登录: 未命中可点击目标，已中止后续步骤")
 
     time.sleep(1.0)
     _shot(page, case_id, "qr-login-shown")
-    if config.CAPTURE_QR:
-        _capture_qr(page, case_id)
+    if config.CAPTURE_QR or on_qr:
+        uri = capture_qr_data_uri(page, case_id=case_id)
+        if on_qr and uri:
+            try:
+                on_qr(uri)
+            except Exception:
+                pass
+        elif config.CAPTURE_QR:
+            _capture_qr(page, case_id)
 
     deadline = time.time() + config.LOGIN_TIMEOUT_SEC
+    last_qr_push = 0.0
     while time.time() < deadline:
         if store.get_case(case_id)["status"] == statuses.CANCELLED:
             raise RuntimeError("cancelled")
@@ -336,6 +355,11 @@ def wait_qr_login(case_id: str, page: Page) -> Page:
                     pass
                 store.set_status(case_id, statuses.LOGGED_IN)
                 _shot(p, case_id, "logged-in")
+                if on_login:
+                    try:
+                        on_login()
+                    except Exception:
+                        pass
                 return p
             try:
                 body = p.locator("body").inner_text(timeout=800)
@@ -344,7 +368,23 @@ def wait_qr_login(case_id: str, page: Page) -> Page:
             if "我已知晓上述内容" in body or "不涉及前置审批" in body:
                 store.set_status(case_id, statuses.LOGGED_IN)
                 _shot(p, case_id, "logged-in-post-redirect")
+                if on_login:
+                    try:
+                        on_login()
+                    except Exception:
+                        pass
                 return p
+
+        # 二维码会刷新：周期性推送到演示页
+        now = time.time()
+        if on_qr and now - last_qr_push >= 4.0:
+            last_qr_push = now
+            try:
+                uri = capture_qr_data_uri(page, case_id=case_id)
+                if uri:
+                    on_qr(uri)
+            except Exception:
+                pass
         time.sleep(2)
 
     _shot(page, case_id, "login-timeout")
@@ -410,7 +450,14 @@ def acknowledge_and_enter_establishment(page: Page, case_id: str) -> Page:
     return page
 
 
-def ensure_portal_logged_in(case_id: str, page: Page, *, allow_qr: bool = True) -> Page:
+def ensure_portal_logged_in(
+    case_id: str,
+    page: Page,
+    *,
+    allow_qr: bool = True,
+    on_qr=None,
+    on_login=None,
+) -> Page:
     """强制走门户 → 开办 → 企业 → 扫码。allow_qr=False 仅用于显式调试，默认禁止。"""
     store.set_status(case_id, statuses.LOGGING_IN, customer_message="正在打开企业登记门户…")
     goto_portal(page, case_id)
@@ -419,7 +466,7 @@ def ensure_portal_logged_in(case_id: str, page: Page, *, allow_qr: bool = True) 
     if not allow_qr:
         raise RuntimeError("当前流程禁止跳过扫码登录（SKIP_QR_LOGIN/allow_qr=false）")
 
-    return wait_qr_login(case_id, page)
+    return wait_qr_login(case_id, page, on_qr=on_qr, on_login=on_login)
 
 
 def open_name_declaration_from_portal(page: Page, case_id: str) -> Page:

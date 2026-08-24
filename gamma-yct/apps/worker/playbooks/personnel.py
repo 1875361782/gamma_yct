@@ -30,7 +30,6 @@ DEFAULT_ADDRESS = "贵州省安顺市西秀区鸡场乡鸡场散居户"
 DEFAULT_MOBILE = "13984439335"
 DEFAULT_ID_VALID = "2032-06-24"
 DEFAULT_NAME = "吴文彬"
-DEFAULT_HUKOU = ["贵州省", "安顺市", "西秀区"]
 DEFAULT_ID_FRONT = Path(r"C:\Users\Lenovo\Desktop\身份证正面.jpg")
 DEFAULT_ID_BACK = Path(r"C:\Users\Lenovo\Desktop\身份证反面.jpg")
 
@@ -278,8 +277,16 @@ def _wait_ocr_idle(dialog, page: Page, timeout_ms: int = 25000) -> dict[str, Any
     return info
 
 
-def _fix_id_upload(dialog, page: Page, *, force: bool = False) -> dict[str, Any]:
-    """证件图处理失败时：删旧图并重新上传桌面身份证。force=True 强制重传。"""
+def _fix_id_upload(
+    dialog,
+    page: Page,
+    *,
+    force: bool = False,
+    case_id: str = "",
+    payload: dict | None = None,
+    person_name: str = "",
+) -> dict[str, Any]:
+    """证件图处理失败时：删旧图并重新上传（优先案件已上传图）。force=True 强制重传。"""
     out: dict[str, Any] = {"attempted": False, "force": force}
     try:
         txt = dialog.inner_text(timeout=800) or ""
@@ -325,10 +332,16 @@ def _fix_id_upload(dialog, page: Page, *, force: bool = False) -> dict[str, Any]
             break
     out["deleted"] = deleted
 
-    front = DEFAULT_ID_FRONT if DEFAULT_ID_FRONT.exists() else None
-    back = DEFAULT_ID_BACK if DEFAULT_ID_BACK.exists() else None
+    front, back = store.resolve_id_card_images(
+        case_id,
+        payload,
+        person_name=person_name or None,
+        fallback_front=DEFAULT_ID_FRONT,
+        fallback_back=DEFAULT_ID_BACK,
+    )
     out["frontPath"] = str(front) if front else None
     out["backPath"] = str(back) if back else None
+    out["personName"] = person_name or ""
     try:
         inputs = dialog.locator("input[type='file']")
         n = inputs.count()
@@ -348,14 +361,12 @@ def _fix_id_upload(dialog, page: Page, *, force: bool = False) -> dict[str, Any]
 
 
 def _prepare_director_dialog(dlg, page: Page, cfg: dict[str, Any]) -> dict[str, Any]:
-    """董事弹窗提交前必填项：法定代表人=是、户籍、证件图。"""
+    """董事弹窗提交前必填项：法定代表人=是、证件图。户籍按计划不填。"""
     info: dict[str, Any] = {}
     info["legalRep"] = _set_yes_no(dlg, "法定代表人", True) or _set_yes_no(
         dlg, "是否由董事担任", True
     )
-    info["hukou"] = _select_cascader(dlg, "户籍所属省市县", cfg["hukou"]) or _select_cascader(
-        dlg, "户籍", cfg["hukou"]
-    )
+    info["hukou"] = "skipped"
     # 职务保持默认「董事（代表公司执行事务的董事）」即可
     # 产生方式若空则选股东委派
     try:
@@ -823,17 +834,70 @@ def _birth_from_id(id_no: str) -> str:
 
 def _defaults(payload: dict[str, Any]) -> dict[str, Any]:
     inv = (payload.get("investors") or [{}])[0]
-    lr = ((payload.get("personnel") or {}).get("legalRepresentative") or {})
+    personnel = payload.get("personnel") or {}
+    lr = personnel.get("legalRepresentative") or {}
+    directors = personnel.get("directors") or []
+    supervisors = personnel.get("supervisors") or []
+    finance = personnel.get("financeOfficer") or {}
+    liaison = personnel.get("liaisonOfficer") or {}
+    bo = payload.get("beneficialOwner") or {}
+    dir0 = directors[0] if directors else {}
+    sup0 = supervisors[0] if supervisors else {}
+
     id_no = (inv.get("idNumber") or lr.get("idNumber") or "").strip()
+    lr_name = (lr.get("name") or inv.get("name") or DEFAULT_NAME).strip()
+    lr_mobile = (lr.get("mobile") or inv.get("mobile") or DEFAULT_MOBILE).strip()
+    address = (
+        (liaison.get("address") if isinstance(liaison, dict) else None)
+        or inv.get("address")
+        or DEFAULT_ADDRESS
+    ).strip()
+    email = (
+        (liaison.get("email") if isinstance(liaison, dict) else None) or DEFAULT_EMAIL
+    ).strip()
+
+    try:
+        ownership_ratio = float(bo.get("ownershipRatio") or 0)
+    except (TypeError, ValueError):
+        ownership_ratio = 0.0
+    if ownership_ratio <= 0:
+        ownership_ratio = 100.0
+    ratio_str = (
+        str(int(ownership_ratio))
+        if float(ownership_ratio).is_integer()
+        else str(ownership_ratio)
+    )
+
+    establish_supervisor = bool(personnel.get("establishSupervisor"))
+    if not establish_supervisor and supervisors:
+        # 有监事名单则视为设立
+        establish_supervisor = any(str((s or {}).get("name") or "").strip() for s in supervisors)
+
     return {
-        "name": (inv.get("name") or lr.get("name") or DEFAULT_NAME).strip(),
-        "mobile": (inv.get("mobile") or lr.get("mobile") or DEFAULT_MOBILE).strip(),
-        "address": (inv.get("address") or DEFAULT_ADDRESS).strip(),
-        "email": DEFAULT_EMAIL,
-        "id_valid": DEFAULT_ID_VALID,
+        "name": lr_name,
+        "mobile": lr_mobile,
+        "address": address,
+        "email": email,
+        "id_valid": (bo.get("idValidUntil") or DEFAULT_ID_VALID).strip() or DEFAULT_ID_VALID,
         "id_number": id_no,
         "birth": _birth_from_id(id_no) or "2002-10-31",
-        "hukou": list(DEFAULT_HUKOU),
+        "director_name": (dir0.get("name") or lr_name).strip(),
+        "director_mobile": (dir0.get("mobile") or lr_mobile).strip(),
+        "finance_name": (finance.get("name") or lr_name).strip() if isinstance(finance, dict) else lr_name,
+        "finance_mobile": (finance.get("mobile") or lr_mobile).strip()
+        if isinstance(finance, dict)
+        else lr_mobile,
+        "liaison_name": (liaison.get("name") or lr_name).strip() if isinstance(liaison, dict) else lr_name,
+        "liaison_mobile": (liaison.get("mobile") or lr_mobile).strip()
+        if isinstance(liaison, dict)
+        else lr_mobile,
+        "supervisor_name": (sup0.get("name") or "").strip(),
+        "supervisor_mobile": (sup0.get("mobile") or "").strip(),
+        "establish_supervisor": establish_supervisor,
+        "bo_name": (bo.get("name") or lr_name).strip(),
+        "bo_mobile": (bo.get("mobile") or lr_mobile).strip(),
+        "bo_address": (bo.get("address") or address).strip(),
+        "ownership_ratio": ratio_str,
     }
 
 
@@ -2383,15 +2447,17 @@ def _dropdown_shows(scope, label: str, expect: str) -> bool:
 
 
 def _fill_bo_form(page: Page, form_scope, cfg: dict[str, Any], result: dict[str, Any]) -> None:
-    """受益所有人表单：选吴文彬，再填期限/手机/地址/股权/当日。填后校验真实值。"""
-    person = (cfg.get("name") or DEFAULT_NAME).strip()
-    mobile = cfg.get("mobile") or DEFAULT_MOBILE
-    detail = cfg.get("address") or DEFAULT_ADDRESS
+    """受益所有人表单：选投资人，再填期限/手机/地址/股权/当日。填后校验真实值。"""
+    person = (cfg.get("bo_name") or cfg.get("name") or DEFAULT_NAME).strip()
+    mobile = cfg.get("bo_mobile") or cfg.get("mobile") or DEFAULT_MOBILE
+    detail = cfg.get("bo_address") or cfg.get("address") or DEFAULT_ADDRESS
+    ratio = str(cfg.get("ownership_ratio") or "100").strip() or "100"
     pg = _page_of(form_scope)
     _dismiss_overlays(pg)
     result["boDom"] = _js_probe_selects(form_scope)
+    result["ownershipRatioExpected"] = ratio
 
-    # 1) 投资人下拉选吴文彬（备案页是原生/layui select）
+    # 1) 投资人下拉选姓名（备案页是原生/layui select）
     pick_info = _pick_bo_dropdown(form_scope, pg, person, hint="投资人信息")
     if not pick_info.get("ok"):
         pick_info = _pick_bo_dropdown(form_scope, pg, person, hint="受益所有人基本信息")
@@ -2446,7 +2512,9 @@ def _fill_bo_form(page: Page, form_scope, cfg: dict[str, Any], result: dict[str,
     result["boAddr"] = addr
     _js_fill_near(form_scope, "详细地址", detail) or _fill_by_label(form_scope, "详细地址", detail)
     detail_val = _field_value(form_scope, "详细地址")
-    result["boDetailAddr"] = bool(detail_val) and ("贵州" in detail_val or detail[:6] in detail_val)
+    result["boDetailAddr"] = bool(detail_val) and (
+        detail[:6] in detail_val or detail_val[:6] in detail or len(detail_val) > 4
+    )
     # 手机号再补一次（日历遮罩可能导致前一次未落库）
     if not result.get("boMobile"):
         _js_fill_near(form_scope, "联系方式一（手机号）", mobile) or _js_fill_near(
@@ -2526,17 +2594,17 @@ def _fill_bo_form(page: Page, form_scope, cfg: dict[str, Any], result: dict[str,
     result["ownershipTypeInfo"] = own_info
     pg.wait_for_timeout(600)
 
-    # 6) 比例 100（股权比例，不是收益权/表决权）
-    def _fill_equity_ratio() -> tuple[bool, str]:
+    # 6) 持股比例（前端最终受益人 #uboPct → beneficialOwner.ownershipRatio）
+    def _fill_equity_ratio(target: str) -> tuple[bool, str]:
         for lab in ("持有股权、股份的比例", "持有股权、股份的比例（%）", "股权、股份的比例"):
-            if _js_fill_near(form_scope, lab, "100") or _fill_by_label(form_scope, lab, "100"):
-                v = _field_value(form_scope, lab) or "100"
-                if "100" in v:
+            if _js_fill_near(form_scope, lab, target) or _fill_by_label(form_scope, lab, target):
+                v = _field_value(form_scope, lab) or target
+                if target in v:
                     return True, v
         try:
             ok = bool(
                 form_scope.evaluate(
-                    """() => {
+                    """(target) => {
                       const needles = ['持有股权', '股份的比例', '股权、股份'];
                       const vis = (el) => {
                         const r = el.getBoundingClientRect();
@@ -2555,24 +2623,25 @@ def _fill_bo_form(page: Page, form_scope, cfg: dict[str, Any], result: dict[str,
                         if (!inp) continue;
                         inp.focus();
                         const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
-                        if (desc && desc.set) desc.set.call(inp, '100'); else inp.value = '100';
+                        if (desc && desc.set) desc.set.call(inp, target); else inp.value = target;
                         inp.dispatchEvent(new Event('input', { bubbles: true }));
                         inp.dispatchEvent(new Event('change', { bubbles: true }));
-                        return inp.value === '100';
+                        return inp.value === target;
                       }
                       return false;
-                    }"""
+                    }""",
+                    target,
                 )
             )
             if ok:
-                return True, "100"
+                return True, target
         except Exception:
             pass
         return False, ""
 
-    ratio_ok, ratio_val = _fill_equity_ratio()
-    result["ownershipRatio"] = ratio_ok and "100" in (ratio_val or "100")
-    result["ownershipRatioValue"] = ratio_val or ("100" if ratio_ok else "")
+    ratio_ok, ratio_val = _fill_equity_ratio(ratio)
+    result["ownershipRatio"] = ratio_ok and ratio in (ratio_val or ratio)
+    result["ownershipRatioValue"] = ratio_val or (ratio if ratio_ok else "")
     pg.wait_for_timeout(300)
 
     # 7) 证件有效期 + 形成日期（最后填，关掉日历，按真实 input 值校验）
@@ -2609,10 +2678,10 @@ def _fill_bo_form(page: Page, form_scope, cfg: dict[str, Any], result: dict[str,
         pass
     if not result.get("ownershipType"):
         result["ownershipType"] = own_ok
-    ratio_ok2, ratio_val2 = _fill_equity_ratio()
+    ratio_ok2, ratio_val2 = _fill_equity_ratio(ratio)
     if ratio_ok2:
         result["ownershipRatio"] = True
-        result["ownershipRatioValue"] = ratio_val2 or "100"
+        result["ownershipRatioValue"] = ratio_val2 or ratio
     result["ownershipRatioAfterDates"] = {
         "ok": ratio_ok2,
         "value": ratio_val2,
@@ -2748,13 +2817,15 @@ def _complete_beneficial(
                 lab = cb.locator("xpath=ancestor::label[1]").first
                 (lab if _visible(lab, timeout=200) else cb).click(timeout=2500)
                 _safe_wait(page, 400)
-            _js_fill_near(form_scope, "持有股权、股份的比例", "100") or _fill_by_label(
-                form_scope, "持有股权、股份的比例", "100"
+            ratio_retry = str(cfg.get("ownership_ratio") or "100").strip() or "100"
+            _js_fill_near(form_scope, "持有股权、股份的比例", ratio_retry) or _fill_by_label(
+                form_scope, "持有股权、股份的比例", ratio_retry
             )
             rv = _field_value(form_scope, "持有股权、股份的比例") or ""
-            result["ownershipRatio"] = "100" in rv
+            result["ownershipRatio"] = ratio_retry in rv
             result["ownershipRatioValue"] = rv
             result["ownershipRatioRetry"] = True
+            result["ownershipRatioExpected"] = ratio_retry
         except Exception as e:
             result["ownershipRatioRetryError"] = str(e)
     # 日期探针常读空；以填写标志 + input 实值为准
@@ -3006,13 +3077,23 @@ def run_personnel_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dic
     # 1) 董事/监事选项
     result["oneDirector"] = _click_radio(frame, "设一名董事")
     page.wait_for_timeout(300)
-    result["noSupervisor"] = _click_radio(
-        frame, "属规模较小或者股东人数较少的有限责任公司，全体股东一致同意不设监事"
-    )
-    if not result["noSupervisor"]:
-        result["noSupervisor"] = _click_radio(frame, "不设监事")
-    if not result["noSupervisor"]:
-        result["noSupervisor"] = _click_radio(frame, "规模较小")
+    if cfg.get("establish_supervisor"):
+        # 设立监事：尽量点「设监事/设一名监事」；失败则不强行「不设监事」
+        result["noSupervisor"] = False
+        result["establishSupervisor"] = (
+            _click_radio(frame, "设监事")
+            or _click_radio(frame, "设一名监事")
+            or _click_radio(frame, "设监事会")
+        )
+    else:
+        result["establishSupervisor"] = False
+        result["noSupervisor"] = _click_radio(
+            frame, "属规模较小或者股东人数较少的有限责任公司，全体股东一致同意不设监事"
+        )
+        if not result["noSupervisor"]:
+            result["noSupervisor"] = _click_radio(frame, "不设监事")
+        if not result["noSupervisor"]:
+            result["noSupervisor"] = _click_radio(frame, "规模较小")
     page.wait_for_timeout(400)
     _shot(page, case_id, "personnel-after-radios")
 
@@ -3036,7 +3117,8 @@ def run_personnel_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dic
             _shot(page, case_id, "personnel-director-dialog-missing")
             _dump(case_id, "fill-personnel-result.json", result)
             return result
-        result["directorReuse"] = _reuse_first_person(page, host_dialog=dlg, person_name=cfg["name"])
+        dir_name = cfg.get("director_name") or cfg.get("name") or ""
+        result["directorReuse"] = _reuse_first_person(page, host_dialog=dlg, person_name=dir_name)
         page.wait_for_timeout(1200)
         result["directorOcrAfterReuse"] = _wait_ocr_idle(dlg, page, timeout_ms=15000)
         result["directorIsLegalRep"] = _set_yes_no(dlg, "法定代表人", True) or _set_yes_no(
@@ -3103,7 +3185,9 @@ def run_personnel_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dic
                 return result
         except Exception:
             pass
-        result["managerReuse"] = _reuse_first_person(page, host_dialog=dlg, person_name=cfg["name"])
+        result["managerReuse"] = _reuse_first_person(
+            page, host_dialog=dlg, person_name=cfg.get("finance_name") or cfg.get("name") or ""
+        )
         page.wait_for_timeout(1200)
         result["managerOcr"] = _wait_ocr_idle(dlg, page, timeout_ms=15000)
         result["managerTitle"] = _select_dropdown(dlg, "职务", "财务负责人")
@@ -3202,7 +3286,9 @@ def run_personnel_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dic
                 return result
         except Exception:
             pass
-        result["liaisonReuse"] = _reuse_first_person(page, host_dialog=dlg, person_name=cfg["name"])
+        result["liaisonReuse"] = _reuse_first_person(
+            page, host_dialog=dlg, person_name=cfg.get("liaison_name") or cfg.get("name") or ""
+        )
         page.wait_for_timeout(900)
         result["liaisonPublicSys"] = _set_yes_no(dlg, "代表登录|公示系统", True)
         if not result["liaisonPublicSys"]:

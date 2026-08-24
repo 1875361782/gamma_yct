@@ -294,19 +294,40 @@ def _pick_date(page: Page, scope: Page | Frame, label: str, target: date) -> boo
         return False
 
 
-def _defaults(payload: dict[str, Any]) -> dict[str, Any]:
-    """用户指定值优先；payload 仅作姓名/电话/住所兜底。"""
-    inv = (payload.get("investors") or [{}])[0]
+def _defaults(payload: dict[str, Any], investor: dict[str, Any] | None = None) -> dict[str, Any]:
+    """payload 优先；缺省保留原硬编码兜底。不填户籍。"""
+    company = payload.get("company") or {}
+    inv = investor if investor is not None else (payload.get("investors") or [{}])[0]
     lr = ((payload.get("personnel") or {}).get("legalRepresentative") or {})
+    try:
+        capital = float(company.get("registeredCapital") or 0)
+    except (TypeError, ValueError):
+        capital = 0.0
+    if capital <= 0:
+        capital = 100.0
+    try:
+        ratio = float(inv.get("ratio") or 0)
+    except (TypeError, ValueError):
+        ratio = 0.0
+    if ratio <= 0:
+        ratio = 100.0
+    try:
+        amount = float(inv.get("amount") or 0)
+    except (TypeError, ValueError):
+        amount = 0.0
+    if amount <= 0:
+        amount = round(capital * ratio / 100.0, 6)
+    cap_str = str(int(capital)) if float(capital).is_integer() else str(capital)
+    amt_str = str(int(amount)) if float(amount).is_integer() else str(amount)
     return {
-        "registered_capital": "100",
+        "registered_capital": cap_str,
         "investor_type": "自然人股东",
-        "ethnicity": "汉族",
-        "hukou": ["贵州省", "安顺市", "西秀区"],
+        "ethnicity": (inv.get("ethnicity") or "汉族").strip() or "汉族",
         "address": (inv.get("address") or "贵州省安顺市西秀区鸡场乡鸡场散居户").strip(),
         "mobile": (inv.get("mobile") or "13984439335").strip(),
         "method": (inv.get("investmentMethod") or "货币").strip(),
-        "amount": "100",
+        "amount": amt_str,
+        "ratio": ratio,
         "name": (inv.get("name") or lr.get("name") or "吴文彬").strip(),
         "idNumber": (inv.get("idNumber") or lr.get("idNumber") or "").strip(),
     }
@@ -605,11 +626,26 @@ def _reuse_first_person(page: Page, host_dialog=None, person_name: str = "") -> 
     return False
 
 
-def _upload_id_in_dialog(dialog, page: Page) -> dict[str, Any]:
-    """股东弹窗内上传身份证人像面/国徽面。"""
+def _upload_id_in_dialog(
+    dialog,
+    page: Page,
+    case_id: str = "",
+    payload: dict | None = None,
+    *,
+    person_name: str = "",
+) -> dict[str, Any]:
+    """股东弹窗内上传身份证人像面/国徽面（按姓名匹配案件上传）。"""
     out = {"front": False, "back": False}
-    front = DEFAULT_ID_FRONT if DEFAULT_ID_FRONT.exists() else None
-    back = DEFAULT_ID_BACK if DEFAULT_ID_BACK.exists() else None
+    front, back = store.resolve_id_card_images(
+        case_id,
+        payload,
+        person_name=person_name or None,
+        fallback_front=DEFAULT_ID_FRONT,
+        fallback_back=DEFAULT_ID_BACK,
+    )
+    out["frontPath"] = str(front) if front else None
+    out["backPath"] = str(back) if back else None
+    out["personName"] = person_name or ""
     if front is None and back is None:
         return out
     try:
@@ -1370,7 +1406,13 @@ def run_capital_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dict[
     if reused:
         result["idUpload"] = {"skipped": True, "reason": "reusedPerson"}
     else:
-        result["idUpload"] = _upload_id_in_dialog(form, page)
+        result["idUpload"] = _upload_id_in_dialog(
+            form,
+            page,
+            case_id=case_id,
+            payload=payload,
+            person_name=str(cfg.get("name") or ""),
+        )
         page.wait_for_timeout(800)
 
     # 补齐姓名/证件/性别（纠错：防止姓名被写成 100）
@@ -1387,18 +1429,12 @@ def run_capital_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dict[
     result["ethnicity"] = _select_dropdown(form, "民族", cfg["ethnicity"])
     if not result["ethnicity"]:
         try:
-            result["ethnicity"] = "汉族" in (form.inner_text(timeout=800) or "")
+            result["ethnicity"] = cfg["ethnicity"] in (form.inner_text(timeout=800) or "")
         except Exception:
             pass
 
-    result["hukou"] = _select_cascader(form, "户籍所属省市县", cfg["hukou"])
-    if not result["hukou"]:
-        result["hukou"] = _select_cascader(form, "户籍", cfg["hukou"])
-    if not result["hukou"]:
-        try:
-            result["hukou"] = all(p in (form.inner_text(timeout=800) or "") for p in cfg["hukou"])
-        except Exception:
-            pass
+    # 户籍：按计划取消填写（不点选省市区）
+    result["hukou"] = "skipped"
 
     # 经济性质（截图中为必填）
     result["economicNature"] = _select_dropdown(form, "经济性质", "个体经营")
@@ -1571,9 +1607,7 @@ def run_capital_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dict[
             info["basics"] = _fill_person_basics(dlg, cfg, page)
             info["investorType"] = _select_dropdown(dlg, "投资人类型", cfg["investor_type"])
             info["ethnicity"] = _select_dropdown(dlg, "民族", cfg["ethnicity"])
-            info["hukou"] = _select_cascader(dlg, "户籍所属省市县", cfg["hukou"]) or _select_cascader(
-                dlg, "户籍", cfg["hukou"]
-            )
+            info["hukou"] = "skipped"
             info["economic"] = _select_dropdown(dlg, "经济性质", "个体经营")
             info["address"] = _fill_by_label(dlg, "住所", cfg["address"])
             info["mobile"] = _fill_by_label(dlg, "移动电话", cfg["mobile"]) or _fill_by_label(
