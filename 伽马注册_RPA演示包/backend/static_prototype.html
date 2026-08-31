@@ -1,6 +1,6 @@
-<!-- 伽马注册 H5 原型 v2 · 9 屏两阶段
+<!-- 伽马注册 H5 原型 v2 · 8 屏两阶段
      阶段 A: 登录 / 企业信息 / 人员信息 / 受益人证件 / 信息确认单 (①②③④⑤)
-     阶段 B: 扫码登录 QR / 进度跟踪 / 核名重填 / 办理完成 (⑥⑦⑧⑨)
+     阶段 B: 扫码登录 QR / 进度跟踪 / 办理完成 (⑥⑦⑧)
      自包含 HTML + 内联 CSS + 原生 JS · 政务蓝设计系统 · 无外部依赖 -->
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -235,6 +235,8 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
 .btn-sm{min-height:36px; width:auto; font-size:13px; padding:0 14px;}
 .btn-orange{background:#F59E0B; color:#fff;}
 .btn-orange:hover{background:#D97706;}
+.btn-danger{background:#DC2626; color:#fff;}
+.btn-danger:hover{background:#B91C1C;}
 
 /* 隐私协议 */
 .agree{
@@ -292,7 +294,17 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
 .btn-ghost:hover{border-color:var(--color-primary); color:var(--color-primary);}
 #ziAdd{background:var(--color-primary); border-color:var(--color-primary); color:#fff; font-weight:600;}
 #ziAdd:hover{filter:brightness(.95); color:#fff; border-color:var(--color-primary);}
+#ziDel{background:var(--color-danger); border-color:var(--color-danger); color:#fff; font-weight:600;}
+#ziDel:hover{filter:brightness(.95); background:var(--color-danger); border-color:var(--color-danger); color:#fff;}
+#ziDel:disabled{opacity:.45; cursor:not-allowed; filter:none;}
 .chip.zi{padding-right:10px;}
+.chip.zi .prio{
+  display:none; align-items:center; justify-content:center;
+  min-width:16px; height:16px; margin-right:4px; padding:0 4px;
+  border-radius:99px; font-size:10px; font-weight:700; line-height:1;
+  background:rgba(0,0,0,.08); color:inherit; flex-shrink:0;
+}
+.chip.zi.on .prio{display:inline-flex; background:#fff; color:var(--color-primary);}
 .chip.zi .rate{font-size:11px; font-weight:700; margin-left:2px; padding:1px 6px; border-radius:99px; background:#F0FDF4; color:var(--color-success);}
 .chip.zi.low .rate{background:#FEF2F2; color:var(--color-danger);}
 .chip.zi.on .rate{background:rgba(255,255,255,.25); color:#fff;}
@@ -303,18 +315,47 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
 .scope-tabs{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;}
 .stab{border:1px solid var(--color-border); background:var(--color-surface); color:var(--color-text); border-radius:99px; padding:6px 14px; font-size:13px; font-family:var(--font); cursor:pointer;}
 .stab.on{background:var(--color-primary); border-color:var(--color-primary); color:#fff; font-weight:600;}
-.scope-opts{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
-.scope-opt{border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:10px 12px; font-size:13px; display:flex; align-items:center; gap:8px; cursor:pointer; background:var(--color-surface); line-height:1.3;}
+.scope-search{display:flex; gap:8px; margin-bottom:10px;}
+.scope-search input{flex:1;}
+.scope-opts{display:grid; grid-template-columns:1fr 1fr; gap:8px; max-height:360px; overflow:auto; padding:2px;}
+.scope-opt{border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:10px 12px; font-size:13px; display:flex; align-items:flex-start; gap:8px; cursor:pointer; background:var(--color-surface); line-height:1.3;}
 .scope-opt.on{border-color:var(--color-primary); background:var(--color-primary-soft); color:var(--color-primary); font-weight:600;}
-.scope-opt .box{width:18px; height:18px; border-radius:5px; border:1.5px solid var(--color-border); flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:12px; color:#fff;}
+.scope-opt .box{width:18px; height:18px; border-radius:5px; border:1.5px solid var(--color-border); flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:12px; color:#fff; margin-top:1px;}
 .scope-opt.on .box{background:var(--color-primary); border-color:var(--color-primary);}
+.scope-opt .meta{font-size:11px; color:var(--color-text-sub); font-weight:400; margin-top:2px;}
+.scope-opt.on .meta{color:inherit; opacity:.85;}
+.scope-empty{font-size:12.5px; color:var(--color-text-sub); padding:8px 0; grid-column:1/-1;}
+.scope-more{grid-column:1/-1; display:flex; flex-direction:column; align-items:center; gap:6px; padding:8px 0 4px;}
+.scope-more .hint{font-size:12px; color:var(--color-text-sub);}
+.scope-selected{font-size:12px; color:var(--color-text-sub); margin:8px 0 0;}
+.scope-selected b{color:var(--color-text);}
 .scope-preview{margin-top:12px; padding:10px 12px; background:var(--color-bg); border-radius:var(--radius-sm); font-size:12.5px; color:var(--color-text-sub); line-height:1.6; min-height:20px;}
 .scope-preview b{color:var(--color-primary);}
 .scope-custom{margin-top:10px; border:1px dashed var(--color-border); border-radius:var(--radius-sm); padding:8px 12px;}
 .scope-custom summary{cursor:pointer; font-size:13px; color:var(--color-text-sub);}
-.scope-custom textarea{width:100%; margin-top:8px; min-height:60px; border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:8px; font-family:var(--font); font-size:13px; resize:vertical; box-sizing:border-box;}
+.scope-custom textarea{width:100%; margin-top:8px; min-height:72px; border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:8px; font-family:var(--font); font-size:13px; resize:vertical; box-sizing:border-box;}
+.suggest-wrap{position:relative;}
+.suggest-list{
+  display:none; position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:20;
+  background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-sm);
+  box-shadow:var(--shadow-card); max-height:200px; overflow:auto;
+}
+.suggest-list.show{display:block;}
+.suggest-item{padding:10px 12px; font-size:13px; cursor:pointer; border-bottom:1px solid var(--color-border);}
+.suggest-item:last-child{border-bottom:none;}
+.suggest-item:hover,.suggest-item.on{background:var(--color-primary-soft); color:var(--color-primary);}
+.suggest-item .code{float:right; font-size:11px; color:var(--color-text-sub);}
+.api-note{font-size:11px; color:var(--color-text-sub); line-height:1.5; margin-top:8px;}
 .reco-h{font-size:13px; font-weight:700; color:var(--color-text); margin-bottom:10px;}
 .reco-empty{font-size:12.5px; color:var(--color-text-sub); padding:8px 0;}
+.reco-rate.warn{color:#b45309;}
+.reco-rate.bad{color:var(--color-danger);}
+.reco-bar > i.warn{background:#f59e0b;}
+.reco-bar > i.bad{background:var(--color-danger);}
+.chip.zi .rate.warn{background:#FFFBEB; color:#b45309;}
+.chip.zi .rate.bad{background:#FEF2F2; color:var(--color-danger);}
+.chip.zi.on .rate.warn{background:#FFFBEB; color:#b45309;}
+.chip.zi.on .rate.bad{background:rgba(255,255,255,.25); color:#fff;}
 @media (max-width:360px){ .scope-opts{grid-template-columns:1fr;} }
 
 /* ============ 人员折叠卡 ============ */
@@ -564,6 +605,8 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
 .qr-status{font-size:13px; color:var(--color-text-sub); text-align:center;}
 .qr-status.ok{color:var(--color-success); font-weight:600;}
 .qr-status.err{color:var(--color-danger);}
+.qr-actions{display:flex; gap:10px; width:100%; margin-top:4px;}
+.qr-actions .btn{flex:1; min-height:var(--touch);}
 /* RPA QR 弹窗（右上角浮窗，RPA 抓到 QR 时显示） */
 .rpa-qr-popup{position:fixed; top:80px; right:20px; width:200px; background:#fff; border:2px solid #1e5fd9; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.18); z-index:999; overflow:hidden;}
 .rpa-qr-popup-head{display:flex; align-items:center; justify-content:space-between; padding:6px 10px; background:#1e5fd9; color:#fff; font-size:12px; font-weight:600;}
@@ -625,18 +668,29 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
 .pipe-txt{font-size:13px; font-weight:600;}
 .pipe-txt small{display:block; color:var(--color-text-sub); font-size:11px; font-weight:400; margin-top:1px;}
 @keyframes pipe-spin{to{transform:rotate(360deg);}}
+
+/* 人工客服二维码弹层 */
+.cs-modal{
+  display:none; position:fixed; inset:0; z-index:2000;
+  background:rgba(15,23,42,.45); align-items:center; justify-content:center;
+  padding:24px;
+}
+.cs-modal.open{display:flex;}
+.cs-modal-card{
+  width:min(320px, 100%); background:var(--color-surface);
+  border-radius:var(--radius); box-shadow:0 16px 40px rgba(0,0,0,.2);
+  padding:20px 18px 16px; text-align:center;
+}
+.cs-modal-card h3{margin:0 0 8px; font-size:16px; font-weight:700;}
+.cs-modal-card p{margin:0 0 14px; font-size:12px; color:var(--color-text-sub); line-height:1.5;}
+.cs-modal-card img{
+  width:200px; height:200px; object-fit:contain; display:block; margin:0 auto 12px;
+  border:1px solid var(--color-border); border-radius:8px; background:#fff;
+}
+.cs-modal-card .btn{width:100%;}
 @keyframes pulse{0%,100%{opacity:1;} 50%{opacity:.4;}}
 
-/* 屏幕8: 补充字号 */
-.reject{
-  border:1px solid #FECACA; background:#FEF2F2; border-radius:var(--radius);
-  padding:var(--space-md); margin-bottom:var(--space-md);
-}
-.reject-h{display:flex; align-items:center; gap:8px; color:var(--color-danger); font-size:14px; font-weight:700; margin-bottom:8px;}
-.reject-note{font-size:12.5px; color:#7F1D1D; line-height:1.5; margin:0 0 12px;}
-.reject-note b{color:var(--color-danger);}
-
-/* 屏幕9: 完成 */
+/* 屏幕8: 完成 */
 .result-hero{
   text-align:center; padding:var(--space-lg) var(--space-md);
   background:var(--color-surface); border:1px solid var(--color-border);
@@ -759,10 +813,11 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
       <div class="card">
         <div class="field">
           <label>公司字号候选<span class="req">*</span></label>
-          <p class="field-tip">准备3-10个字号作为备选，提高核名通过率</p>
+          <p class="field-tip">准备3-10个字号作为备选；点击选中的先后顺序即为填报优先级（先点的优先核名）。勾选后点「删除」可去掉对应字号。</p>
           <div class="zi-test">
             <input id="ziInput" type="text" maxlength="6" placeholder="输入字号" />
             <button class="btn-ghost" id="ziAdd" type="button">添加</button>
+            <button class="btn-ghost" id="ziDel" type="button">删除</button>
           </div>
           <div class="hint" id="ziHint"></div>
           <div class="chips" id="nameChips"><!-- 动态生成 --></div>
@@ -774,8 +829,12 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
         </div>
 
         <div class="field">
-          <label for="industry">行业表述（如：科技）<span class="req">*</span></label>
-          <input id="industry" type="text" placeholder="如：科技 / 贸易 / 咨询" data-type="industry" />
+          <label for="industry">行业表述<span class="req">*</span></label>
+          <div class="suggest-wrap">
+            <input id="industry" type="text" placeholder="输入关键词，从规范词库选择" data-type="industry" autocomplete="off" />
+            <div class="suggest-list" id="industrySuggest"></div>
+          </div>
+          <p class="api-note" id="industryApiNote"></p>
         </div>
 
         <div class="field">
@@ -783,16 +842,21 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
           <select id="orgForm">
             <option value="" selected disabled>请选择组织形式</option>
             <option value="有限公司">有限公司</option>
-            <option value="有限责任公司">有限责任公司</option>
+            <option value="股份有限公司">股份有限公司</option>
+            <option value="个人独资企业">个人独资企业</option>
+            <option value="普通合伙企业">普通合伙企业</option>
+            <option value="有限合伙企业">有限合伙企业</option>
+            <option value="个体工商户">个体工商户</option>
           </select>
         </div>
 
         <div class="field">
-          <label for="aiName">公司名称（随字号自动组合）<span class="req">*</span></label>
+          <label for="aiName">公司名称（核名组合）<span class="req">*</span></label>
           <div class="input-wrap">
-            <input id="aiName" type="text" placeholder="上海××科技有限公司" data-type="name" />
+            <input id="aiName" type="text" placeholder="上海××科技有限公司" data-type="name" readonly />
           </div>
           <div class="hint" id="nameHint"></div>
+          <p class="api-note" id="nameDisclaimer">查重结果仅供参考，最终以登记机关申报系统的计算机比对及人工审核为准。</p>
         </div>
 
         <div class="field">
@@ -806,7 +870,7 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
         <div class="field">
           <label for="regAddress">注册地址<span class="req">*</span></label>
           <input id="regAddress" type="text" placeholder="街道/路/号/室" />
-        </div>
+          </div>
 
         <div class="field">
           <label for="postalCode">邮编<span class="req">*</span></label>
@@ -814,14 +878,29 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
         </div>
 
         <div class="field">
-          <label for="scope">经营范围<span class="req">*</span></label>
-          <textarea id="scope" placeholder="填写经营范围" rows="4"></textarea>
+          <label>经营范围<span class="req">*</span></label>
+          <p class="field-tip">从规范目录搜索勾选，系统自动生成经营范围文案</p>
+          <div class="scope-tabs" id="scopeTabs"></div>
+          <div class="scope-search">
+            <input id="scopeKw" type="text" placeholder="关键词搜索（将显示全部命中项）" />
+            <button class="btn-ghost" id="scopeSearchBtn" type="button">搜索</button>
+          </div>
+          <div class="scope-opts" id="scopeOpts">
+            <div class="scope-empty">点分类或输入关键词浏览经营范围条目</div>
+          </div>
+          <div class="scope-selected">已选 <b id="scopeSelCount">0</b> 项</div>
+          <div class="scope-preview" id="scopePreview">生成文案将显示在这里</div>
+          <details class="scope-custom">
+            <summary>微调经营范围文案（可选）</summary>
+            <textarea id="scope" placeholder="勾选条目后自动生成；也可在此微调" rows="4"></textarea>
+          </details>
+          <p class="api-note" id="scopeApiNote"></p>
         </div>
       </div>
 
       <div class="reco" id="reco">
-        <div class="reco-h">AI 推荐公司名组合（基于已选字号）</div>
-        <div id="recoList"><div class="reco-empty">先选 / 生成一个字号，AI 自动给出推荐组合与通过率</div></div>
+        <div class="reco-h">核名查重结果（基于已选字号）</div>
+        <div id="recoList"><div class="reco-empty">先选 / 添加字号，将自动查重并给出结论</div></div>
       </div>
     </section>
 
@@ -830,28 +909,28 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
       <h2 class="screen-title">人员信息 2/4</h2>
 
       <!-- 法人 -->
-      <div class="role-sec">
+      <div class="role-sec" id="legalSection">
         <div class="role-h"><span class="role-dot r-legal"></span>法人（法定代表人）<span class="req">*</span></div>
         <div class="grid2">
           <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="legalName" placeholder="如：张伟" /></div>
           <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="legalMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" /></div>
         </div>
-        <div class="inline-note">法人可同时担任董事或财务负责人</div>
+        <div class="inline-note" id="legalNote">法人可同时担任董事或财务负责人</div>
       </div>
 
-      <!-- 自然人 -->
-      <div class="role-sec">
+      <!-- 自然人 / 合伙人 -->
+      <div class="role-sec" id="npSection">
         <div class="role-h">
           <span class="role-dot r-sh"></span>
-          自然人（股东）<span class="req">*</span>
+          <span id="npSectionTitle">自然人（股东）</span><span class="req">*</span>
         </div>
         <div id="npList"></div>
-        <div class="add-card" onclick="addNaturalPerson()">+ 添加自然人</div>
-        <div class="np-tip">自然人可为一人或多人，持股比例总计为100%</div>
+        <div class="add-card" id="npAddBtn" onclick="addNaturalPerson()">+ 添加自然人</div>
+        <div class="np-tip" id="npTip">自然人可为一人或多人，持股比例总计为100%</div>
       </div>
 
       <!-- 董事 -->
-      <div class="role-sec">
+      <div class="role-sec" id="dirSection">
         <div class="role-h"><span class="role-dot r-legal"></span>董事<span class="req">*</span></div>
         <label class="same-toggle"><input type="checkbox" id="dirSame" onchange="toggleSameLegal('dir')" /> 与法人同一人（身居一职）</label>
         <div id="dirBody" class="grid2">
@@ -861,17 +940,18 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
       </div>
 
       <!-- 监事 -->
-      <div class="role-sec">
-        <div class="role-h"><span class="role-dot r-sup"></span>监事<span class="opt">可选</span></div>
+      <div class="role-sec" id="supSection">
+        <div class="role-h"><span class="role-dot r-sup"></span>监事<span id="supReqMark" class="opt">可选</span></div>
         <div class="seg" id="supSeg">
           <button type="button" class="seg-btn on" data-v="1" onclick="setSup(1,this)">设立</button>
           <button type="button" class="seg-btn" data-v="0" onclick="setSup(0,this)">不设立</button>
         </div>
         <div id="supBody" class="grid2">
-          <div class="field"><label>姓名</label><input type="text" id="supName" placeholder="如：李娜" /></div>
-          <div class="field"><label>手机号</label><input type="tel" id="supMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" /></div>
+          <div class="field"><label>姓名<span class="req" id="supNameReq" style="display:none;">*</span></label><input type="text" id="supName" placeholder="如：李娜" /></div>
+          <div class="field"><label>手机号<span class="req" id="supMobileReq" style="display:none;">*</span></label><input type="tel" id="supMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" /></div>
         </div>
         <div class="inline-note" id="supNote" style="display:none;">一人有限责任公司可不设监事。</div>
+        <div class="inline-note" id="supSharesNote" style="display:none;">股份有限公司必须设立一名监事（不设监事会）。</div>
       </div>
 
       <!-- 财务负责人 -->
@@ -891,10 +971,10 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
           <div class="grid2">
             <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="liaName" placeholder="如：张伟" /></div>
             <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="liaMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" /></div>
-          </div>
+        </div>
           <div class="field"><label>邮箱<span class="req">*</span></label><input type="text" id="liaEmail" placeholder="如：name@example.com" /></div>
           <div class="field"><label>住所<span class="req">*</span></label><input type="text" id="liaAddress" placeholder="请填写住所地址" /></div>
-        </div>
+      </div>
       </div>
 
       <!-- 最终受益人 -->
@@ -914,6 +994,7 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
               </div>
             </div>
           </div>
+          <div class="field"><label>住所<span class="req">*</span></label><input type="text" id="uboAddress" placeholder="请填写住所地址（含省市区及门牌）" /></div>
         </div>
       </div>
     </section>
@@ -951,7 +1032,6 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
     <!-- ===================== 屏 5：信息确认单 ===================== -->
     <section class="screen" data-screen="4" data-phase="A">
       <h2 class="screen-title">信息确认单</h2>
-      <p class="screen-desc">提交后将自动同步至「政务云脑」，进入阶段 B 扫码协同。</p>
 
       <div class="card">
         <div class="sum-sec">
@@ -974,9 +1054,9 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
             <button class="edit" onclick="go(2)">修改</button>
           </div>
           <div class="sum-line"><div class="k">法人</div><div class="v" id="sumLegal">—</div></div>
-          <div class="sum-line"><div class="k">自然人</div><div class="v" id="sumNp">—</div></div>
-          <div class="sum-line"><div class="k">董事</div><div class="v" id="sumDir">—</div></div>
-          <div class="sum-line"><div class="k">监事</div><div class="v" id="sumSup">—</div></div>
+          <div class="sum-line"><div class="k" id="sumNpLabel">自然人</div><div class="v" id="sumNp">—</div></div>
+          <div class="sum-line" id="sumDirLine"><div class="k">董事</div><div class="v" id="sumDir">—</div></div>
+          <div class="sum-line" id="sumSupLine"><div class="k">监事</div><div class="v" id="sumSup">—</div></div>
           <div class="sum-line"><div class="k">财务负责人</div><div class="v" id="sumFin">—</div></div>
           <div class="sum-line"><div class="k">联络员</div><div class="v" id="sumLia">—</div></div>
           <div class="sum-line"><div class="k">最终受益人</div><div class="v" id="sumUbo">—</div></div>
@@ -992,10 +1072,10 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
         </div>
       </div>
 
-      <div class="tip-box tip-orange">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        提交后将自动推送至政务云脑，需配合阶段 B 扫码授权 RPA 提交。
-      </div>
+      <p class="field-tip" style="margin-top:10px;text-align:center;">
+        表单会自动保存在本机；重启后端后刷新即可继续。
+        <button type="button" class="edit" id="clearDraftBtn" style="margin-left:8px;">清除草稿</button>
+      </p>
     </section>
 
     <!-- ===================== 屏 6：扫码登录 ===================== -->
@@ -1005,18 +1085,21 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
 
       <div class="tip-box tip-orange">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <span>请用「随申办」APP 扫描二维码完成政务网授权。扫码成功后将自动跳转至下一屏；也可点击下方「我已完成扫码」继续。</span>
+        <span>请用「随申办」APP 扫描二维码完成政务网授权。扫码成功后将自动进入下一步；若二维码超时请点「重试」，取消则返回上一页。</span>
       </div>
 
       <div class="gov-iframe-wrap" id="bPageWrap">
         <div class="qr-panel" id="qrPanel">
           <div class="qr-frame" id="qrFrame">
             <div class="qr-placeholder" id="qrPlaceholder">正在获取登录二维码…</div>
-            <img id="qrLive" class="qr-live" alt="登录二维码" />
-          </div>
-          <div class="qr-status" id="qrStatus">等待 RPA 同步二维码</div>
+            <img id="qrLive" class="qr-live" alt="登录二维码" draggable="true" />
         </div>
-        <button class="btn btn-primary btn-block" id="scannedBtn" type="button">我已完成扫码</button>
+          <div class="qr-status" id="qrStatus">等待 RPA 同步二维码</div>
+      </div>
+        <div class="qr-actions" id="qrActions">
+          <button class="btn btn-ghost" id="qrCancelBtn" type="button">取消</button>
+          <button class="btn btn-primary" id="qrRetryBtn" type="button">重试</button>
+        </div>
         <iframe id="bPageFrame" class="gov-iframe-hidden" src="about:blank" referrerpolicy="no-referrer" title="扫码中继"></iframe>
       </div>
     </section>
@@ -1024,7 +1107,7 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
     <!-- ===================== 屏 7：进度跟踪 ===================== -->
     <section class="screen" data-screen="6" data-phase="B">
       <h2 class="screen-title">进度跟踪</h2>
-      <p class="screen-desc">RPA 已接管政务网填报，请保持当前页面打开。</p>
+      <p class="screen-desc">自动填报流程运行中，预计填报5分钟，请耐心等待并保持当前页面打开。</p>
 
       <div class="pipe" id="pipeBlock">
         <h4 class="pipe-h">RPA 填报流水线</h4>
@@ -1048,72 +1131,27 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
 
       <div class="tip-box tip-orange" id="pendingTip" style="display:none;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <span id="pendingTipText">待办：名称核验未通过，请补充字号后重试</span>
+        <span id="pendingTipText">待办：核名不通过，请返回修改字号并重试</span>
       </div>
 
       <button class="btn btn-orange btn-block" id="gotoRefill" type="button" style="display:none; margin-bottom:var(--space-md);">
-        去补充字号
+        返回修改字号
       </button>
 
       <div id="nameFailNote" style="display:none; font-size:11px; color:var(--color-text-sub); text-align:center; padding:var(--space-sm) 0;">
-        核名未通过时需补充字号后重新申报
+        核名未通过。请返回企业信息页修改字号后重新扫码填报。
       </div>
+
+      <button class="btn btn-danger btn-block" id="cancelFillBtn" type="button" style="margin-top:var(--space-lg);">
+        取消并返回上一页
+      </button>
+      <button class="btn btn-primary btn-block" id="retryFillBtn" type="button" style="display:none; margin-top:10px;">
+        重试
+      </button>
     </section>
 
-    <!-- ===================== 屏 8：补充字号 ===================== -->
+    <!-- ===================== 屏 8：办理完成 ===================== -->
     <section class="screen" data-screen="7" data-phase="B">
-      <h2 class="screen-title">补充字号</h2>
-      <p class="screen-desc">政务网核名回执已回传，请补充 1-4 个新字号重新申请。</p>
-
-      <div class="reject">
-        <div class="reject-h">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          政务网核名结果回执
-        </div>
-        <div class="reject-note">
-          <b>提示</b>：与「上海鑫慧众盒科技有限公司」字号库近似，已存在同行业企业。
-          <br/>建议重新申请相似名称（≤4 个）。
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-h">
-          补充新字号（再一次最多 4 个）
-          <span class="tag" id="refillCount">已填 0 / 4</span>
-        </div>
-
-        <div class="field">
-          <label>新字号 1<span class="req">*</span></label>
-          <input id="nm1" type="text" placeholder="如：上海云启数智科技" data-type="refill" />
-        </div>
-        <div class="field">
-          <label>新字号 2<span class="req">*</span></label>
-          <input id="nm2" type="text" placeholder="如：上海沪上慧创科技" data-type="refill" />
-        </div>
-        <div class="field">
-          <label>新字号 3（可选）</label>
-          <input id="nm3" type="text" placeholder="选填" />
-        </div>
-        <div class="field">
-          <label>新字号 4（可选）</label>
-          <input id="nm4" type="text" placeholder="选填" />
-        </div>
-
-        <div class="hint" data-for="refill"></div>
-      </div>
-
-      <div class="tip-box tip-orange" id="refillFooter" style="margin-top:var(--space-md);">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <span>实时校验：可用 <b id="okCount">0</b> · 名称冲突 <b id="errCount">0</b></span>
-      </div>
-
-      <div style="font-size:11px; color:var(--color-text-sub); text-align:center; padding:var(--space-sm) 0 0;">
-        第 <b id="refillTimes">2</b> / 5 次，请重新人工填报
-      </div>
-    </section>
-
-    <!-- ===================== 屏 9：办理完成 ===================== -->
-    <section class="screen" data-screen="8" data-phase="B">
       <h2 class="screen-title">办理完成</h2>
 
       <div class="result-hero">
@@ -1147,6 +1185,17 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
 
   </main>
 
+  <!-- 人工客服二维码 -->
+  <div class="cs-modal" id="csModal" role="dialog" aria-modal="true" aria-labelledby="csModalTitle">
+    <div class="cs-modal-card">
+      <h3 id="csModalTitle">联系人工客服</h3>
+      <p>请使用微信扫描下方二维码，客服将协助处理填报问题。</p>
+      <img id="csQrImg" alt="人工客服二维码" width="200" height="200"
+        src="/static/cs-qr.jpg" />
+      <button class="btn btn-ghost" type="button" id="csModalClose">关闭</button>
+    </div>
+  </div>
+
   <!-- 底部操作区 -->
   <div class="footer" id="footer">
     <button class="btn btn-ghost" id="backBtn" onclick="back()">上一步</button>
@@ -1157,20 +1206,42 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
 
 <script>
 /* ============ 状态机 ============ */
-const TOTAL = 9;
+const TOTAL = 8;
 const PHASE_A_MAX = 4;        // 0..4 是阶段 A
 const STATE = {
   step: 0,
-  refillTimes: 2,             // 已重填次数
+  refillTimes: 2,             // 兼容旧草稿字段
   pipeRunning: false,
   sid: null,                  // 屏6 会话钥匙：B 页 bind 时由后端自动触发 RPA
   sidMock: false,             // 屏6 是否走 mock（默认 false=真实政务网；?mock=1 切测试站）
-  scannedDone: false,         // 扫码成功是否已处理（防止 postMessage 与手动按钮重复触发）
+  scannedDone: false,         // 扫码成功是否已处理（防止 postMessage 与轮询重复触发）
+  fillCancelled: false,       // 用户取消填报后忽略残留 login 事件
   caseId: 'GM202608062231EF',
   // personKey -> { personKey, personName, roles, frontFileId, backFileId, frontName, backName, frontPreview, backPreview }
   idUploads: {},
   qrPollTimer: null,
   fillPollTimer: null,
+  fillRetryCount: 0,          // 进度页「重试」次数；达 2 次后再失败则改联系客服
+  lastQrData: null,
+  qrReceivedAt: 0,
+  qrRetrying: false,
+  // 核名 / 经营范围 API
+  nameDistrict: '上海',
+  nameDisclaimer: '查重结果仅供参考，最终以登记机关申报系统的计算机比对及人工审核为准。',
+  selectedScopes: [], // [{scope_id, name, permit_type, permit_text}]
+  scopePermitType: '',
+  scopePage: 0,
+  scopeTotal: 0,
+  scopeLoading: false,
+  scopeList: [], // 当前分类已加载条目（分页累积）
+  scopeGenTimer: null,
+  nameCheckTimer: null,
+  industryTimer: null,
+  nameApiReady: false,
+  scopeApiReady: false,
+  apiDegraded: false,
+  checkCache: {}, // zi -> {status, label, name, detail}
+  ziSelectOrder: [], // 字号选中点击顺序 = 填报优先级（先点优先）
 };
 
 const STEP_META = [
@@ -1179,10 +1250,9 @@ const STEP_META = [
   { num:'③', phase:'A', desc:'采集：人员信息',     next:'下一步' },
   { num:'④', phase:'A', desc:'采集：受益人与证件', next:'下一步' },
   { num:'⑤', phase:'A', desc:'信息确认单',         next:'确认并建立' },
-  { num:'⑥', phase:'B', desc:'扫码协同页',         next:'我已完成扫码' },
+  { num:'⑥', phase:'B', desc:'扫码协同页',         next:'等待扫码' },
   { num:'⑦', phase:'B', desc:'进度跟踪页',         next:'等待 RPA' },
-  { num:'⑧', phase:'B', desc:'核名重填页',         next:'重新提交核名' },
-  { num:'⑨', phase:'B', desc:'完成页',             next:'查看业务索引' },
+  { num:'⑧', phase:'B', desc:'完成页',             next:'查看业务索引' },
 ];
 
 /* ============ 渲染步骤条 ============ */
@@ -1201,12 +1271,12 @@ function renderSteps(){
 /* ============ 切换屏幕 ============ */
 function go(i){
   if(i<0 || i>=TOTAL) return;
-  // 从屏 7(进度) 自动跳到屏 9(核名重填)或屏 9(完成) 由其他函数触发
   STATE.step = i;
   document.querySelectorAll('.screen').forEach(el=>el.classList.remove('active'));
   document.querySelector(`.screen[data-screen="${i}"]`).classList.add('active');
   if(i===4) syncConfirm();   // 进入信息确认单 → 同步屏1 动态值
   if(i===3) refreshIdPeopleUploads();  // 屏4：按当前人员去重渲染上传位
+  if(i===1) ensureNameScopeApis();     // 企业信息：拉 meta / 经营范围目录
 
   const meta = STEP_META[i];
   // 底部按钮
@@ -1218,16 +1288,25 @@ function go(i){
 
   // 特殊屏：底部按钮隐藏
   if(i===5){
-    document.getElementById('scannedBtn').style.display = '';
+    if(STATE.fillCancelled){
+      // 已取消则不允许挂载扫码页继续拉取，回到确认页
+      STATE.step = 4;
+      document.querySelectorAll('.screen').forEach(el=>el.classList.remove('active'));
+      document.querySelector('.screen[data-screen="4"]').classList.add('active');
+      document.getElementById('footer').style.display = '';
+      renderSteps();
+      return;
+    }
+    const actions = document.getElementById('qrActions');
+    if(actions) actions.style.display = '';
     document.getElementById('footer').style.display = 'none';
     STATE.scannedDone = false;        // 重置扫码完成标记（支持回屏6 重新扫码）
+    STATE.lastQrData = null;
+    STATE.qrReceivedAt = 0;
     mountBPageFrame();   // 进屏6：挂载 B 页 iframe（/qrlogin?sid），RPA 在 bind 时由后端自动启动
   }else if(i===6){
     document.getElementById('footer').style.display = 'none';
   }else if(i===7){
-    document.getElementById('footer').style.display = '';
-    document.getElementById('refillTimes').textContent = STATE.refillTimes;
-  }else if(i===8){
     document.getElementById('footer').style.display = 'none';
   }else{
     document.getElementById('footer').style.display = '';
@@ -1235,6 +1314,7 @@ function go(i){
 
   renderSteps();
   window.scrollTo(0,0);
+  scheduleSaveDraft();
 }
 
 function next(){
@@ -1252,7 +1332,11 @@ function next(){
     if(!document.getElementById('capital').value || !(parseFloat(document.getElementById('capital').value) > 0)){ alert('请填写注册资本'); return; }
     if(!document.getElementById('regAddress').value.trim()){ alert('请填写注册地址'); return; }
     if(!document.getElementById('postalCode').value.trim()){ alert('请填写邮编'); return; }
-    if(!document.getElementById('scope').value.trim()){ alert('请填写经营范围'); return; }
+    if(!(STATE.selectedScopes || []).length && !document.getElementById('scope').value.trim()){
+      alert('请至少勾选 1 条经营范围，或填写经营范围文案'); return;
+    }
+    const bad = [...document.querySelectorAll('#nameChips .chip.zi.on')].find(c => c.dataset.status === 'unavailable');
+    if(bad){ alert('已选字号「' + bad.dataset.zi + '」核名不合规，请取消勾选或更换字号'); return; }
     go(2); return;
   }
   if(i===2){                                  // 2→3 人员信息校验
@@ -1272,14 +1356,14 @@ function next(){
     go(4); return;
   }
   if(i===4){ enterPhaseB(); return; }   // 5→6 进入阶段 B
-  if(i===5){ scannedOK(); return; }     // 6→7 模拟扫码成功
-  if(i===7){ resubmit(); return; }      // 8→7 重新提交核名（回进度跟踪）
-  if(i===8){ go(8); return; }           // 9 完成页（无 next）
+  if(i===5){ return; }                  // 扫码页无底部「下一步」，成功后自动进屏
+  if(i===7){ return; }                  // 完成页无 next
   go(i+1);
 }
 function back(){
   const i = STATE.step;
-  if(i===6 || i===7){ go(5); return; }  // 7/8 回到 6 扫码页
+  if(i===6){ go(5); return; }           // 进度页回到扫码页
+  if(i===7){ go(6); return; }           // 完成页回到进度页
   if(i<=0) return;
   go(i-1);
 }
@@ -1292,8 +1376,15 @@ function parseDistrictFromAddress(addr){
 }
 
 function buildCasePayload(){
-  const tradeChip = document.querySelector('#nameChips .chip.zi.on');
-  const tradeName = (tradeChip && tradeChip.dataset.zi) || '';
+  // 按点击选中顺序：第 1 个 = 首选 tradeName，其后进 alternatives
+  const ordered = selectedZiOrdered().filter(z => {
+    const chip = [...document.querySelectorAll('#nameChips .chip.zi')].find(c => c.dataset.zi === z);
+    return chip && chip.dataset.status !== 'unavailable';
+  });
+  const fallbackOn = [...document.querySelectorAll('#nameChips .chip.zi.on')]
+    .map(c => (c.dataset.zi || '').trim())
+    .filter(Boolean);
+  const tradeName = ordered[0] || fallbackOn[0] || '';
   const industry = (document.getElementById('industry').value || '').trim();
   const orgForm = (document.getElementById('orgForm').value || '').trim();
   const capital = parseFloat(document.getElementById('capital').value) || 0;
@@ -1301,35 +1392,76 @@ function buildCasePayload(){
   const postalCode = (document.getElementById('postalCode').value || '').trim();
   const district = parseDistrictFromAddress(detail);
   const scope = (document.getElementById('scope').value || '').trim() || industry;
+  const scopeNames = (STATE.selectedScopes || []).map(s => (s.name || '').trim()).filter(Boolean);
+  const scopeCodes = (STATE.selectedScopes || [])
+    .map(s => (s.scope_code || s.scope_id || '').trim())
+    .filter(Boolean);
+
+  const alternatives = (ordered.length ? ordered.slice(1) : fallbackOn.filter(z => z !== tradeName))
+    .filter(z => z && z !== tradeName)
+    .map(z => ({ tradeName: z, industry, orgForm }));
 
   const legalName = (document.getElementById('legalName').value || '').trim();
   const legalMobile = (document.getElementById('legalMobile').value || '').trim();
 
   const investors = [...document.querySelectorAll('#npList .np-card')].map(c => {
-    const ratio = parseFloat(c.querySelector('.np-pct').value) || 0;
+    const d = collectNpCardData(c);
+    const ratio = parseFloat(d.pct) || 0;
     const amount = capital > 0 && ratio > 0 ? Math.round(capital * ratio) / 100 : 0;
+    const sole = isSoleProprietorship();
     return {
       type: 'natural_person',
-      name: (c.querySelector('.np-name').value || '').trim(),
+      name: d.name,
       idType: 'id_card',
       idNumber: '',
-      mobile: (c.querySelector('.np-phone').value || '').trim(),
+      mobile: d.phone,
       amount,
       ratio,
-      investmentMethod: '货币',
-      address: (c.querySelector('.np-address').value || '').trim(),
-      ethnicity: (c.querySelector('.np-ethnicity').value || '').trim(),
+      investmentMethod: sole ? '个人财产出资' : '货币',
+      address: '',
+      ethnicity: d.ethnicity,
+      postalCode: d.postalCode,
+      politicalStatus: d.politicalStatus,
+      education: d.education,
+      priorOccupation: d.priorOccupation,
+      isExecutivePartner: !!d.isExecutivePartner,
+      isLicenseHolder: !!d.isLicenseHolder,
+      liabilityType: d.liabilityType || '',
     };
   });
 
+  const limitedP = isLimitedPartnership();
+  const generalP = isGeneralPartnership();
+  // 有限合伙：法人=无限责任执行事务（持照人同）；其它合伙人仅无限责任可勾选执行事务
+  if(limitedP){
+    investors.forEach(inv => {
+      if(inv.name && inv.name === legalName){
+        inv.liabilityType = '无限责任';
+        inv.isExecutivePartner = true;
+      } else if(inv.liabilityType !== '无限责任'){
+        inv.isExecutivePartner = false;
+      }
+      inv.isLicenseHolder = !!inv.isExecutivePartner;
+    });
+  }
+  const executivePartnerNames = investors
+    .filter(inv => inv.isExecutivePartner)
+    .map(inv => inv.name)
+    .filter(Boolean);
+  const licenseHolderNames = investors
+    .filter(inv => inv.isLicenseHolder)
+    .map(inv => inv.name)
+    .filter(Boolean);
+
   const dirSame = document.getElementById('dirSame').checked;
   const finSame = document.getElementById('finSame').checked;
-  const dirName = dirSame ? legalName : (document.getElementById('dirName').value || '').trim();
-  const dirMobile = dirSame ? legalMobile : (document.getElementById('dirMobile').value || '').trim();
+  const hideBoard = hidesBoardRoles();
+  const dirName = hideBoard ? '' : (dirSame ? legalName : (document.getElementById('dirName').value || '').trim());
+  const dirMobile = hideBoard ? '' : (dirSame ? legalMobile : (document.getElementById('dirMobile').value || '').trim());
   const finName = finSame ? legalName : (document.getElementById('finName').value || '').trim();
   const finMobile = finSame ? legalMobile : (document.getElementById('finMobile').value || '').trim();
 
-  const supOn = document.querySelector('#supSeg .seg-btn.on')?.dataset?.v === '1';
+  const supOn = isSupervisorOn();
   const supervisors = [];
   if(supOn){
     const sn = (document.getElementById('supName').value || '').trim();
@@ -1351,12 +1483,12 @@ function buildCasePayload(){
     enterpriseType: 'limited_company',
     preApproval: false,
     name: {
-      adminDivision: '上海市',
+      adminDivision: STATE.nameDistrict || '上海市',
       tradeName,
       industry,
       orgForm,
       fullNamePreview: (document.getElementById('aiName').value || '').trim(),
-      alternatives: [],
+      alternatives,
     },
     registration: {
       district,
@@ -1382,7 +1514,8 @@ function buildCasePayload(){
       businessTermType: 'long_term',
       businessTermYears: null,
       businessScope: scope,
-      businessScopeCodes: [],
+      businessScopeCodes: scopeCodes,
+      businessScopeNames: scopeNames,
     },
     investors,
     personnel: {
@@ -1401,7 +1534,10 @@ function buildCasePayload(){
         fromInvestorIndex: null,
       }] : [],
       supervisors,
-      establishSupervisor: !!supOn,
+      // 设立时仅一名监事（不设监事会）；股份有限公司必须设立
+      establishSupervisor: !!supOn || (isSharesCompany() && !hideBoard),
+      establishSupervisorBoard: false,
+      employeeSupervisorCount: 0,
       manager: null,
       financeOfficer: finName ? {
         name: finName,
@@ -1418,13 +1554,16 @@ function buildCasePayload(){
         email: (document.getElementById('liaEmail').value || '').trim(),
         address: (document.getElementById('liaAddress').value || '').trim(),
       },
+      executivePartnerNames,
+      licenseHolderNames,
     },
     beneficialOwner: {
       name: (document.getElementById('uboName').value || '').trim(),
       mobile: (document.getElementById('uboMobile').value || '').trim(),
       idValidUntil: (document.getElementById('uboIdValid').value || '').trim(),
       ownershipRatio: uboPct,
-      address: '',
+      // 经常居住地：最终受益人「住所*」用户填写值
+      address: (document.getElementById('uboAddress').value || '').trim(),
     },
     attachments: {
       idCards: collectIdPeople().map(p => {
@@ -1460,8 +1599,10 @@ async function syncCasePayloadToGamma(){
 
 async function enterPhaseB(){
   STATE.refillTimes = 2;
+  STATE.fillRetryCount = 0;
   STATE.sid = makeSid();
   STATE.automationRelay = true;
+  STATE.fillCancelled = false;
   try{
     const sync = await syncCasePayloadToGamma();
     console.log('[enterPhaseB] case synced', sync);
@@ -1534,11 +1675,16 @@ function stopQrPolling(){
 
 function startQrPolling(){
   stopQrPolling();
+  if(STATE.fillCancelled) return;
   const sid = STATE.sid;
   if(!sid) return;
   const origin = backendOriginForPrototype();
+  const QR_TIMEOUT_MS = 90000;
   const tick = async () => {
-    if(STATE.step !== 5 || STATE.sid !== sid){ stopQrPolling(); return; }
+    if(STATE.fillCancelled || STATE.step !== 5 || STATE.sid !== sid){
+      stopQrPolling();
+      return;
+    }
     try{
       const res = await fetch(origin + '/api/automation/' + encodeURIComponent(sid));
       const data = await res.json().catch(() => ({}));
@@ -1550,18 +1696,40 @@ function startQrPolling(){
         }
         return;
       }
-      if(data.hasQr && data.qr) showLiveQr(data.qr);
-      if(data.loggedIn){
+      if(data.hasQr && data.qr){
+        const changed = data.qr !== STATE.lastQrData;
+        if(changed){
+          STATE.lastQrData = data.qr;
+          STATE.qrReceivedAt = Date.now();
+          showLiveQr(data.qr);
+        }else if(!document.getElementById('qrPanel')?.classList.contains('has-qr')){
+          showLiveQr(data.qr);
+        }
+        if(STATE.qrReceivedAt && (Date.now() - STATE.qrReceivedAt > QR_TIMEOUT_MS)){
+          const st = document.getElementById('qrStatus');
+          if(st){
+            st.className = 'qr-status err';
+            st.textContent = '二维码可能已超时，请点击「重试」重新拉取';
+          }
+        }
+      }
+      if(data.loggedIn || (data.caseStatus && [
+        'logged_in','name_checking','name_failed','human_confirmation_required',
+        'name_next_reached','filling_establishment','choosing_process','filling_addons',
+        'ready_for_user_submit','need_human','offline_required','failed'
+      ].includes(String(data.caseStatus)))){
         stopQrPolling();
         const st = document.getElementById('qrStatus');
         if(st){ st.className = 'qr-status ok'; st.textContent = '扫码成功，正在进入下一步…'; }
+        const actions = document.getElementById('qrActions');
+        if(actions) actions.style.display = 'none';
         scannedOK();
       }
     }catch(err){
       const st = document.getElementById('qrStatus');
       if(st && !document.getElementById('qrPanel')?.classList.contains('has-qr')){
         st.className = 'qr-status err';
-        st.textContent = '二维码同步失败，请稍后重试或点下方按钮继续';
+        st.textContent = '二维码同步失败，请点击「重试」';
       }
     }
   };
@@ -1570,6 +1738,7 @@ function startQrPolling(){
 }
 
 function mountBPageFrame(){
+  if(STATE.fillCancelled) return;
   if (!STATE.sid) STATE.sid = makeSid();
   const params = new URLSearchParams(location.search);
   const useMock = params.get('mock') === '1' || params.get('mock') === 'true';
@@ -1584,8 +1753,93 @@ function mountBPageFrame(){
   }
   const openA = document.getElementById('openAPageBtn');
   if (openA) openA.href = origin + '/acquire?sid=' + encodeURIComponent(STATE.sid) + (useMock ? '&mock=true' : '');
+  STATE.lastQrData = null;
+  STATE.qrReceivedAt = 0;
   showLiveQr('');
   startQrPolling();
+}
+
+function notifyCancelAutomation(sid, caseId){
+  const origin = backendOriginForPrototype();
+  const cid = (caseId || STATE.syncedCaseId || STATE.caseId || 'GM202608062231EF').trim();
+  // keepalive：离开页面/点取消后仍要发出；不要短超时打断关窗
+  const opts = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    keepalive: true,
+  };
+  if(sid){
+    fetch(origin + '/api/automation/' + encodeURIComponent(sid) + '/cancel', {
+      ...opts,
+      body: '{}',
+    }).catch(() => {});
+  }
+  fetch(origin + '/api/automation/cancel-case', {
+    ...opts,
+    body: JSON.stringify({ caseId: cid }),
+  }).catch(() => {});
+}
+
+function cancelQrLogin(){
+  // 先通知后端关 Chrome，再停轮询离场（此前日志显示取消请求常未发出）
+  stopQrPolling();
+  const sid = STATE.sid;
+  const caseId = STATE.syncedCaseId || STATE.caseId || '';
+  STATE.fillCancelled = true;
+  STATE.scannedDone = false;
+  STATE.pipeRunning = false;
+  notifyCancelAutomation(sid, caseId);
+  const frame = document.getElementById('bPageFrame');
+  if(frame) frame.src = 'about:blank';
+  showLiveQr('');
+  STATE.sid = '';
+  STATE.lastQrData = null;
+  STATE.qrReceivedAt = 0;
+  go(4);
+}
+
+async function retryQrLogin(){
+  if(STATE.scannedDone || STATE.qrRetrying) return;
+  STATE.qrRetrying = true;
+  const status = document.getElementById('qrStatus');
+  const retryBtn = document.getElementById('qrRetryBtn');
+  if(retryBtn) retryBtn.disabled = true;
+  if(status){ status.className = 'qr-status'; status.textContent = '正在重新拉取登录页与二维码…'; }
+  stopQrPolling();
+  showLiveQr('');
+  const oldSid = STATE.sid;
+  const caseId = STATE.syncedCaseId || STATE.caseId || 'GM202608062231EF';
+  // 先取消旧会话（只关本 case），再开新 sid，避免旧 finally/kill 误关新窗
+  if(oldSid) notifyCancelAutomation(oldSid, caseId);
+  await new Promise(r => setTimeout(r, 600));
+  STATE.sid = makeSid();
+  STATE.lastQrData = null;
+  STATE.qrReceivedAt = 0;
+  try{
+    const origin = backendOriginForPrototype();
+    const res = await fetch(origin + '/api/start-automation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId,
+        sid: STATE.sid,
+        headless: false,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok || !data.ok){
+      throw new Error((data && data.error) || ('重试失败 HTTP ' + res.status));
+    }
+    mountBPageFrame();
+  }catch(err){
+    if(status){
+      status.className = 'qr-status err';
+      status.textContent = '重试失败：' + (err && err.message ? err.message : err);
+    }
+  }finally{
+    STATE.qrRetrying = false;
+    if(retryBtn) retryBtn.disabled = false;
+  }
 }
 
 /* 监听 B 页（iframe）扫码成功 → 自动进屏 7 */
@@ -1593,17 +1847,18 @@ window.addEventListener('message', function(ev){
   let d; try { d = ev.data; } catch (e) { return; }
   if (!d || typeof d !== 'object') return;
   if (d.type === 'login_success' && d.sid === STATE.sid){
-    const btn = document.getElementById('scannedBtn');
-    if (btn) btn.style.display = 'none';
+    const actions = document.getElementById('qrActions');
+    if (actions) actions.style.display = 'none';
     scannedOK();
   }
 });
 
 /* 屏 6 二维码：方案 A 改为由 B 页 iframe（/qrlogin）实时展示 RPA 抓取的真实二维码，旧版本地假二维码 renderQR() 已弃用。 */
 
-/* ============ 屏 6 → 7：模拟扫码成功，启动 RPA 流水线 ============ */
+/* ============ 屏 6 → 7：扫码成功，进入进度跟踪 ============ */
 function scannedOK(){
-  if (STATE.scannedDone) return;          // 防止 postMessage 与手动按钮重复触发
+  if (STATE.fillCancelled) return;
+  if (STATE.scannedDone) return;          // 防止 postMessage 与轮询重复触发
   STATE.scannedDone = true;
   stopQrPolling();
   go(6);
@@ -1627,12 +1882,20 @@ function resetPipeProgressUI(){
   const pendingTip = document.getElementById('pendingTip');
   const refillBtn = document.getElementById('gotoRefill');
   const note = document.getElementById('nameFailNote');
+  const retryBtn = document.getElementById('retryFillBtn');
   setPipeDot(document.getElementById('step3'), 'run');
   setPipeDot(document.getElementById('step4'), 'wait', '4');
   if(tip3) tip3.textContent = '正在同步填报进度…';
   if(pendingTip) pendingTip.style.display = 'none';
   if(refillBtn) refillBtn.style.display = 'none';
   if(note) note.style.display = 'none';
+  if(retryBtn){
+    retryBtn.style.display = 'none';
+    retryBtn.disabled = false;
+    retryBtn.className = 'btn btn-primary btn-block';
+    retryBtn.textContent = '重试';
+    retryBtn.dataset.mode = 'retry';
+  }
 }
 
 function showNameFailUI(reason){
@@ -1643,11 +1906,72 @@ function showNameFailUI(reason){
   const note = document.getElementById('nameFailNote');
   setPipeDot(document.getElementById('step3'), 'fail', '!');
   setPipeDot(document.getElementById('step4'), 'wait', '4');
-  if(tip3) tip3.textContent = reason || '名称核验未通过';
-  if(pendingText) pendingText.textContent = '待办：名称核验未通过（' + (reason || '请补充字号后重试') + '）';
+  const msg = reason || '核名不通过，请返回修改字号并重试';
+  if(tip3) tip3.textContent = msg.indexOf('核名不通过') >= 0 ? msg : ('核名不通过：' + msg);
+  if(pendingText) pendingText.textContent = '待办：核名不通过，请返回修改字号并重试';
   if(pendingTip) pendingTip.style.display = 'flex';
-  if(refillBtn) refillBtn.style.display = '';
-  if(note) note.style.display = '';
+  if(refillBtn){
+      refillBtn.style.display = '';
+    refillBtn.textContent = '返回修改字号';
+  }
+  if(note){
+    note.style.display = '';
+    note.textContent = '所选字号均不可用或仅填了一个字号。请返回企业信息页修改字号后重新扫码填报。';
+  }
+  updateRetryFillBtn(false);
+}
+
+function updateRetryFillBtn(show){
+  const retryBtn = document.getElementById('retryFillBtn');
+  if(!retryBtn) return;
+  if(!show){
+    retryBtn.style.display = 'none';
+    return;
+  }
+  retryBtn.style.display = '';
+  retryBtn.disabled = false;
+  if(STATE.fillRetryCount >= 2){
+    retryBtn.className = 'btn btn-orange btn-block';
+    retryBtn.textContent = '联系人工客服';
+    retryBtn.dataset.mode = 'support';
+    }else{
+    retryBtn.className = 'btn btn-primary btn-block';
+    retryBtn.textContent = '重试';
+    retryBtn.dataset.mode = 'retry';
+  }
+}
+
+function openCsQrModal(){
+  const modal = document.getElementById('csModal');
+  if(modal) modal.classList.add('open');
+}
+
+function closeCsQrModal(){
+  const modal = document.getElementById('csModal');
+  if(modal) modal.classList.remove('open');
+}
+
+/** 自动 3 次失败后：进度条提示系统异常，并展示重试 / 返回 / 客服 */
+function showFillRetryOrSupportUI(detail){
+  stopFillProgressPolling();
+  const tip3 = document.getElementById('step3Tip');
+  const pendingTip = document.getElementById('pendingTip');
+  const pendingText = document.getElementById('pendingTipText');
+  const refillBtn = document.getElementById('gotoRefill');
+  const note = document.getElementById('nameFailNote');
+  setPipeDot(document.getElementById('step3'), 'fail', '!');
+  setPipeDot(document.getElementById('step4'), 'wait', '4');
+  if(tip3) tip3.textContent = '系统异常，请点击重试或返回上一页。';
+  const needSupport = STATE.fillRetryCount >= 2;
+  if(pendingText){
+    pendingText.textContent = needSupport
+      ? '连续两次重试仍失败。请点击「联系人工客服」，或「取消并返回上一页」。'
+      : '系统异常，请点击下方「重试」重新扫码开启新流程，或「取消并返回上一页」。';
+  }
+  if(pendingTip) pendingTip.style.display = 'flex';
+  if(refillBtn) refillBtn.style.display = 'none';
+  if(note) note.style.display = 'none';
+  updateRetryFillBtn(true);
 }
 
 function stopFillProgressPolling(){
@@ -1664,11 +1988,12 @@ function startFillProgressPolling(){
   resetPipeProgressUI();
   const sid = STATE.sid;
   if(!sid){
-    const tip3 = document.getElementById('step3Tip');
-    if(tip3) tip3.textContent = '未关联自动化会话，请返回扫码页重试';
+    showFillRetryOrSupportUI('未关联自动化会话');
     return;
   }
   const origin = backendOriginForPrototype();
+  const MAX_POLL_FAILS = 3;
+  let failStreak = 0;
 
   const tick = async () => {
     if(STATE.step !== 6 || STATE.sid !== sid){ stopFillProgressPolling(); return; }
@@ -1676,10 +2001,21 @@ function startFillProgressPolling(){
       const res = await fetch(origin + '/api/automation/' + encodeURIComponent(sid));
       const data = await res.json().catch(() => ({}));
       if(!res.ok || !data.ok){
+        failStreak += 1;
         const tip3 = document.getElementById('step3Tip');
-        if(tip3) tip3.textContent = (data && data.error) || '等待自动化状态…';
+        const raw = (data && data.error) || ('HTTP ' + res.status);
+        const isUnknown = /unknown\s*sid/i.test(String(raw));
+        if(tip3){
+          tip3.textContent = isUnknown
+            ? `会话已失效，正在重试（${failStreak}/${MAX_POLL_FAILS}）…`
+            : `进度同步异常，正在重试（${failStreak}/${MAX_POLL_FAILS}）…`;
+        }
+        if(failStreak >= MAX_POLL_FAILS){
+          showFillRetryOrSupportUI(isUnknown ? '自动化会话已失效' : (raw || '进度同步失败'));
+        }
         return;
       }
+      failStreak = 0;
       const tip3 = document.getElementById('step3Tip');
       if(data.progress && tip3) tip3.textContent = data.progress;
 
@@ -1689,36 +2025,45 @@ function startFillProgressPolling(){
         return;
       }
 
+      // 阶段自动重试 3 次仍失败：立即展示系统异常 + 重试/返回
+      if(data.needsHuman){
+        showFillRetryOrSupportUI(
+          data.progress || data.customerMessage || data.reason || data.error || '系统异常'
+        );
+        return;
+      }
+
       if(data.running || (!data.finished && !data.fillOk)){
         setPipeDot(document.getElementById('step3'), 'run');
         setPipeDot(document.getElementById('step4'), 'wait', '4');
       }
 
       if(data.fillOk && (data.finished || (data.stagesDone || []).length >= 4)){
+        STATE.fillRetryCount = 0;
         stopFillProgressPolling();
         setPipeDot(document.getElementById('step3'), 'done', '✓');
         setPipeDot(document.getElementById('step4'), 'run');
         if(tip3) tip3.textContent = data.progress || '填报完成，正在整理结果…';
-        setTimeout(()=>{
+  setTimeout(()=>{
           if(STATE.step !== 6) return;
           setPipeDot(document.getElementById('step4'), 'done', '✓');
-          setTimeout(()=> go(8), 500);
+          setTimeout(()=> go(7), 500);
         }, 700);
         return;
       }
 
       if(data.finished && !data.fillOk && !data.nameFailed){
-        stopFillProgressPolling();
-        setPipeDot(document.getElementById('step3'), 'fail', '!');
-        if(tip3) tip3.textContent = data.error || data.reason || data.progress || '填报中断，需人工处理';
-        const pendingTip = document.getElementById('pendingTip');
-        const pendingText = document.getElementById('pendingTipText');
-        if(pendingText) pendingText.textContent = '待办：' + (data.error || data.reason || '填报异常，请查看截图或联系协助');
-        if(pendingTip) pendingTip.style.display = 'flex';
+        showFillRetryOrSupportUI(
+          data.error || data.reason || data.progress || '系统异常'
+        );
       }
     }catch(err){
+      failStreak += 1;
       const tip3 = document.getElementById('step3Tip');
-      if(tip3) tip3.textContent = '进度同步失败，将自动重试…';
+      if(tip3) tip3.textContent = `进度同步失败，正在重试（${failStreak}/${MAX_POLL_FAILS}）…`;
+      if(failStreak >= MAX_POLL_FAILS){
+        showFillRetryOrSupportUI('进度同步失败');
+      }
     }
   };
 
@@ -1726,26 +2071,83 @@ function startFillProgressPolling(){
   STATE.fillPollTimer = setInterval(tick, 1500);
 }
 
-/* ============ 屏 6：扫码完成按钮 ============ */
-document.getElementById('scannedBtn').addEventListener('click', ()=> scannedOK());
+/* ============ 屏 6：取消 / 重试 ============ */
+document.getElementById('qrCancelBtn').addEventListener('click', ()=> cancelQrLogin());
+document.getElementById('qrRetryBtn').addEventListener('click', ()=> retryQrLogin());
 
-/* ============ 屏 7 → 8：去补充字号 ============ */
-document.getElementById('gotoRefill').addEventListener('click', ()=> go(7));
-
-/* ============ 屏 8：重新提交核名 ============ */
-async function resubmit(){
-  STATE.refillTimes = Math.max(0, (STATE.refillTimes || 1) - 1);
-  if(STATE.refillTimes < 0) STATE.refillTimes = 0;
-  go(6);
-  resetPipeProgressUI();
-  try{
-    await syncCasePayloadToGamma();
-  }catch(err){
-    console.warn('[resubmit] sync failed', err);
+/* ============ 屏 7：返回修改字号 → 企业信息（第 2 页） ============ */
+document.getElementById('gotoRefill').addEventListener('click', ()=>{
+  stopFillProgressPolling();
+  stopQrPolling();
+  const sid = STATE.sid;
+  const caseId = STATE.syncedCaseId || STATE.caseId || '';
+  STATE.pipeRunning = false;
+  STATE.scannedDone = false;
+  STATE.fillCancelled = false;
+  if(typeof notifyCancelAutomation === 'function'){
+    notifyCancelAutomation(sid, caseId);
   }
+  STATE.sid = '';
+  go(1);
+});
+
+/* ============ 屏 7：取消填报并返回上一页 ============ */
+async function cancelFillAndBack(){
+  stopFillProgressPolling();
+  stopQrPolling();
+  closeCsQrModal();
+  const sid = STATE.sid;
+  const caseId = STATE.syncedCaseId || STATE.caseId || '';
+  STATE.pipeRunning = false;
+  STATE.scannedDone = false;
+  STATE.fillCancelled = true;
+  STATE.fillRetryCount = 0;
+  notifyCancelAutomation(sid, caseId);
+  const frame = document.getElementById('bPageFrame');
+  if(frame) frame.src = 'about:blank';
+  showLiveQr('');
+  STATE.sid = '';
+  go(4);
+}
+document.getElementById('cancelFillBtn').onclick = function(e){
+  e.preventDefault();
+  if(!confirm('确认取消填报并返回上一页？正在进行的 RPA 将被终止。')) return;
+  cancelFillAndBack();
+};
+
+/** 进度页失败后：重新扫码并开启新流程；两次重试仍失败则联系客服 */
+async function retryFillFromProgress(){
+  const retryBtn = document.getElementById('retryFillBtn');
+  if(retryBtn && retryBtn.dataset.mode === 'support'){
+    openCsQrModal();
+    return;
+  }
+  if(STATE.fillRetryCount >= 2){
+    updateRetryFillBtn(true);
+    openCsQrModal();
+    return;
+  }
+  if(retryBtn){
+    retryBtn.disabled = true;
+    retryBtn.textContent = '正在重新开启…';
+  }
+  stopFillProgressPolling();
+  const oldSid = STATE.sid;
+  notifyCancelAutomation(oldSid, STATE.syncedCaseId || STATE.caseId || '');
+  const frame = document.getElementById('bPageFrame');
+  if(frame) frame.src = 'about:blank';
+  showLiveQr('');
+
+  STATE.fillRetryCount = (STATE.fillRetryCount || 0) + 1;
+  STATE.scannedDone = false;
+  STATE.fillCancelled = false;
+  STATE.sid = makeSid();
+  STATE.lastQrData = null;
+  STATE.qrReceivedAt = 0;
+
   try{
+    try{ await syncCasePayloadToGamma(); }catch(e){ console.warn('[retryFill] sync', e); }
     const origin = backendOriginForPrototype();
-    if(!STATE.sid) STATE.sid = makeSid();
     const res = await fetch(origin + '/api/start-automation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1757,14 +2159,30 @@ async function resubmit(){
     });
     const data = await res.json().catch(() => ({}));
     if(!res.ok || !data.ok){
-      throw new Error((data && data.error) || ('重启填报失败 HTTP ' + res.status));
+      throw new Error((data && data.error) || ('启动自动化失败 HTTP ' + res.status));
     }
+    go(5);
   }catch(err){
-    alert('重新启动填报失败：' + (err && err.message ? err.message : err));
+    alert('重新开启填报失败：' + (err && err.message ? err.message : err));
+    showFillRetryOrSupportUI(err && err.message ? err.message : '重新开启失败');
+  }finally{
+    if(retryBtn){
+      retryBtn.disabled = false;
+      updateRetryFillBtn(STATE.step === 6);
+    }
   }
-  STATE.pipeRunning = true;
-  startFillProgressPolling();
 }
+document.getElementById('retryFillBtn').onclick = function(e){
+  e.preventDefault();
+  retryFillFromProgress();
+};
+document.getElementById('csModalClose').onclick = function(e){
+  e.preventDefault();
+  closeCsQrModal();
+};
+document.getElementById('csModal').addEventListener('click', function(e){
+  if(e.target === this) closeCsQrModal();
+});
 
 /* ============ 屏 4：按人去重上传身份证 ============ */
 function personKeyOf(name, mobile){
@@ -1843,26 +2261,28 @@ function collectIdPeople(){
 
   document.querySelectorAll('#npList .np-card').forEach(c => {
     add(
-      '股东',
+      npIdRoleLabel(),
       (c.querySelector('.np-name').value || '').trim(),
       (c.querySelector('.np-phone').value || '').trim()
     );
   });
 
-  const dirSame = document.getElementById('dirSame').checked;
-  add(
-    '董事',
-    dirSame ? legalName : (document.getElementById('dirName').value || '').trim(),
-    dirSame ? legalMobile : (document.getElementById('dirMobile').value || '').trim()
-  );
-
-  const supOn = document.querySelector('#supSeg .seg-btn.on')?.dataset?.v === '1';
-  if(supOn){
+  if(!hidesBoardRoles()){
+    const dirSame = document.getElementById('dirSame').checked;
     add(
-      '监事',
-      (document.getElementById('supName').value || '').trim(),
-      (document.getElementById('supMobile').value || '').trim()
+      '董事',
+      dirSame ? legalName : (document.getElementById('dirName').value || '').trim(),
+      dirSame ? legalMobile : (document.getElementById('dirMobile').value || '').trim()
     );
+
+    const supOn = isSupervisorOn();
+    if(supOn){
+      add(
+        '监事',
+        (document.getElementById('supName').value || '').trim(),
+        (document.getElementById('supMobile').value || '').trim()
+      );
+    }
   }
 
   const finSame = document.getElementById('finSame').checked;
@@ -1925,10 +2345,10 @@ function renderPersonIdSlot(personKey, side){
         data-person-key="${personKey}" data-side="${side}" />
       ${preview ? `<img class="ocr-preview" src="${preview}" alt="${title}" />` : ''}
       ${done ? `
-        <span class="ocr-ok">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+    <span class="ocr-ok">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
           ${title} · 已上传
-        </span>
+    </span>
         <span class="ocr-name" title="${fileName || fileId}">${fileName || fileId}</span>
       ` : `
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -1957,7 +2377,7 @@ function refreshIdPeopleUploads(){
           <div>
             <div class="id-person-name">${p.personName}</div>
             <div class="id-person-roles">${p.roles.map(r => `<span>${r}</span>`).join('')}</div>
-          </div>
+    </div>
           <div class="id-person-status${ok ? ' ok' : ''}">${ok ? '正反面已齐' : '待上传'}</div>
         </div>
         <div class="ocr-row">
@@ -2005,13 +2425,14 @@ async function onPersonIdSelected(personKey, side, input){
     return;
   }
   if(card) card.classList.add('uploading');
-  const localUrl = URL.createObjectURL(file);
-  if(side === 'front') u.frontPreview = localUrl;
-  else u.backPreview = localUrl;
   try{
+    const prepared = await prepareIdImageForUpload(file);
+    const localUrl = URL.createObjectURL(prepared.blob);
+    if(side === 'front') u.frontPreview = localUrl;
+    else u.backPreview = localUrl;
     const fd = new FormData();
     fd.append('side', side);
-    fd.append('file', file, file.name);
+    fd.append('file', prepared.blob, prepared.fileName);
     fd.append('personKey', person.personKey);
     fd.append('personName', person.personName);
     fd.append('roles', JSON.stringify(person.roles));
@@ -2027,10 +2448,10 @@ async function onPersonIdSelected(personKey, side, input){
     }
     if(side === 'front'){
       u.frontFileId = data.fileId || '';
-      u.frontName = data.fileName || file.name;
-    }else{
+      u.frontName = data.fileName || prepared.fileName;
+  }else{
       u.backFileId = data.fileId || '';
-      u.backName = data.fileName || file.name;
+      u.backName = data.fileName || prepared.fileName;
     }
     if(!(side === 'front' ? u.frontFileId : u.backFileId)){
       throw new Error('服务未返回文件 ID');
@@ -2046,17 +2467,66 @@ async function onPersonIdSelected(personKey, side, input){
   }
 }
 
+const ID_IMAGE_MAX_BYTES = 500 * 1024;
+
+/** 已是 jpg 且 ≤500KB 则原样上传；否则转 jpg 并压缩到 500KB 内。 */
+async function prepareIdImageForUpload(file){
+  const isJpeg = /^image\/jpeg$/i.test(file.type || '') || /\.jpe?g$/i.test(file.name || '');
+  if(isJpeg && file.size <= ID_IMAGE_MAX_BYTES){
+    return { blob: file, fileName: file.name || 'id.jpg', processed: false };
+  }
+  const bitmap = await createImageBitmap(file);
+  let w = bitmap.width;
+  let h = bitmap.height;
+  let quality = 0.88;
+  let blob = null;
+  for(let i = 0; i < 16; i++){
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(w));
+    canvas.height = Math.max(1, Math.round(h));
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+    if(!blob) break;
+    if(blob.size <= ID_IMAGE_MAX_BYTES) break;
+    if(quality > 0.55) quality -= 0.08;
+    else { w *= 0.85; h *= 0.85; quality = Math.max(0.5, quality); }
+  }
+  bitmap.close && bitmap.close();
+  if(!blob) throw new Error('图片转换失败');
+  if(blob.size > ID_IMAGE_MAX_BYTES) throw new Error('压缩后仍超过 500KB，请更换图片');
+  const base = String(file.name || 'id').replace(/\.[^.]+$/, '') || 'id';
+  return { blob, fileName: base + '.jpg', processed: true };
+}
+
 function bindIdCardUploads(){
   refreshIdPeopleUploads();
 }
 
 /* ============ 屏 3：人员信息逻辑 ============ */
 function setSup(v, btn){
+  if(isSharesCompany()){
+    // 股份有限公司不可取消设立
+    v = 1;
+  }
   document.querySelectorAll('#supSeg .seg-btn').forEach(b=>b.classList.remove('on'));
-  btn.classList.add('on');
+  const target = btn || document.querySelector(`#supSeg .seg-btn[data-v="${v===1?'1':'0'}"]`);
+  if(target) target.classList.add('on');
   const show = (v===1);
   document.getElementById('supBody').style.display = show ? 'grid' : 'none';
-  document.getElementById('supNote').style.display = show ? 'none' : 'block';
+  document.getElementById('supNote').style.display = (!show && !isSharesCompany()) ? 'block' : 'none';
+  const reqShow = show ? '' : 'none';
+  const nr = document.getElementById('supNameReq');
+  const mr = document.getElementById('supMobileReq');
+  if(nr) nr.style.display = reqShow;
+  if(mr) mr.style.display = reqShow;
+}
+function isSupervisorOn(){
+  if(hidesBoardRoles()) return false;
+  if(isSharesCompany()) return true;
+  return document.querySelector('#supSeg .seg-btn.on')?.dataset?.v === '1';
 }
 function toggleSameLegal(prefix){
   const sameEl = document.getElementById(prefix + 'Same');
@@ -2093,10 +2563,36 @@ function requireRole(prefix, label){
   if(!requireMobile(document.getElementById(prefix + 'Mobile').value, label + '手机号')) return false;
   return true;
 }
+const NP_POLITICAL_OPTS = [
+  '中共党员','中共预备党员','共青团员','民革会员','民盟盟员','民建会员','民进会员',
+  '农工党员','致公党员','九三学社社员','台盟盟员','无党派人群','群众'
+];
+const NP_EDU_OPTS = [
+  '研究生','大学本科','大学专科','中等专业学校','技工学校','高中','初中','小学','文盲或半文盲'
+];
+const NP_OCCUPATION_OPTS = [
+  '农民','待业人员','下岗人员','辞退职人员','个体工商户经营者','停薪留职人员','闲散人员',
+  '离休人员','退休人员','国家法律,法规允许的其他人员','在职人员'
+];
 function npCardHtml(idx, data){
-  const d = data || {name:'', ethnicity:'', phone:'', pct:'', address:''};
+  const d = data || {name:'', ethnicity:'', phone:'', pct:'', postalCode:'', politicalStatus:'', education:'', priorOccupation:'', isExecutivePartner:false, isLicenseHolder:false, liabilityType:''};
+  const sole = isSoleProprietorship();
+  const limited = isLimitedPartnership();
+  const general = isGeneralPartnership();
+  const partnership = limited || general;
+  const roleLabel = npRoleLabel();
+  const polOpts = NP_POLITICAL_OPTS.map(o =>
+    `<option value="${o}"${d.politicalStatus===o?' selected':''}>${o}</option>`
+  ).join('');
+  const eduOpts = NP_EDU_OPTS.map(o =>
+    `<option value="${o}"${d.education===o?' selected':''}>${o}</option>`
+  ).join('');
+  const occOpts = NP_OCCUPATION_OPTS.map(o =>
+    `<option value="${o}"${d.priorOccupation===o?' selected':''}>${o}</option>`
+  ).join('');
+  const liab = d.liabilityType || '';
   return `<div class="np-card">
-    <div class="np-card-h"><span class="np-idx">自然人 ${idx}</span>
+    <div class="np-card-h"><span class="np-idx">${roleLabel} ${idx}</span>
       <button class="sh-del" type="button" onclick="removeNaturalPerson(this)" aria-label="删除">✕</button>
     </div>
     <div class="grid2" style="margin-bottom:12px;">
@@ -2112,23 +2608,311 @@ function npCardHtml(idx, data){
         </div>
       </div>
     </div>
-    <div class="field"><label>住所<span class="req">*</span></label><input type="text" class="np-address" placeholder="请填写住所地址" value="${d.address||''}" /></div>
+    <div class="np-partner-extra" style="display:${partnership?'block':'none'};">
+      <div class="field np-liability-wrap" style="display:${limited?'block':'none'};margin-bottom:12px;">
+        <label>承担责任方式<span class="req">*</span></label>
+        <select class="np-liability" onchange="onNpLiabilityChange(this)">
+          <option value="" disabled ${liab?'':'selected'}>请选择承担责任方式</option>
+          <option value="有限责任"${liab==='有限责任'?' selected':''}>有限责任</option>
+          <option value="无限责任"${liab==='无限责任'?' selected':''}>无限责任</option>
+        </select>
+      </div>
+      <label class="same-toggle np-exec-wrap" style="display:${(general || (limited && liab==='无限责任'))?'flex':'none'};"><input type="checkbox" class="np-exec" ${(d.isExecutivePartner && (!limited || liab==='无限责任'))?'checked':''} /> 是否为执行事务合伙人</label>
+      <label class="same-toggle np-license-wrap" style="display:${general?'flex':'none'};"><input type="checkbox" class="np-license" ${d.isLicenseHolder?'checked':''} /> 是否为电子营业执照持照人</label>
+    </div>
+    <div class="np-sole-extra" style="display:${sole?'block':'none'};">
+      <div class="grid2" style="margin-bottom:12px;">
+        <div class="field">
+          <label>邮编<span class="req">*</span></label>
+          <input type="text" class="np-postal" inputmode="numeric" maxlength="6" placeholder="6 位邮编" value="${d.postalCode||''}" />
+        </div>
+        <div class="field">
+          <label>政治面貌<span class="req">*</span></label>
+          <select class="np-political">
+            <option value="" disabled ${d.politicalStatus?'':'selected'}>请选择政治面貌</option>
+            ${polOpts}
+          </select>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label>文化程度<span class="req">*</span></label>
+          <select class="np-education">
+            <option value="" disabled ${d.education?'':'selected'}>请选择文化程度</option>
+            ${eduOpts}
+          </select>
+        </div>
+        <div class="field">
+          <label>申请前职业状况<span class="req">*</span></label>
+          <select class="np-occupation">
+            <option value="" disabled ${d.priorOccupation?'':'selected'}>请选择申请前职业状况</option>
+            ${occOpts}
+          </select>
+        </div>
+      </div>
+    </div>
   </div>`;
 }
+function isSoleProprietorship(){
+  return currentOrgForm() === '个人独资企业';
+}
+function isIndividualBusiness(){
+  return currentOrgForm() === '个体工商户';
+}
+function isSharesCompany(){
+  const o = currentOrgForm();
+  return o === '股份有限公司' || o === '股份公司';
+}
+function isLimitedPartnership(){
+  return currentOrgForm() === '有限合伙企业';
+}
+function isGeneralPartnership(){
+  return currentOrgForm() === '普通合伙企业';
+}
+function isPartnership(){
+  return isLimitedPartnership() || isGeneralPartnership();
+}
+function isSingleInvestorOrg(){
+  // 个人独资 / 个体工商户：投资人/自然人只能 1 人
+  return isSoleProprietorship() || isIndividualBusiness();
+}
+function npMinCount(){
+  // 股份有限公司股东、普通/有限合伙企业合伙人均至少 2 人
+  if(isSharesCompany() || isPartnership()) return 2;
+  return 1;
+}
+function npMaxCount(){
+  if(isSingleInvestorOrg()) return 1;
+  return 99;
+}
+function hidesBoardRoles(){
+  return isPartnership() || isSoleProprietorship();
+}
+function npRoleLabel(){
+  if(isPartnership()) return '合伙人';
+  if(isSoleProprietorship()) return '投资人';
+  return '自然人';
+}
+function npIdRoleLabel(){
+  if(isPartnership()) return '合伙人';
+  if(isSoleProprietorship()) return '投资人';
+  return '股东';
+}
+function syncNpPartnerExtra(){
+  const limited = isLimitedPartnership();
+  const general = isGeneralPartnership();
+  const partnership = limited || general;
+  document.querySelectorAll('#npList .np-card').forEach(c=>{
+    const wrap = c.querySelector('.np-partner-extra');
+    if(wrap) wrap.style.display = partnership ? 'block' : 'none';
+    const liabWrap = c.querySelector('.np-liability-wrap');
+    if(liabWrap) liabWrap.style.display = limited ? 'block' : 'none';
+    const lic = c.querySelector('.np-license-wrap');
+    if(lic) lic.style.display = general ? 'flex' : 'none';
+    syncNpExecVisibility(c);
+  });
+  syncLegalAsUnlimitedExecPartner();
+}
+/** 有限合伙：仅「无限责任」可勾选执行事务合伙人；选有限责任时隐藏并取消勾选。 */
+function syncNpExecVisibility(card){
+  if(!card) return;
+  const limited = isLimitedPartnership();
+  const general = isGeneralPartnership();
+  const execWrap = card.querySelector('.np-exec-wrap');
+  const exec = card.querySelector('.np-exec');
+  if(!execWrap) return;
+  if(general){
+    execWrap.style.display = 'flex';
+    return;
+  }
+  if(!limited){
+    execWrap.style.display = 'none';
+    if(exec) exec.checked = false;
+    return;
+  }
+  const liab = (card.querySelector('.np-liability')?.value || '').trim();
+  if(liab === '无限责任'){
+    execWrap.style.display = 'flex';
+  }else{
+    execWrap.style.display = 'none';
+    if(exec) exec.checked = false;
+  }
+}
+function onNpLiabilityChange(sel){
+  const card = sel && sel.closest ? sel.closest('.np-card') : null;
+  syncNpExecVisibility(card);
+  syncLegalAsUnlimitedExecPartner();
+}
+/** 有限合伙：与法人同名的合伙人 → 默认无限责任 + 执行事务合伙人。 */
+function syncLegalAsUnlimitedExecPartner(){
+  if(!isLimitedPartnership()) return;
+  const legalName = (document.getElementById('legalName')?.value || '').trim();
+  if(!legalName) return;
+  document.querySelectorAll('#npList .np-card').forEach(c=>{
+    const name = (c.querySelector('.np-name')?.value || '').trim();
+    if(!name || name !== legalName) return;
+    const sel = c.querySelector('.np-liability');
+    const exec = c.querySelector('.np-exec');
+    if(sel && sel.value !== '无限责任'){
+      sel.value = '无限责任';
+    }
+    syncNpExecVisibility(c);
+    if(exec) exec.checked = true;
+  });
+}
+function syncNpSoleExtra(){
+  const show = isSoleProprietorship();
+  document.querySelectorAll('#npList .np-card .np-sole-extra').forEach(el=>{
+    el.style.display = show ? 'block' : 'none';
+  });
+}
+function syncPersonnelByOrgForm(){
+  const partnership = isPartnership();
+  const sole = isSoleProprietorship();
+  const limited = isLimitedPartnership();
+  const hideBoard = hidesBoardRoles();
+  const roleLabel = npRoleLabel();
+  const title = document.getElementById('npSectionTitle');
+  const addBtn = document.getElementById('npAddBtn');
+  const tip = document.getElementById('npTip');
+  if(title){
+    title.textContent = partnership ? '合伙人' : (sole ? '投资人' : (isIndividualBusiness() ? '自然人' : '自然人（股东）'));
+  }
+  if(addBtn){
+    addBtn.textContent = '+ 添加' + roleLabel;
+    // 个人独资 / 个体工商户不可增加
+    addBtn.style.display = npMaxCount() <= 1 ? 'none' : '';
+  }
+  if(tip){
+    tip.textContent = limited
+      ? '合伙人至少 2 人，持股比例总计为100%；须同时有有限责任与无限责任；法人默认为无限责任执行事务合伙人（须与某合伙人同名）'
+      : (partnership
+        ? '合伙人至少 2 人，持股比例总计为100%'
+        : (sole
+          ? '个人独资企业仅一名投资人，持股比例为100%，不可增加'
+          : (isIndividualBusiness()
+            ? '个体工商户仅一名自然人，持股比例为100%，不可增加'
+            : (isSharesCompany()
+              ? '股份有限公司股东至少 2 人，持股比例总计为100%'
+              : '自然人可为一人或多人，持股比例总计为100%'))));
+  }
+  const dirSec = document.getElementById('dirSection');
+  const supSec = document.getElementById('supSection');
+  const legalNote = document.getElementById('legalNote');
+  if(dirSec) dirSec.style.display = hideBoard ? 'none' : '';
+  if(supSec) supSec.style.display = hideBoard ? 'none' : '';
+  if(legalNote){
+    if(limited){
+      legalNote.style.display = '';
+      legalNote.textContent = '有限合伙：法人默认为无限责任且为执行事务合伙人，请在合伙人中填写与法人相同的姓名并选择无限责任';
+    }else{
+      legalNote.style.display = hideBoard ? 'none' : '';
+      if(!hideBoard) legalNote.textContent = '法人可同时担任董事或财务负责人';
+    }
+  }
+  const sumNpLabel = document.getElementById('sumNpLabel');
+  if(sumNpLabel) sumNpLabel.textContent = roleLabel;
+  const sumDirLine = document.getElementById('sumDirLine');
+  const sumSupLine = document.getElementById('sumSupLine');
+  if(sumDirLine) sumDirLine.style.display = hideBoard ? 'none' : '';
+  if(sumSupLine) sumSupLine.style.display = hideBoard ? 'none' : '';
+
+  // 股份有限公司：必须设立一名监事，隐藏「设立/不设立」
+  const shares = isSharesCompany();
+  const supSeg = document.getElementById('supSeg');
+  const supReq = document.getElementById('supReqMark');
+  const sharesNote = document.getElementById('supSharesNote');
+  if(supSeg) supSeg.style.display = (hideBoard || shares) ? 'none' : '';
+  if(supReq){
+    if(shares){
+      supReq.className = 'req';
+      supReq.textContent = '*';
+    }else{
+      supReq.className = 'opt';
+      supReq.textContent = '可选';
+    }
+  }
+  if(sharesNote) sharesNote.style.display = (!hideBoard && shares) ? 'block' : 'none';
+  if(!hideBoard && shares){
+    setSup(1);
+  } else if(!hideBoard){
+    // 恢复当前 seg 显隐（不强制改用户选择）
+    const on = document.querySelector('#supSeg .seg-btn.on')?.dataset?.v === '1';
+    setSup(on ? 1 : 0);
+  }
+  syncNpSoleExtra();
+  syncNpPartnerExtra();
+  // 补足最少人数 / 裁掉超出上限（个人独资、个体工商户仅保留 1 人）
+  const minNp = npMinCount();
+  const maxNp = npMaxCount();
+  const list = document.getElementById('npList');
+  if(list){
+    while(list.querySelectorAll('.np-card').length < minNp){
+      addNaturalPerson();
+    }
+    while(list.querySelectorAll('.np-card').length > maxNp){
+      const last = list.querySelector('.np-card:last-child');
+      if(!last) break;
+      last.remove();
+    }
+    list.querySelectorAll('.np-card .sh-del').forEach(btn=>{
+      btn.style.display = maxNp <= 1 ? 'none' : '';
+    });
+  }
+  reindexNp();
+}
+function collectNpCardData(c){
+  return {
+    name: (c.querySelector('.np-name')?.value || '').trim(),
+    ethnicity: (c.querySelector('.np-ethnicity')?.value || '').trim(),
+    phone: (c.querySelector('.np-phone')?.value || '').trim(),
+    pct: (c.querySelector('.np-pct')?.value || '').trim(),
+    postalCode: (c.querySelector('.np-postal')?.value || '').trim(),
+    politicalStatus: (c.querySelector('.np-political')?.value || '').trim(),
+    education: (c.querySelector('.np-education')?.value || '').trim(),
+    priorOccupation: (c.querySelector('.np-occupation')?.value || '').trim(),
+    isExecutivePartner: !!(c.querySelector('.np-exec')?.checked),
+    isLicenseHolder: !!(c.querySelector('.np-license')?.checked),
+    liabilityType: (c.querySelector('.np-liability')?.value || '').trim(),
+  };
+}
 function reindexNp(){
+  const label = npRoleLabel();
   document.querySelectorAll('#npList .np-card').forEach((c,i)=>{
-    c.querySelector('.np-idx').textContent = '自然人 ' + (i+1);
+    c.querySelector('.np-idx').textContent = label + ' ' + (i+1);
   });
 }
 function addNaturalPerson(data){
   const list = document.getElementById('npList');
+  if(!list) return;
+  const maxNp = npMaxCount();
+  if(list.querySelectorAll('.np-card').length >= maxNp){
+    alert(isSingleInvestorOrg()
+      ? (npRoleLabel() + '仅限 1 人，不可增加')
+      : ('最多添加 ' + maxNp + ' 名' + npRoleLabel()));
+    return;
+  }
   const wrap = document.createElement('div');
   wrap.innerHTML = npCardHtml(list.children.length + 1, data);
   list.appendChild(wrap.firstElementChild);
+  // 单人组织形式隐藏删除按钮
+  if(npMaxCount() <= 1){
+    list.querySelectorAll('.np-card .sh-del').forEach(btn=>{ btn.style.display = 'none'; });
+  }
+  reindexNp();
 }
 function removeNaturalPerson(btn){
   const list = document.getElementById('npList');
-  if(list.querySelectorAll('.np-card').length <= 1){ alert('至少需保留 1 名自然人'); return; }
+  const label = npRoleLabel();
+  const minNp = npMinCount();
+  if(list.querySelectorAll('.np-card').length <= minNp){
+    alert((isSharesCompany() || isPartnership())
+      ? (label + '至少需保留 ' + minNp + ' 名')
+      : (isSingleInvestorOrg()
+        ? (label + '仅限 1 人')
+        : ('至少需保留 1 名' + label)));
+    return;
+  }
   btn.closest('.np-card').remove();
   reindexNp();
 }
@@ -2136,26 +2920,108 @@ function validatePersonnel(){
   if(!document.getElementById('legalName').value.trim()){ alert('请填写法人姓名'); return false; }
   if(!requireMobile(document.getElementById('legalMobile').value, '法人手机号')) return false;
   const cards = document.querySelectorAll('#npList .np-card');
-  if(cards.length === 0){ alert('请至少添加 1 名自然人'); return false; }
+  const roleLabel = npRoleLabel();
+  const limited = isLimitedPartnership();
+  const minNp = npMinCount();
+  const maxNp = npMaxCount();
+  if(cards.length < minNp){
+    alert((isSharesCompany()
+      ? '股份有限公司股东至少需 ' + minNp + ' 人'
+      : (isPartnership()
+        ? '合伙企业合伙人至少需 ' + minNp + ' 人'
+        : '请至少添加 1 名' + roleLabel)));
+    return false;
+  }
+  if(cards.length > maxNp){
+    alert(isSoleProprietorship()
+      ? '个人独资企业投资人仅限 1 人'
+      : (isIndividualBusiness()
+        ? '个体工商户自然人仅限 1 人'
+        : (roleLabel + '人数超出上限')));
+    return false;
+  }
+  const sole = isSoleProprietorship();
   let npSum = 0;
+  let limitedCount = 0;
+  let unlimitedCount = 0;
+  const legalNameForLp = limited ? (document.getElementById('legalName').value || '').trim() : '';
+  let legalPartnerUnlimited = false;
   for(const c of cards){
-    if(!c.querySelector('.np-name').value.trim()){ alert('有自然人未填写姓名'); return false; }
-    if(!c.querySelector('.np-ethnicity').value.trim()){ alert('有自然人未填写民族'); return false; }
-    if(!requireMobile(c.querySelector('.np-phone').value, '自然人电话')) return false;
-    if(!c.querySelector('.np-address').value.trim()){ alert('有自然人未填写住所'); return false; }
+    if(!c.querySelector('.np-name').value.trim()){ alert('有' + roleLabel + '未填写姓名'); return false; }
+    if(!c.querySelector('.np-ethnicity').value.trim()){ alert('有' + roleLabel + '未填写民族'); return false; }
+    if(!requireMobile(c.querySelector('.np-phone').value, roleLabel + '电话')) return false;
     const pct = parseFloat(c.querySelector('.np-pct').value);
-    if(isNaN(pct) || pct <= 0){ alert('有自然人未填写有效持股比例（须 > 0）'); return false; }
+    if(isNaN(pct) || pct <= 0){ alert('有' + roleLabel + '未填写有效持股比例（须 > 0）'); return false; }
     npSum += pct;
+    if(sole){
+      const postal = (c.querySelector('.np-postal')?.value || '').trim();
+      if(!/^\d{6}$/.test(postal)){ alert('个人独资企业请填写投资人 6 位邮编'); return false; }
+      if(!(c.querySelector('.np-political')?.value || '').trim()){ alert('请选择投资人政治面貌'); return false; }
+      if(!(c.querySelector('.np-education')?.value || '').trim()){ alert('请选择投资人文化程度'); return false; }
+      if(!(c.querySelector('.np-occupation')?.value || '').trim()){ alert('请选择投资人申请前职业状况'); return false; }
+    }
+    if(limited){
+      const pname = (c.querySelector('.np-name')?.value || '').trim();
+      let liab = (c.querySelector('.np-liability')?.value || '').trim();
+      // 与法人同名 → 默认无限责任执行事务
+      if(legalNameForLp && pname === legalNameForLp){
+        liab = '无限责任';
+        const sel = c.querySelector('.np-liability');
+        if(sel) sel.value = '无限责任';
+        const exec = c.querySelector('.np-exec');
+        if(exec){ exec.checked = true; }
+        syncNpExecVisibility(c);
+        legalPartnerUnlimited = true;
+      }
+      if(liab !== '有限责任' && liab !== '无限责任'){
+        alert('有限合伙企业请为每位合伙人选择承担责任方式');
+        return false;
+      }
+      if(liab === '有限责任'){
+        limitedCount += 1;
+        if(c.querySelector('.np-exec')?.checked){
+          alert('有限责任合伙人不能担任执行事务合伙人，请取消勾选或改为无限责任');
+          return false;
+        }
+      }
+      if(liab === '无限责任') unlimitedCount += 1;
+    }
   }
-  if(Math.abs(npSum - 100) > 0.01){ alert('自然人持股比例合计须为 100%（当前 ' + (Math.round(npSum*100)/100) + '%）'); return false; }
+  if(Math.abs(npSum - 100) > 0.01){ alert(roleLabel + '持股比例合计须为 100%（当前 ' + (Math.round(npSum*100)/100) + '%）'); return false; }
+  if(limited){
+    if(limitedCount < 1 || unlimitedCount < 1){
+      alert('有限合伙企业须同时至少有一名有限责任合伙人和一名无限责任合伙人');
+      return false;
+    }
+    if(!legalPartnerUnlimited){
+      alert('有限合伙企业的法人须是无限责任合伙人之一：请在合伙人中填写与法人相同的姓名，并选择无限责任（法人已默认兼任执行事务合伙人）');
+      return false;
+    }
+  }
+  if(!hidesBoardRoles()){
   if(!requireRole('dir', '董事')) return false;
-  if(!document.getElementById('dirSame').checked){
-    if(!requireMobile(document.getElementById('dirMobile').value, '董事手机号')) return false;
-  }
-  const supOn = document.querySelector('#supSeg .seg-btn.on').dataset.v === '1';
-  if(supOn){
-    if(!document.getElementById('supName').value.trim()){ alert('已选择设立监事，请填写监事姓名'); return false; }
-    if(!requireMobile(document.getElementById('supMobile').value, '监事手机号')) return false;
+    if(!document.getElementById('dirSame').checked){
+      if(!requireMobile(document.getElementById('dirMobile').value, '董事手机号')) return false;
+    }
+    const supOn = isSupervisorOn();
+    if(supOn){
+      if(!document.getElementById('supName').value.trim()){
+        alert(isSharesCompany()
+          ? '股份有限公司必须设立一名监事，请填写监事姓名'
+          : '已选择设立监事，请填写监事姓名');
+        return false;
+      }
+      if(!requireMobile(document.getElementById('supMobile').value, '监事手机号')) return false;
+      // 董事与监事不能同一人
+      const legalName = (document.getElementById('legalName').value || '').trim();
+      const dirSame = document.getElementById('dirSame').checked;
+      const dirName = (dirSame ? legalName : (document.getElementById('dirName').value || '').trim());
+      const supName = (document.getElementById('supName').value || '').trim();
+      if(dirName && supName && dirName === supName){
+        alert('董事与监事不能为同一人，请修改其中一方');
+        return false;
+      }
+    }
   }
   if(!requireRole('fin', '财务负责人')) return false;
   if(!document.getElementById('finSame').checked){
@@ -2168,38 +3034,37 @@ function validatePersonnel(){
   if(!document.getElementById('uboName').value.trim()){ alert('请填写最终受益人姓名'); return false; }
   if(!requireMobile(document.getElementById('uboMobile').value, '最终受益人手机号')) return false;
   if(!document.getElementById('uboIdValid').value.trim()){ alert('请选择最终受益人身份证有效期'); return false; }
+  if(!document.getElementById('uboAddress').value.trim()){ alert('请填写最终受益人住所'); return false; }
   const uboPct = parseFloat(document.getElementById('uboPct').value);
   if(isNaN(uboPct) || uboPct <= 0){ alert('请填写最终受益人有效持股比例（须 > 0）'); return false; }
   return true;
 }
 
-/* 法人信息变更时，勾选「同法人」的角色联动 */
+/* 法人信息变更时，勾选「同法人」的角色联动；有限合伙同步合伙人责任/执行事务 */
 ['legalName','legalMobile'].forEach(id=>{
   document.getElementById(id).addEventListener('input', ()=>{
     ['dir','fin'].forEach(p=>{
       if(document.getElementById(p + 'Same').checked) toggleSameLegal(p);
     });
+    syncLegalAsUnlimitedExecPartner();
   });
 });
-addNaturalPerson();
-bindGlobalMobileValidation();
-bindIdCardUploads();
-
-/* ============ 屏 8：实时校验 ============ */
-['nm1','nm2'].forEach(id=>{
-  const el = document.getElementById(id);
-  el.addEventListener('input', updateRefillHint);
-});
-function updateRefillHint(){
-  const v1 = document.getElementById('nm1').value.trim();
-  const v2 = document.getElementById('nm2').value.trim();
-  const v3 = document.getElementById('nm3') ? document.getElementById('nm3').value.trim() : '';
-  const v4 = document.getElementById('nm4') ? document.getElementById('nm4').value.trim() : '';
-  const filled = (v1?1:0) + (v2?1:0) + (v3?1:0) + (v4?1:0);
-  document.getElementById('okCount').textContent = (v1 && v2) ? 2 : ((v1 || v2) ? 1 : 0);
-  document.getElementById('errCount').textContent = 0;
-  document.getElementById('refillCount').textContent = '已填 ' + filled + ' / 4';
-}
+(function bindNpLegalSync(){
+  const list = document.getElementById('npList');
+  if(!list || list.dataset.legalSyncBound) return;
+  list.dataset.legalSyncBound = '1';
+  list.addEventListener('input', (e)=>{
+    if(e.target && e.target.classList && e.target.classList.contains('np-name')){
+      syncLegalAsUnlimitedExecPartner();
+    }
+  });
+  list.addEventListener('change', (e)=>{
+    if(e.target && e.target.classList && e.target.classList.contains('np-liability')){
+      syncLegalAsUnlimitedExecPartner();
+    }
+  });
+})();
+// 自然人卡 / 校验绑定在 initPrototype 中执行（配合草稿恢复）
 
 /* ============ 屏 1：登录校验 ============ */
 document.getElementById('phone').addEventListener('input', e=>{
@@ -2227,111 +3092,871 @@ document.getElementById('getCode').addEventListener('click', e=>{
   tick();
 });
 
-/* ============ 屏 1：字号候选 + 实时通过率 ============ */
-// 高频字（重名高）→ 低通过率；稀缺字 → 高通过率
-const ZI_POOL = {
-  '鑫':9,'华':11,'盛':14,'鼎':18,'宏':20,'瑞':24,'昌':27,'泰':30,
-  '启':88,'创':85,'云':82,'智':86,'数':80,'澜':90,'芮':92,'骁':89,'璟':91,'翊':87,'宥':84,'桓':83,'昭':86,'屿':90
-};
-const LOW_SUG = ['启','创','云','智','数','澜'];
+/* ============ 屏 1：核名 / 经营范围（api.gamaz.cn 代理） ============ */
 const HIGH = ['启','创','云','智','数','澜','芮','骁','璟','翊','宥','桓','昭','屿'];
-function ziRate(ch){ return ZI_POOL[ch] !== undefined ? ZI_POOL[ch] : 70; } // 未列字默认 70
-function comboRate(str){ // 取各字最低值偏严 + 均值
-  let min=100, sum=0, n=0;
-  for(const ch of str){ if(ZI_POOL[ch] !== undefined){ sum+=ZI_POOL[ch]; n++; min=Math.min(min, ZI_POOL[ch]); } }
-  if(n===0) return 70;
-  return Math.round(min*0.6 + (sum/n)*0.4);
+
+function gamazOrigin(){ return backendOriginForPrototype(); }
+
+async function gamazFetch(path, { method='GET', body=null, query=null } = {}){
+  try{
+    let url = gamazOrigin() + path;
+    if(query){
+      const qs = new URLSearchParams();
+      Object.entries(query).forEach(([k,v])=>{
+        if(v !== undefined && v !== null && v !== '') qs.set(k, v);
+      });
+      const s = qs.toString();
+      if(s) url += (url.includes('?') ? '&' : '?') + s;
+    }
+    const opts = { method, headers: { 'Accept': 'application/json' } };
+    if(body != null){
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    const res = await fetch(url, opts);
+    const data = await res.json().catch(() => null);
+    if(!data) return { code: 0, msg: res.ok ? '响应解析失败' : ('HTTP ' + res.status), data: null };
+    if(typeof data.code === 'undefined'){
+      const detail = data.detail;
+      const msg = Array.isArray(detail)
+        ? (detail[0]?.msg || '请求失败')
+        : (typeof detail === 'string' ? detail : ('HTTP ' + res.status));
+      return { code: 0, msg, data: null };
+    }
+    return data;
+  }catch(err){
+    return { code: 0, msg: (err && err.message) || '网络错误', data: null };
+  }
 }
-function addZiChip(zi, rate, selected){
+
+async function ensureNameScopeApis(){
+  if(!STATE.nameApiReady){
+    const meta = await gamazFetch('/api/name_check/meta');
+    if(meta && meta.code === 1 && meta.data){
+      STATE.nameApiReady = true;
+      STATE.nameDistrict = meta.data.region || '上海';
+      if(meta.data.disclaimer){
+        STATE.nameDisclaimer = meta.data.disclaimer;
+        const d = document.getElementById('nameDisclaimer');
+        if(d) d.textContent = meta.data.disclaimer;
+      }
+      const sel = document.getElementById('orgForm');
+      const allowed = ['有限公司','股份有限公司','个人独资企业','普通合伙企业','有限合伙企业','个体工商户'];
+      // 前端固定为政务网「企业类型」五项；不采用上游杂项 org_forms
+      if(sel){
+        const cur = sel.value;
+        sel.innerHTML = '<option value="" disabled>请选择组织形式</option>' +
+          allowed.map(v => `<option value="${v}">${v}</option>`).join('');
+        const prefer = allowed.includes(cur) ? cur : '';
+        if(prefer) sel.value = prefer;
+      }
+    }else{
+      STATE.apiDegraded = true;
+      const n = document.getElementById('industryApiNote');
+      if(n) n.textContent = '核名智能校验暂不可用，可继续手填（' + ((meta && meta.msg) || '接口失败') + '）';
+    }
+  }
+  if(!STATE.scopeApiReady){
+    const meta = await gamazFetch('/api/biz_scope/meta');
+    if(meta && meta.code === 1 && meta.data){
+      STATE.scopeApiReady = true;
+      renderScopeTabs(meta.data.permit_types || []);
+    }else{
+      STATE.apiDegraded = true;
+      const n = document.getElementById('scopeApiNote');
+      if(n) n.textContent = '经营范围目录暂不可用，可展开下方手填文案（' + ((meta && meta.msg) || '接口失败') + '）';
+    }
+  }
+  document.getElementById('reco')?.classList.add('show');
+}
+
+function renderScopeTabs(types){
+  const wrap = document.getElementById('scopeTabs');
+  if(!wrap) return;
+  const all = [{ value: '', label: '全部' }].concat(types.map(t => ({
+    value: String(t.value),
+    label: t.label + (t.count != null ? ` (${t.count})` : ''),
+  })));
+  wrap.innerHTML = all.map((t,i) =>
+    `<button type="button" class="stab${(STATE.scopePermitType === t.value || (!STATE.scopePermitType && i===0)) ? ' on' : ''}" data-v="${t.value}">${t.label}</button>`
+  ).join('');
+  wrap.querySelectorAll('.stab').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      wrap.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));
+      btn.classList.add('on');
+      STATE.scopePermitType = btn.dataset.v || '';
+      searchBizScopes();
+    });
+  });
+  // meta 就绪后默认拉当前分类全部可选项
+  searchBizScopes();
+}
+
+function scopeItemHtml(item){
+  const id = item.scope_id;
+  const selected = new Set((STATE.selectedScopes || []).map(s => s.scope_id));
+  const on = selected.has(id) ? ' on' : '';
+  const mark = selected.has(id) ? '✓' : '';
+  const safeName = String(item.name || '').replace(/"/g, '&quot;');
+  const safePt = String(item.permit_text || '').replace(/"/g, '&quot;');
+  const code = item.scope_code ? String(item.scope_code) : '';
+  const metaBits = [item.permit_text || '', code ? ('编码 ' + code) : ''].filter(Boolean).join(' · ');
+  return `<div class="scope-opt${on}" data-id="${id}" data-name="${safeName}" data-code="${String(item.scope_code || '').replace(/"/g,'&quot;')}" data-permit="${item.permit_type}" data-ptxt="${safePt}">
+    <span class="box">${mark}</span>
+    <span>
+      <div>${item.name || ''}</div>
+      <div class="meta">${metaBits}</div>
+    </span>
+  </div>`;
+}
+
+function renderScopeOpts(statusText){
+  const box = document.getElementById('scopeOpts');
+  if(!box) return;
+  const list = STATE.scopeList || [];
+  if(!list.length){
+    box.innerHTML = '<div class="scope-empty">' + (statusText || '无匹配条目，换个关键词或分类试试') + '</div>';
+    return;
+  }
+  const total = STATE.scopeTotal || list.length;
+  let html = list.map(scopeItemHtml).join('');
+  html += `<div class="scope-more"><div class="hint">${statusText || ('共 ' + list.length + ' / ' + total + ' 项')}</div></div>`;
+  box.innerHTML = html;
+  box.querySelectorAll('.scope-opt').forEach(el=>{
+    el.addEventListener('click', ()=> toggleScopeOpt(el));
+  });
+}
+
+async function fetchScopePage(kw, page, pageSize){
+  const q = { keyword: kw, page, page_size: pageSize };
+  if(STATE.scopePermitType !== '') q.permit_type = STATE.scopePermitType;
+  return gamazFetch('/api/biz_scope/index', { query: q });
+}
+
+async function searchBizScopes(){
+  const kw = (document.getElementById('scopeKw')?.value || '').trim();
+  const box = document.getElementById('scopeOpts');
+  if(!box) return;
+
+  // 新请求打断进行中的加载，保证关键词搜索也能拉齐全部命中项
+  const reqId = (STATE.scopeReqId = (STATE.scopeReqId || 0) + 1);
+  STATE.scopePage = 0;
+  STATE.scopeList = [];
+  STATE.scopeTotal = 0;
+  STATE.scopeLoading = true;
+  box.innerHTML = '<div class="scope-empty">正在加载全部可选项…</div>';
+
+  const pageSize = 100; // 上游单页上限
+  const seen = new Set();
+  const acc = [];
+  const pushAll = (arr)=>{
+    for(const it of arr || []){
+      if(!it || !it.scope_id || seen.has(it.scope_id)) continue;
+      seen.add(it.scope_id);
+      acc.push(it);
+    }
+  };
+  const stillCurrent = ()=> STATE.scopeReqId === reqId;
+
+  try{
+    // 第 1 页：拿 total，并先渲染一部分
+    const first = await fetchScopePage(kw, 1, pageSize);
+    if(!stillCurrent()) return;
+    if(!first || first.code !== 1){
+      box.innerHTML = `<div class="scope-empty">加载失败：${(first && first.msg) || '请稍后重试'}</div>`;
+      return;
+    }
+    const firstList = (first.data && first.data.list) || [];
+    let total = Number((first.data && first.data.total) || 0);
+    pushAll(firstList);
+    if(!total) total = firstList.length;
+    // 若第 1 页已满且 total 偏小，按「满页继续」策略至少再估一页
+    if(firstList.length >= pageSize && total <= firstList.length){
+      total = Math.max(total, firstList.length + 1);
+    }
+    STATE.scopeTotal = total;
+    STATE.scopeList = acc.slice();
+    renderScopeOpts(`已加载 ${acc.length}${total ? ' / ' + total : ''} 项…`);
+
+    let pages = Math.max(1, Math.ceil(Math.max(total, firstList.length) / pageSize));
+    // 并发拉剩余页
+    if(pages > 1){
+      const jobs = [];
+      for(let p = 2; p <= pages; p++) jobs.push(fetchScopePage(kw, p, pageSize));
+      const rest = await Promise.all(jobs);
+      if(!stillCurrent()) return;
+      let lastFull = firstList.length >= pageSize;
+      for(const data of rest){
+        if(!data || data.code !== 1) continue;
+        const chunk = (data.data && data.data.list) || [];
+        pushAll(chunk);
+        lastFull = chunk.length >= pageSize;
+        const t2 = Number((data.data && data.data.total) || 0);
+        if(t2 > total) total = t2;
+      }
+      STATE.scopeList = acc.slice();
+      STATE.scopeTotal = Math.max(total, acc.length);
+      // total 不准时：若末页仍满，继续顺序补页直到不满页
+      let page = pages + 1;
+      while(lastFull && page <= 50){
+        if(!stillCurrent()) return;
+        renderScopeOpts(`已加载 ${acc.length} 项，继续补齐…`);
+        const more = await fetchScopePage(kw, page, pageSize);
+        if(!stillCurrent()) return;
+        if(!more || more.code !== 1) break;
+        const chunk = (more.data && more.data.list) || [];
+        if(!chunk.length) break;
+        pushAll(chunk);
+        lastFull = chunk.length >= pageSize;
+        page += 1;
+        STATE.scopeList = acc.slice();
+      }
+      pages = page - 1;
+    }
+
+    if(!stillCurrent()) return;
+    STATE.scopePage = pages;
+    STATE.scopeList = acc;
+    STATE.scopeTotal = Math.max(STATE.scopeTotal || 0, acc.length);
+    if(!acc.length){
+      box.innerHTML = '<div class="scope-empty">无匹配条目，换个关键词或分类试试</div>';
+      return;
+    }
+    renderScopeOpts(`共 ${acc.length} 项可选项` + (kw ? `（关键词「${kw}」）` : ''));
+  }finally{
+    if(stillCurrent()) STATE.scopeLoading = false;
+  }
+}
+
+function toggleScopeOpt(el){
+  const id = el.dataset.id;
+  const idx = (STATE.selectedScopes || []).findIndex(s => s.scope_id === id);
+  if(idx >= 0){
+    STATE.selectedScopes.splice(idx, 1);
+    el.classList.remove('on');
+    el.querySelector('.box').textContent = '';
+  }else{
+    STATE.selectedScopes.push({
+      scope_id: id,
+      scope_code: el.dataset.code || '',
+      name: el.dataset.name || '',
+      permit_type: el.dataset.permit,
+      permit_text: el.dataset.ptxt || '',
+    });
+    el.classList.add('on');
+    el.querySelector('.box').textContent = '✓';
+  }
+  document.getElementById('scopeSelCount').textContent = STATE.selectedScopes.length;
+  scheduleScopeGenerate();
+}
+
+function scheduleScopeGenerate(){
+  clearTimeout(STATE.scopeGenTimer);
+  STATE.scopeGenTimer = setTimeout(generateScopeText, 400);
+}
+
+async function generateScopeText(){
+  const preview = document.getElementById('scopePreview');
+  const ta = document.getElementById('scope');
+  const ids = (STATE.selectedScopes || []).map(s => s.scope_id).filter(Boolean);
+  if(!ids.length){
+    if(preview) preview.innerHTML = '生成文案将显示在这里';
+    if(ta && !ta.dataset.manual) ta.value = '';
+    return;
+  }
+  if(preview) preview.innerHTML = '正在生成规范文案…';
+  const data = await gamazFetch('/api/biz_scope/generate', {
+    method: 'POST',
+    body: { scope_ids: ids },
+  });
+  if(data && data.code === 1 && data.data && data.data.text){
+    if(preview) preview.innerHTML = '<b>已生成</b>：' + data.data.text;
+    if(ta){ ta.value = data.data.text; delete ta.dataset.manual; }
+  }else{
+    const fallback = (STATE.selectedScopes || []).map(s => s.name).join('；');
+    if(preview) preview.innerHTML = '生成失败，已用条目名称拼接。' + ((data && data.msg) ? ('（' + data.msg + '）') : '');
+    if(ta && !ta.dataset.manual) ta.value = fallback;
+  }
+}
+
+function currentOrgForm(){
+  return (document.getElementById('orgForm').value || '').trim();
+}
+
+function statusLabel(st){
+  if(st === 'available') return { text: '可用性高', cls: '', bar: 92 };
+  if(st === 'caution') return { text: '基本可用', cls: 'warn', bar: 62 };
+  if(st === 'unavailable') return { text: '不合规', cls: 'bad', bar: 18 };
+  return { text: '待查重', cls: '', bar: 40 };
+}
+
+function selectedZiOrdered(){
+  const onSet = new Set(
+    [...document.querySelectorAll('#nameChips .chip.zi.on')]
+      .map(c => (c.dataset.zi || '').trim())
+      .filter(Boolean)
+  );
+  const ordered = (STATE.ziSelectOrder || []).filter(z => onSet.has(z));
+  for(const z of onSet){
+    if(!ordered.includes(z)) ordered.push(z);
+  }
+  STATE.ziSelectOrder = ordered;
+  return ordered.slice();
+}
+
+function updateZiPriorityBadges(){
+  const ordered = selectedZiOrdered();
+  document.querySelectorAll('#nameChips .chip.zi').forEach(c => {
+    const zi = (c.dataset.zi || '').trim();
+    const idx = ordered.indexOf(zi);
+    let badge = c.querySelector('.prio');
+    if(idx >= 0 && c.classList.contains('on')){
+      if(!badge){
+        badge = document.createElement('span');
+        badge.className = 'prio';
+        c.insertBefore(badge, c.firstChild);
+      }
+      badge.textContent = String(idx + 1);
+      badge.style.display = '';
+    }else if(badge){
+      badge.style.display = 'none';
+    }
+  });
+}
+
+function setZiChipOn(el, on){
+  if(!el) return;
+  const zi = (el.dataset.zi || '').trim();
+  const want = !!on;
+  const isOn = el.classList.contains('on');
+  if(want === isOn){
+    updateZiPriorityBadges();
+    return;
+  }
+  el.classList.toggle('on', want);
+  if(!STATE.ziSelectOrder) STATE.ziSelectOrder = [];
+  if(want){
+    if(zi && !STATE.ziSelectOrder.includes(zi)) STATE.ziSelectOrder.push(zi);
+  }else if(zi){
+    STATE.ziSelectOrder = STATE.ziSelectOrder.filter(z => z !== zi);
+  }
+  updateZiPriorityBadges();
+  updateZiCount();
+  refreshName();
+  try{ scheduleSaveDraft(); }catch(e){}
+}
+
+function addZiChip(zi, selected, statusInfo){
+  const exist = [...document.querySelectorAll('#nameChips .chip.zi')].find(c => c.dataset.zi === zi);
+  if(exist){
+    if(selected) setZiChipOn(exist, true);
+    else{
+      updateZiCount();
+      refreshName();
+    }
+    return exist;
+  }
   const el = document.createElement('span');
-  el.className = 'chip zi' + (selected ? ' on' : '');
-  el.dataset.zi = zi; el.dataset.rate = rate;
-  el.innerHTML = `${zi}<span class="ck">✓</span>`;
-  el.addEventListener('click', ()=>{ el.classList.toggle('on'); updateZiCount(); refreshName(); });
+  const st = (statusInfo && statusInfo.status) || '';
+  const meta = statusLabel(st);
+  el.className = 'chip zi' + (meta.cls === 'bad' ? ' low' : '');
+  el.dataset.zi = zi;
+  el.dataset.status = st || '';
+  el.innerHTML = `<span class="prio" style="display:none"></span>${zi}<span class="rate ${meta.cls}">${meta.text}</span><span class="ck">✓</span>`;
+  el.addEventListener('click', ()=>{
+    setZiChipOn(el, !el.classList.contains('on'));
+  });
   document.getElementById('nameChips').appendChild(el);
-  updateZiCount(); refreshName();
+  if(selected) setZiChipOn(el, true);
+  else{
+    updateZiCount();
+    refreshName();
 }
+  return el;
+}
+
 function updateZiCount(){
   document.getElementById('ziCount').textContent =
     document.querySelectorAll('#nameChips .chip.zi.on').length;
 }
-function currentOrgForm(){
-  return (document.getElementById('orgForm').value || '').trim();
+
+function applyCheckToChip(zi, data){
+  const chip = [...document.querySelectorAll('#nameChips .chip.zi')].find(c => c.dataset.zi === zi);
+  if(!chip) return;
+  const st = data?.conclusion?.status || '';
+  const meta = statusLabel(st);
+  chip.dataset.status = st;
+  chip.classList.toggle('low', meta.cls === 'bad');
+  const rate = chip.querySelector('.rate');
+  if(rate){
+    rate.className = 'rate ' + meta.cls;
+    rate.textContent = meta.text;
+  }
+  STATE.checkCache[zi] = {
+    status: st,
+    label: data?.conclusion?.label || meta.text,
+    name: data?.name || '',
+    detail: data?.conclusion?.detail || '',
+  };
 }
+
+async function validateAndAddZi(zi, { selected=true, silent=false } = {}){
+  const industry = (document.getElementById('industry').value || '').trim();
+  const orgForm = currentOrgForm() || '有限公司';
+  const hint = document.getElementById('ziHint');
+  const data = await gamazFetch('/api/name_check/validate', {
+    method: 'POST',
+    body: { district: STATE.nameDistrict || '上海', zihao: zi, industry, orgForm },
+  });
+  if(data && data.code === 1){
+    const level = data.data?.validation?.zihao?.level;
+    const msg = data.data?.validation?.zihao?.msg || '';
+    if(level === 'error'){
+      if(!silent){
+        hint.className = 'hint warn show';
+        hint.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> ${msg || '字号不合规，无法添加'}`;
+      }
+      return false;
+    }
+    addZiChip(zi, selected, { status: level === 'warn' ? 'caution' : '' });
+    if(!silent){
+      hint.className = 'hint ok show';
+      hint.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> ${msg || '字号校验通过，已加入候选'}`;
+    }
+    return true;
+  }
+  addZiChip(zi, selected, {});
+  if(!silent){
+    hint.className = 'hint show';
+    hint.innerHTML = '智能校验暂不可用，已加入候选（可稍后查重）';
+  }
+  return true;
+}
+
 function refreshName(){
-  const sel = [...document.querySelectorAll('#nameChips .chip.zi.on')].map(c=>c.dataset.zi).filter(Boolean);
+  clearTimeout(STATE.nameCheckTimer);
+  const sel = selectedZiOrdered();
   const ind = (document.getElementById('industry').value || '').trim();
   const org = currentOrgForm();
   const nh = document.getElementById('nameHint');
+  const reco = document.getElementById('reco');
+  if(reco) reco.classList.add('show');
+  updateZiPriorityBadges();
   if(!sel.length || !ind || !org){
     document.getElementById('aiName').value = '';
     nh.className = 'hint';
     nh.innerHTML = '';
-    updateReco();
+    updateReco([]);
     return;
   }
-  const zi = sel[0];
-  document.getElementById('aiName').value = `上海${zi}${ind}${org}`;
-  const r = comboRate(zi);
-  nh.className = r>=80 ? 'hint ok show' : 'hint warn show';
-  nh.innerHTML = r>=80
-    ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> 已选 ${sel.length} 个字号，首选「${sel[0]}」组合通过率约 ${r}%`
-    : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> 已选 ${sel.length} 个字号，含低通过率字，建议优先高通过率候选`;
-  updateReco();
+  document.getElementById('aiName').value = `${STATE.nameDistrict || '上海'}${sel[0]}${ind}${org}`;
+  nh.className = 'hint show';
+  nh.innerHTML = `已选 ${sel.length} 个字号，填报优先「${sel[0]}」${sel.length > 1 ? '（点击顺序=' + sel.map((z,i)=> (i+1)+'.'+z).join(' → ') + '）' : ''}，正在查重…`;
+  STATE.nameCheckTimer = setTimeout(()=> runNameChecks(sel), 450);
 }
-function updateReco(){
-  const sel = [...document.querySelectorAll('#nameChips .chip.zi.on')].map(c=>c.dataset.zi).filter(Boolean);
-  const ind = (document.getElementById('industry').value || '').trim() || '科技';
-  const org = currentOrgForm() || '有限公司';
+
+async function runNameChecks(zis){
+  const industry = (document.getElementById('industry').value || '').trim();
+  const orgForm = currentOrgForm();
+  if(!industry || !orgForm || !zis.length) return;
+  const results = [];
+  for(const zi of zis.slice(0, 4)){
+    const data = await gamazFetch('/api/name_check/check', {
+      method: 'POST',
+      body: { district: STATE.nameDistrict || '上海', zihao: zi, industry, orgForm },
+    });
+    if(data && data.code === 1 && data.data){
+      applyCheckToChip(zi, data.data);
+      results.push({ zi, data: data.data });
+    }else{
+      results.push({ zi, data: null, msg: data && data.msg });
+    }
+  }
+  const primary = results[0];
+  const nh = document.getElementById('nameHint');
+  if(primary && primary.data){
+    if(primary.data.name) document.getElementById('aiName').value = primary.data.name;
+    const st = primary.data.conclusion?.status;
+    const label = primary.data.conclusion?.label || '';
+    if(st === 'available'){
+      nh.className = 'hint ok show';
+      nh.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> ${label || '名称可用性高'}`;
+    }else if(st === 'caution'){
+      nh.className = 'hint warn show';
+      nh.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> ${label || '基本可用，请注意近似名'}`;
+    }else{
+      nh.className = 'hint warn show';
+      nh.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> ${label || '不合规，请更换字号'}`;
+    }
+  }else if(primary){
+    nh.className = 'hint show';
+    nh.innerHTML = '查重暂不可用：' + (primary.msg || '请稍后重试，可继续填写');
+  }
+  updateReco(results);
+}
+
+function updateReco(results){
   const list = document.getElementById('recoList');
-  if(sel.length===0){ list.innerHTML = '<div class="reco-empty">先选 / 生成一个字号，AI 自动给出推荐组合与通过率</div>'; return; }
-  list.innerHTML = sel.slice(0,2).map((z,i)=>{
-    const r = comboRate(z);
+  if(!list) return;
+  if(!results || !results.length){
+    list.innerHTML = '<div class="reco-empty">先选 / 添加字号，将自动查重并给出结论</div>';
+    return;
+  }
+  list.innerHTML = results.map((r,i)=>{
+    const d = r.data;
+    if(!d){
     return `<div class="reco-card">
-      <div class="reco-top"><span class="reco-rank">${i+1}</span><span class="reco-name">上海${z}${ind}${org}</span><span class="reco-rate">通过率 ${r}%</span></div>
-      <div class="reco-reason">${r>=80?'重名率极低，建议优先采用。':'含高频字，建议替换为低重名组合。'}</div>
-      <div class="reco-bar"><i style="width:${r}%"></i></div>
+        <div class="reco-top"><span class="reco-rank">${i+1}</span><span class="reco-name">${r.zi}</span><span class="reco-rate warn">查重失败</span></div>
+        <div class="reco-reason">${r.msg || '智能查重暂不可用'}</div>
+      </div>`;
+    }
+    const st = d.conclusion?.status || '';
+    const meta = statusLabel(st);
+    const name = d.name || `${STATE.nameDistrict||'上海'}${r.zi}`;
+    return `<div class="reco-card">
+      <div class="reco-top"><span class="reco-rank">${i+1}</span><span class="reco-name">${name}</span><span class="reco-rate ${meta.cls}">${meta.text}</span></div>
+      <div class="reco-reason">${d.conclusion?.label || ''}${d.conclusion?.detail ? ' · ' + d.conclusion.detail : ''}</div>
+      <div class="reco-bar"><i class="${meta.cls}" style="width:${meta.bar}%"></i></div>
     </div>`;
   }).join('');
 }
-// 单字实时测重名率
+
 const ziInput = document.getElementById('ziInput');
 const ziHint  = document.getElementById('ziHint');
-function updateZiHint(){
+ziInput.addEventListener('input', ()=>{
   const v = ziInput.value.trim();
   if(!v){ ziHint.className='hint'; ziHint.innerHTML=''; return; }
-  let minCh=null, minR=100;
-  for(const ch of v){ const r=ziRate(ch); if(r<minR){ minR=r; minCh=ch; } }
-  const combo = comboRate(v);
-  if(minR<30){
-    ziHint.className='hint warn show';
-    ziHint.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> 单字「<b>${minCh}</b>」重名率极高，通过率仅 ${minR}%，建议替换为「${LOW_SUG.slice(0,3).join(' / ')}」等低重名字。`;
-  } else if(combo>=80){
-    ziHint.className='hint ok show';
-    ziHint.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> 组合通过率约 <b>${combo}%</b>，重名风险低，可直接加入候选。`;
-  } else {
     ziHint.className='hint show';
-    ziHint.innerHTML = `组合通过率约 <b>${combo}%</b>，可加入候选。`;
+  ziHint.innerHTML = '输入后点「添加」，将进行字号规则校验';
+});
+document.getElementById('ziAdd').addEventListener('click', async ()=>{
+  const v = ziInput.value.trim();
+  if(!v){
+    ziHint.className = 'hint warn show';
+    ziHint.innerHTML = '请先输入字号';
+    return;
+  }
+  const btn = document.getElementById('ziAdd');
+  if(btn) btn.disabled = true;
+  try{
+    const ok = await validateAndAddZi(v, { selected: true });
+    if(ok){ ziInput.value=''; }
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+});
+
+function removeSelectedZiChips(){
+  const selected = [...document.querySelectorAll('#nameChips .chip.zi.on')];
+  if(!selected.length){
+    ziHint.className = 'hint warn show';
+    ziHint.innerHTML = '请先勾选要删除的字号';
+    return;
+  }
+  const removed = selected.map(c => (c.dataset.zi || '').trim()).filter(Boolean);
+  selected.forEach(c => c.remove());
+  if(!STATE.ziSelectOrder) STATE.ziSelectOrder = [];
+  STATE.ziSelectOrder = STATE.ziSelectOrder.filter(z => !removed.includes(z));
+  removed.forEach(z => { try{ delete STATE.checkCache[z]; }catch(e){} });
+  updateZiPriorityBadges();
+  updateZiCount();
+  refreshName();
+  try{ scheduleSaveDraft(); }catch(e){}
+  ziHint.className = 'hint ok show';
+  ziHint.innerHTML = `已删除 ${removed.join('、')}`;
+}
+document.getElementById('ziDel').addEventListener('click', ()=> removeSelectedZiChips());
+
+async function genZiCandidates(){
+  const btn = document.getElementById('aiGenZi');
+  if(btn){ btn.disabled = true; btn.textContent = '生成中…'; }
+  try{
+    const industry = (document.getElementById('industry').value || '').trim();
+    const orgForm = currentOrgForm() || '有限公司';
+    const data = await gamazFetch('/api/name_check/zihao_generate', {
+      method: 'POST',
+      body: {
+        district: STATE.nameDistrict || '上海',
+        industry,
+        orgForm,
+        count: 10,
+      },
+    });
+    let list = [];
+    if(data && data.code === 1 && data.data){
+      const raw = data.data.list || [];
+      list = raw.map(it => (typeof it === 'string' ? it : (it.zihao || it.name || ''))).map(s => String(s||'').trim()).filter(Boolean);
+    }
+    // 接口异常时本地兜底 10 个
+    if(list.length < 10){
+      const set = new Set(list);
+      while(set.size < 10){
+        set.add(HIGH[Math.floor(Math.random()*HIGH.length)] + HIGH[Math.floor(Math.random()*HIGH.length)]);
+      }
+      list = [...set].slice(0, 10);
+    }else{
+      list = list.slice(0, 10);
+    }
+    document.getElementById('nameChips').innerHTML = '';
+    STATE.checkCache = {};
+    STATE.ziSelectOrder = [];
+    for(const c of list){
+      await validateAndAddZi(c, { selected: false, silent: true });
+    }
+    updateZiCount();
+    refreshName();
+  }finally{
+    if(btn){
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.4z"/></svg> AI 一键生成高通过率字号';
+    }
   }
 }
-ziInput.addEventListener('input', updateZiHint);
-document.getElementById('ziAdd').addEventListener('click', ()=>{
-  updateZiHint();
-  const v = ziInput.value.trim();
-  if(!v) return;
-  addZiChip(v, comboRate(v));
-  ziInput.value=''; ziHint.className='hint'; ziHint.innerHTML='';
+document.getElementById('aiGenZi').addEventListener('click', ()=> genZiCandidates());
+
+document.getElementById('industry').addEventListener('input', ()=>{
+  clearTimeout(STATE.industryTimer);
+  STATE.industryTimer = setTimeout(async ()=>{
+    const kw = document.getElementById('industry').value.trim();
+    const box = document.getElementById('industrySuggest');
+    if(!kw){ box.classList.remove('show'); box.innerHTML=''; refreshName(); return; }
+    const data = await gamazFetch('/api/name_check/industry', { query: { kw, limit: 20 } });
+    if(!data || data.code !== 1){
+      box.classList.remove('show');
+      refreshName();
+      return;
+    }
+    const list = (data.data && data.data.list) || [];
+    if(!list.length){ box.classList.remove('show'); box.innerHTML=''; refreshName(); return; }
+    box.innerHTML = list.map(it =>
+      `<div class="suggest-item" data-name="${String(it.name||'').replace(/"/g,'&quot;')}"><span class="code">${it.code||''}</span>${it.name||''}</div>`
+    ).join('');
+    box.classList.add('show');
+    box.querySelectorAll('.suggest-item').forEach(item=>{
+      item.addEventListener('click', ()=>{
+        document.getElementById('industry').value = item.dataset.name || '';
+        box.classList.remove('show');
+        box.innerHTML = '';
+        refreshName();
+      });
+    });
+    refreshName();
+  }, 280);
 });
-// AI 一键生成高通过率字号
-function genZiCandidates(){
-  const set = new Set();
-  while(set.size < 10){ set.add(HIGH[Math.floor(Math.random()*HIGH.length)] + HIGH[Math.floor(Math.random()*HIGH.length)]); }
-  document.getElementById('nameChips').innerHTML='';
-  [...set].forEach((c)=> addZiChip(c, comboRate(c), false));
+document.addEventListener('click', (e)=>{
+  const box = document.getElementById('industrySuggest');
+  if(!box) return;
+  if(!e.target.closest('.suggest-wrap')) box.classList.remove('show');
+});
+document.getElementById('orgForm').addEventListener('change', ()=>{
+  syncPersonnelByOrgForm();
+  refreshName();
+});
+
+document.getElementById('scopeSearchBtn').addEventListener('click', ()=> searchBizScopes());
+document.getElementById('scopeKw').addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter'){ e.preventDefault(); searchBizScopes(); }
+});
+document.getElementById('scope').addEventListener('input', ()=>{
+  document.getElementById('scope').dataset.manual = '1';
+});
+
+/* ============ 草稿持久化（localStorage，重启后端刷新后可继续） ============ */
+const DRAFT_KEY = 'gamaz_proto_draft_v1';
+let _draftTimer = null;
+let _restoringDraft = false;
+
+function stableDraftStep(step){
+  const n = Number(step) || 0;
+  // 扫码/进度/完成会话重启后已失效，落回确认页
+  if(n >= 5) return 4;
+  return Math.max(0, Math.min(4, n));
 }
-document.getElementById('aiGenZi').addEventListener('click', genZiCandidates);
-document.getElementById('industry').addEventListener('input', refreshName);
-document.getElementById('orgForm').addEventListener('change', refreshName);
+
+function collectDraftFields(){
+  const fields = {};
+  document.querySelectorAll('main.scroll input[id], main.scroll select[id], main.scroll textarea[id]').forEach(el=>{
+    if(el.type === 'file') return;
+    if(el.type === 'checkbox' || el.type === 'radio') fields[el.id] = !!el.checked;
+    else fields[el.id] = el.value;
+  });
+  return fields;
+}
+
+function applyDraftFields(fields){
+  if(!fields || typeof fields !== 'object') return;
+  Object.keys(fields).forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    if(el.type === 'checkbox' || el.type === 'radio') el.checked = !!fields[id];
+    else el.value = fields[id] == null ? '' : String(fields[id]);
+  });
+}
+
+function slimIdUploads(map){
+  const out = {};
+  Object.keys(map || {}).forEach(k=>{
+    const u = map[k] || {};
+    out[k] = {
+      personKey: u.personKey || k,
+      personName: u.personName || '',
+      roles: Array.isArray(u.roles) ? u.roles.slice() : [],
+      frontFileId: u.frontFileId || '',
+      backFileId: u.backFileId || '',
+      frontName: u.frontName || '',
+      backName: u.backName || '',
+      // 预览图可能很大，不写 localStorage；有 fileId 即可在确认页显示状态
+    };
+  });
+  return out;
+}
+
+function saveDraft(){
+  if(_restoringDraft) return;
+  try{
+    const draft = {
+      v: 1,
+      savedAt: Date.now(),
+      step: stableDraftStep(STATE.step),
+      fields: collectDraftFields(),
+      npCards: [...document.querySelectorAll('#npList .np-card')].map(collectNpCardData),
+      nameChips: [...document.querySelectorAll('#nameChips .chip.zi')].map(c=>({
+        zi: c.dataset.zi || '',
+        on: c.classList.contains('on'),
+        status: c.dataset.status || '',
+      })).filter(c=>c.zi),
+      ziSelectOrder: selectedZiOrdered(),
+      selectedScopes: (STATE.selectedScopes || []).map(s=>({
+        scope_id: s.scope_id || '',
+        scope_code: s.scope_code || '',
+        name: s.name || '',
+        permit_type: s.permit_type || '',
+        permit_text: s.permit_text || '',
+      })),
+      scopePermitType: STATE.scopePermitType || '',
+      nameDistrict: STATE.nameDistrict || '上海',
+      refillTimes: STATE.refillTimes,
+      idUploads: slimIdUploads(STATE.idUploads),
+      checkCache: STATE.checkCache || {},
+      scopeManual: !!(document.getElementById('scope')?.dataset?.manual),
+      supOn: isSupervisorOn(),
+    };
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  }catch(e){
+    console.warn('saveDraft failed', e);
+  }
+}
+
+function scheduleSaveDraft(){
+  if(_restoringDraft) return;
+  clearTimeout(_draftTimer);
+  _draftTimer = setTimeout(saveDraft, 400);
+}
+
+function clearDraft(){
+  try{ localStorage.removeItem(DRAFT_KEY); }catch(e){}
+}
+
+function restoreDraft(){
+  let raw;
+  try{ raw = localStorage.getItem(DRAFT_KEY); }catch(e){ return null; }
+  if(!raw) return null;
+  let draft;
+  try{ draft = JSON.parse(raw); }catch(e){ return null; }
+  if(!draft || typeof draft !== 'object') return null;
+
+  _restoringDraft = true;
+  try{
+    applyDraftFields(draft.fields || {});
+
+    if(typeof draft.supOn === 'boolean'){
+      const on = isSharesCompany() ? true : draft.supOn;
+      setSup(on ? 1 : 0);
+      // 兼容旧草稿多人监事：只取第一人
+      if(Array.isArray(draft.supCards) && draft.supCards.length){
+        const s0 = draft.supCards[0] || {};
+        const nameEl = document.getElementById('supName');
+        const mobEl = document.getElementById('supMobile');
+        if(nameEl && !(nameEl.value || '').trim() && s0.name) nameEl.value = s0.name;
+        if(mobEl && !(mobEl.value || '').trim() && (s0.mobile || s0.phone)){
+          mobEl.value = s0.mobile || s0.phone || '';
+        }
+      }
+    }
+
+    const npList = document.getElementById('npList');
+    if(npList){
+      npList.innerHTML = '';
+      const cards = Array.isArray(draft.npCards) && draft.npCards.length ? draft.npCards : [null];
+      cards.forEach(d => addNaturalPerson(d || undefined));
+    }
+
+    const chipsWrap = document.getElementById('nameChips');
+    if(chipsWrap && Array.isArray(draft.nameChips)){
+      chipsWrap.innerHTML = '';
+      STATE.ziSelectOrder = [];
+      // 先全部建 chip（不选中），再按草稿顺序选中以恢复优先级
+      draft.nameChips.forEach(c=>{
+        if(!c || !c.zi) return;
+        addZiChip(c.zi, false, { status: c.status || '' });
+      });
+      const order = Array.isArray(draft.ziSelectOrder) && draft.ziSelectOrder.length
+        ? draft.ziSelectOrder.slice()
+        : draft.nameChips.filter(c => c && c.on).map(c => c.zi);
+      order.forEach(zi=>{
+        const chip = [...document.querySelectorAll('#nameChips .chip.zi')].find(c => c.dataset.zi === zi);
+        if(chip) setZiChipOn(chip, true);
+      });
+      // 草稿里 on 但未进 order 的补选（排在后面）
+      draft.nameChips.forEach(c=>{
+        if(!c || !c.zi || !c.on) return;
+        if((STATE.ziSelectOrder || []).includes(c.zi)) return;
+        const chip = [...document.querySelectorAll('#nameChips .chip.zi')].find(el => el.dataset.zi === c.zi);
+        if(chip) setZiChipOn(chip, true);
+      });
+    }
+
+    STATE.selectedScopes = Array.isArray(draft.selectedScopes) ? draft.selectedScopes.slice() : [];
+    STATE.scopePermitType = draft.scopePermitType || '';
+    STATE.nameDistrict = draft.nameDistrict || '上海';
+    if(typeof draft.refillTimes === 'number') STATE.refillTimes = draft.refillTimes;
+    STATE.idUploads = draft.idUploads || {};
+    STATE.checkCache = draft.checkCache || {};
+    const scopeEl = document.getElementById('scope');
+    if(scopeEl && draft.scopeManual) scopeEl.dataset.manual = '1';
+    const selCount = document.getElementById('scopeSelCount');
+    if(selCount) selCount.textContent = String(STATE.selectedScopes.length);
+
+    // 复选框「同法人」联动锁定态
+    ['dir','fin'].forEach(p=>{
+      const same = document.getElementById(p + 'Same');
+      if(same && same.checked) toggleSameLegal(p);
+    });
+
+    syncPersonnelByOrgForm();
+    try{ refreshName(); }catch(e){}
+    try{ updateZiCount(); }catch(e){}
+
+    return stableDraftStep(draft.step);
+  }catch(e){
+    console.warn('restoreDraft failed', e);
+    return null;
+  }finally{
+    _restoringDraft = false;
+  }
+}
+
+document.addEventListener('input', (e)=>{
+  if(!e.target || !e.target.closest) return;
+  if(!e.target.closest('main.scroll')) return;
+  scheduleSaveDraft();
+}, true);
+document.addEventListener('change', (e)=>{
+  if(!e.target || !e.target.closest) return;
+  if(!e.target.closest('main.scroll')) return;
+  scheduleSaveDraft();
+}, true);
+window.addEventListener('beforeunload', ()=>{ try{ saveDraft(); }catch(e){} });
 
 /* ============ 屏 5：确认单同步屏1动态值 ============ */
 function syncConfirm(){
@@ -2351,16 +3976,30 @@ function syncConfirm(){
   document.getElementById('sumScope').textContent = scope;
   document.getElementById('sumLegal').textContent = document.getElementById('legalName').value.trim() || '—';
   const npParts = [...document.querySelectorAll('#npList .np-card')].map(c=>{
-    const n = c.querySelector('.np-name').value.trim() || '—';
-    const p = c.querySelector('.np-pct').value || '0';
-    return `${n}（${p}%）`;
+    const d = collectNpCardData(c);
+    const n = d.name || '—';
+    const p = d.pct || '0';
+    let extra = '';
+    if(isLimitedPartnership() && d.liabilityType) extra = '·' + d.liabilityType;
+    if(isGeneralPartnership()){
+      const tags = [];
+      if(d.isExecutivePartner) tags.push('执行事务');
+      if(d.isLicenseHolder) tags.push('持照人');
+      if(tags.length) extra = '·' + tags.join('/');
+    }
+    return `${n}（${p}%${extra}）`;
   });
   document.getElementById('sumNp').textContent = npParts.length ? npParts.join('、') : '—';
-  document.getElementById('sumDir').textContent = document.getElementById('dirName').value.trim() || '—';
-  const supOn = document.querySelector('#supSeg .seg-btn.on').dataset.v === '1';
-  document.getElementById('sumSup').textContent = supOn
+  const hideBoard = hidesBoardRoles();
+  document.getElementById('sumDir').textContent = hideBoard
+    ? '—'
+    : (document.getElementById('dirName').value.trim() || '—');
+  const supOn = isSupervisorOn();
+  document.getElementById('sumSup').textContent = hideBoard
+    ? '—'
+    : (supOn
     ? ((document.getElementById('supName').value.trim() || '—') + '（已设立）')
-    : '不设立';
+      : '不设立');
   document.getElementById('sumFin').textContent = document.getElementById('finName').value.trim() || '—';
   document.getElementById('sumLia').textContent = document.getElementById('liaName').value.trim() || '—';
   document.getElementById('sumUbo').textContent = document.getElementById('uboName').value.trim() || '—';
@@ -2373,8 +4012,26 @@ function syncConfirm(){
 }
 
 /* ============ 初始化 ============ */
-genZiCandidates();
-go(0);
+(function initPrototype(){
+  const clearBtn = document.getElementById('clearDraftBtn');
+  if(clearBtn){
+    clearBtn.addEventListener('click', ()=>{
+      if(!confirm('确定清除本机已保存的表单草稿？')) return;
+      clearDraft();
+      alert('草稿已清除。刷新页面后将从空白表单开始。');
+    });
+  }
+  // 先建一张默认自然人卡，restore 时会重建列表
+  addNaturalPerson();
+  syncPersonnelByOrgForm();
+  bindGlobalMobileValidation();
+  bindIdCardUploads();
+  const restoredStep = restoreDraft();
+  ensureNameScopeApis().then(()=>{
+    if(!(document.querySelectorAll('#nameChips .chip.zi').length)) genZiCandidates();
+  });
+  go(restoredStep == null ? 0 : restoredStep);
+})();
 </script>
 </body>
 </html>

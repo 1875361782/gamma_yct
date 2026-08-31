@@ -24,6 +24,7 @@ from .protocol import (
     msg_step, msg_screenshot,
 )
 from .relay import relay_hub
+from . import gamaz_proxy
 
 
 # ---------- 配置 ----------
@@ -40,6 +41,10 @@ sessions = SessionManager(ttl_seconds=600)
 
 # 静态文件：mock 政务网登录页（用于离线开发/演示）
 app.mount("/mock", StaticFiles(directory=str(MOCK_GOV_DIR)), name="mock")
+# 演示静态资源（人工客服二维码等）
+_STATIC_ASSETS = BACKEND_DIR / "static"
+_STATIC_ASSETS.mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(_STATIC_ASSETS)), name="static")
 
 
 # ---------- 页面路由 ----------
@@ -182,6 +187,88 @@ def _save_case_upload(case_id: str, filename: str, content: bytes) -> str:
     file_id = f"{uuid.uuid4().hex[:10]}_{safe}"
     (uploads / file_id).write_bytes(content)
     return file_id
+
+
+ID_IMAGE_MAX_BYTES = 500 * 1024
+
+
+def _normalize_id_image(content: bytes, filename: str = "") -> tuple[bytes, str, dict]:
+    """身份证图：已是 jpg 且 ≤500KB 则原样返回；否则转 jpg 并压到 500KB 内。"""
+    meta: dict = {
+        "originalSize": len(content),
+        "originalName": filename or "",
+        "processed": False,
+    }
+    lower = (filename or "").lower()
+    is_jpeg_name = lower.endswith(".jpg") or lower.endswith(".jpeg")
+    # 魔数判断 jpeg
+    is_jpeg_bytes = len(content) >= 3 and content[0:3] == b"\xff\xd8\xff"
+    if is_jpeg_bytes and len(content) <= ID_IMAGE_MAX_BYTES:
+        out_name = filename if is_jpeg_name else re.sub(r"\.[^.]+$", "", filename or "id") + ".jpg"
+        if not out_name.lower().endswith((".jpg", ".jpeg")):
+            out_name = (out_name or "id") + ".jpg"
+        meta["finalSize"] = len(content)
+        meta["finalName"] = out_name
+        return content, out_name, meta
+
+    try:
+        from io import BytesIO
+        from PIL import Image
+    except ImportError as e:
+        raise RuntimeError("缺少 Pillow，无法压缩身份证图片") from e
+
+    img = Image.open(BytesIO(content))
+    if img.mode in ("RGBA", "LA", "P"):
+        bg = Image.new("RGB", img.size, (255, 255, 255))
+        if img.mode == "P":
+            img = img.convert("RGBA")
+        bg.paste(img, mask=img.split()[-1] if img.mode in ("RGBA", "LA") else None)
+        img = bg
+    elif img.mode != "RGB":
+        img = img.convert("RGB")
+
+    base = re.sub(r"\.[^.]+$", "", filename or "id") or "id"
+    out_name = f"{base}.jpg"
+    quality = 88
+    scale = 1.0
+    best = b""
+    for _ in range(16):
+        w = max(1, int(img.width * scale))
+        h = max(1, int(img.height * scale))
+        cur = img if (w == img.width and h == img.height) else img.resize((w, h), Image.Resampling.LANCZOS)
+        buf = BytesIO()
+        cur.save(buf, format="JPEG", quality=quality, optimize=True)
+        data = buf.getvalue()
+        best = data
+        if len(data) <= ID_IMAGE_MAX_BYTES:
+            meta.update(
+                {
+                    "processed": True,
+                    "finalSize": len(data),
+                    "finalName": out_name,
+                    "quality": quality,
+                    "scale": scale,
+                }
+            )
+            return data, out_name, meta
+        if quality > 55:
+            quality -= 8
+        else:
+            scale *= 0.85
+            quality = max(50, quality)
+
+    # 仍超限则返回最后一帧（尽量小）
+    meta.update(
+        {
+            "processed": True,
+            "finalSize": len(best),
+            "finalName": out_name,
+            "quality": quality,
+            "scale": scale,
+            "warn": "still_over_limit",
+        }
+    )
+    return best, out_name, meta
 
 
 def _merge_id_cards(base_cards: list, patch_cards: list) -> list:
@@ -333,6 +420,16 @@ async def upload_id_card(
     if not (lower.endswith(".jpg") or lower.endswith(".jpeg") or lower.endswith(".png")):
         return JSONResponse({"ok": False, "error": "仅支持 jpg/png"}, status_code=400)
 
+    try:
+        content, name, normalize_meta = _normalize_id_image(content, name)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": f"图片处理失败: {e}"}, status_code=400)
+    if len(content) > ID_IMAGE_MAX_BYTES:
+        return JSONResponse(
+            {"ok": False, "error": "压缩后仍超过 500KB，请更换更清晰较小的图片"},
+            status_code=400,
+        )
+
     file_id = _save_case_upload(case_id, name, content)
     card = _patch_id_card_attachment(
         case_id,
@@ -351,7 +448,85 @@ async def upload_id_card(
         "size": len(content),
         "personKey": person_key,
         "idCard": card,
+        "normalize": normalize_meta,
     }
+
+
+@app.get("/api/name_check/meta")
+async def name_check_meta():
+    return await gamaz_proxy.proxy_get_with_fallback(
+        "/api/name_check/meta",
+        fallback=gamaz_proxy.local_name_meta,
+    )
+
+
+@app.get("/api/name_check/industry")
+async def name_check_industry(kw: str = "", limit: int = 20):
+    lim = min(max(limit, 1), 50)
+    return await gamaz_proxy.proxy_get_with_fallback(
+        "/api/name_check/industry",
+        {"kw": kw, "limit": lim},
+        fallback=lambda: gamaz_proxy.local_industry_suggest(kw, lim),
+    )
+
+
+@app.post("/api/name_check/validate")
+async def name_check_validate(body: dict):
+    return await gamaz_proxy.proxy_post_with_fallback(
+        "/api/name_check/validate",
+        body or {},
+        fallback=gamaz_proxy.local_name_validate,
+    )
+
+
+@app.post("/api/name_check/check")
+async def name_check_check(body: dict):
+    return await gamaz_proxy.proxy_post_with_fallback(
+        "/api/name_check/check",
+        body or {},
+        timeout=gamaz_proxy.CHECK_TIMEOUT,
+        fallback=gamaz_proxy.local_name_check,
+    )
+
+
+@app.post("/api/name_check/zihao_generate")
+async def name_check_zihao_generate(body: dict):
+    """生成字号候选：上游 → 大模型(GAMAZ_LLM_*) → 本地字库，默认 10 个。"""
+    return await gamaz_proxy.generate_zihao_candidates(body or {})
+
+
+@app.get("/api/biz_scope/meta")
+async def biz_scope_meta():
+    return await gamaz_proxy.proxy_get("/api/biz_scope/meta")
+
+
+@app.get("/api/biz_scope/index")
+async def biz_scope_index(
+    keyword: str = "",
+    permit_type: str = "",
+    industry_code: str = "",
+    page: int = 1,
+    page_size: int = 20,
+    ids: str = "",
+):
+    q: dict = {
+        "keyword": keyword,
+        "industry_code": industry_code,
+        "page": page,
+        "page_size": min(max(page_size, 1), 100),
+        "ids": ids,
+    }
+    if permit_type != "":
+        try:
+            q["permit_type"] = int(permit_type)
+        except ValueError:
+            q["permit_type"] = permit_type
+    return await gamaz_proxy.proxy_get("/api/biz_scope/index", q)
+
+
+@app.post("/api/biz_scope/generate")
+async def biz_scope_generate(body: dict):
+    return await gamaz_proxy.proxy_post("/api/biz_scope/generate", body or {})
 
 
 @app.post("/api/case-payload")
@@ -542,7 +717,14 @@ async def automation_status(sid: str):
             "比对未通过" in reason or "名称未通过" in reason or "生僻字" in reason
         )
         if name_failed:
-            progress = reason or customer_message or "名称核验未通过，请补充字号"
+            progress = customer_message or reason or "核名不通过，请返回修改字号并重试"
+            if "核名不通过" not in progress and "生僻字" not in progress:
+                progress = "核名不通过：" + progress
+
+    needs_human = (not name_failed) and case_status in {
+        "need_human",
+        "human_confirmation_required",
+    }
 
     fill_ok = bool(job.ok) or case_status in {
         "ready_for_user_submit",
@@ -552,13 +734,30 @@ async def automation_status(sid: str):
     if name_failed:
         fill_ok = False
 
+    # 案件已过扫码阶段时，即使 job.logged_in 因调度丢失未置位，也视为已登录（驱动演示页跳进度）
+    past_qr_statuses = {
+        "logged_in",
+        "name_checking",
+        "name_failed",
+        "human_confirmation_required",
+        "name_next_reached",
+        "filling_establishment",
+        "choosing_process",
+        "filling_addons",
+        "ready_for_user_submit",
+        "need_human",
+        "offline_required",
+        "failed",
+    }
+    logged_in = bool(job.logged_in) or case_status in past_qr_statuses
+
     return {
         "ok": True,
         "sid": sid,
         "caseId": job.case_id,
         "hasQr": bool(job.qr_b64),
         "qr": job.qr_b64 if job.qr_b64 else None,
-        "loggedIn": job.logged_in,
+        "loggedIn": logged_in,
         "finished": job.finished,
         "fillOk": fill_ok,
         "error": job.error or (reason if job.finished and not fill_ok else None),
@@ -568,9 +767,105 @@ async def automation_status(sid: str):
         "customerMessage": customer_message,
         "reason": reason,
         "nameFailed": name_failed,
+        "needsHuman": needs_human,
         "stage": stage,
         "stagesDone": stages_done,
     }
+
+
+@app.post("/api/automation/{sid}/resume")
+async def resume_automation(sid: str):
+    """人工处理完未知错误后，通知 worker 继续填报（不关浏览器）。"""
+    job = await relay_hub.get(sid)
+    if job is None:
+        return JSONResponse({"ok": False, "error": "unknown sid"}, status_code=404)
+    case_id = (job.case_id or "").strip()
+    if not case_id:
+        return JSONResponse({"ok": False, "error": "sid 未关联 caseId"}, status_code=400)
+    if not bool(job.thread and job.thread.is_alive()):
+        return JSONResponse(
+            {"ok": False, "error": "自动化会话已结束，无法在原页继续，请重新发起填报"},
+            status_code=409,
+        )
+
+    import sys
+    from datetime import datetime
+
+    gamma_root = str(REPO_ROOT / "gamma-yct")
+    if gamma_root not in sys.path:
+        sys.path.insert(0, gamma_root)
+    try:
+        from apps.api import store as gamma_store
+
+        gamma_store.request_resume(case_id)
+    except Exception:
+        case_dir = GAMMA_CASES_DIR / case_id
+        case_dir.mkdir(parents=True, exist_ok=True)
+        (case_dir / "resume.flag").write_text(datetime.now().isoformat(), encoding="utf-8")
+
+    return {"ok": True, "sid": sid, "caseId": case_id, "message": "已通知继续填报"}
+
+
+@app.post("/api/automation/{sid}/cancel")
+async def cancel_automation(sid: str):
+    """用户取消填报：终止 RPA 并关闭浏览器。无 job 时也尽量按 caseId 关窗。"""
+    job = await relay_hub.get(sid)
+    case_id = ""
+    if job is not None:
+        case_id = (job.case_id or "").strip()
+        result = relay_hub.cancel_job(sid)
+    else:
+        result = {"ok": True, "sid": sid, "message": "无进行中的自动化会话"}
+
+    # 无论 job 是否还在，都按案件号强制关 Chrome（解决取消未命中会话时窗口残留）
+    try:
+        import sys
+
+        gamma_root = str(REPO_ROOT / "gamma-yct")
+        if gamma_root not in sys.path:
+            sys.path.insert(0, gamma_root)
+        from apps.worker.run_fill_session import abort_fill_browser
+
+        if not case_id:
+            case_id = DEFAULT_CASE_ID
+        # 只关本案件窗口，避免 kill_all 误杀其它/刚拉起的会话
+        abort_fill_browser(case_id, kill_all=False)
+        result["browserClosed"] = True
+        result["caseId"] = case_id
+    except Exception as e:
+        result["browserWarn"] = str(e)
+    return result
+
+
+@app.post("/api/automation/cancel-case")
+async def cancel_automation_by_case(body: dict):
+    """按 caseId 取消并强制关闭填报 Chrome（不依赖 sid）。"""
+    case_id = str(body.get("caseId") or DEFAULT_CASE_ID).strip() or DEFAULT_CASE_ID
+    # 顺带取消仍在跑的同 case 会话
+    try:
+        for sid, job in list(getattr(relay_hub, "_jobs", {}).items()):
+            if (getattr(job, "case_id", "") or "") == case_id and not getattr(job, "finished", True):
+                try:
+                    relay_hub.cancel_job(sid)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    import sys
+
+    gamma_root = str(REPO_ROOT / "gamma-yct")
+    if gamma_root not in sys.path:
+        sys.path.insert(0, gamma_root)
+    from apps.api import store as gamma_store
+    from apps.worker.run_fill_session import abort_fill_browser
+
+    try:
+        gamma_store.request_cancel(case_id)
+    except Exception:
+        pass
+    abort_fill_browser(case_id, kill_all=False)
+    return {"ok": True, "caseId": case_id, "killed": 0, "message": "已取消并关闭填报浏览器"}
 
 
 @app.get("/start/{sid}")

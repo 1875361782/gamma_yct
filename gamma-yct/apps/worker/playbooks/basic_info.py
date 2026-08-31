@@ -6,7 +6,7 @@
 3. 温馨提示：我已知晓上述内容
 4. 经办人：上传身份证正反面 → OCR → 移动电话 / 经办人类型
 5. 企业信息：申请机关 / 企业类型 / 经营期限 / 住所弹窗 / 联系电话 / 章程决议日期 → 暂存
-6. 经营范围：选择 → 跳过 → 推荐/行业分类 → 搜科技 → 前五个结果全部添加 → 生成结果
+6. 经营范围：按用户勾选条目名称搜索添加（无勾选时回退行业词前 5 条）→ 生成结果
 7. 下拉到底 → 下一步
 """
 
@@ -86,14 +86,218 @@ def _click_text_any(page: Page, texts: list[str], *, exact: bool = False) -> boo
     return False
 
 
+def _notice_ack_visible(page: Page) -> bool:
+    """告知/承诺勾选文案仍可见。"""
+    return _any_visible_phrase(page, "我已详细阅读并知晓")
+
+
+_NOTICE_ACK_TEXTS = (
+    "我已详细阅读并知晓《上海市企业名称登记告知书》内容",
+    "我已详细阅读并知晓《上海市企业名称登记承诺书》内容",
+)
+
+
+def _find_notice_dialog(scope: Page | Frame):
+    """定位告知书/承诺书弹层（用告知书特征，避免正文里偶然出现的「确定」字误匹配）。"""
+    for sel in (".el-dialog", "[role='dialog']", ".el-overlay-dialog .el-dialog"):
+        try:
+            dlg = (
+                scope.locator(sel)
+                .filter(has_text="企业名称登记告知书")
+                .filter(has_text="我已详细阅读")
+                .first
+            )
+            if _visible(dlg, timeout=400):
+                return dlg
+        except Exception:
+            continue
+    for sel in (".el-dialog", "[role='dialog']"):
+        try:
+            dlg = scope.locator(sel).filter(has_text="我已详细阅读并知晓").first
+            if _visible(dlg, timeout=400):
+                return dlg
+        except Exception:
+            continue
+    return None
+
+
+def _notice_scope_and_dialog(page: Page):
+    for scope in _all_scopes(page):
+        dlg = _find_notice_dialog(scope)
+        if dlg is not None:
+            return scope, dlg
+    return None, None
+
+
 def _notice_dialog_visible(page: Page) -> bool:
+    if _notice_ack_visible(page):
+        return True
+    return _notice_scope_and_dialog(page)[1] is not None
+
+
+def _click_point(page: Page, box: dict[str, float], *, dx: float = 0, dy: float = 0) -> None:
+    x = box["x"] + dx
+    y = box["y"] + (box["height"] / 2 if dy == 0 else dy)
+    page.mouse.click(x, y)
+
+
+def _ack_label_checked(lab) -> bool:
+    try:
+        cls = lab.get_attribute("class") or ""
+        if "is-checked" in cls:
+            return True
+    except Exception:
+        pass
+    try:
+        return lab.locator(".el-checkbox__input.is-checked, input[type=checkbox]:checked").count() > 0
+    except Exception:
+        return False
+
+
+def _ensure_notice_acks(page: Page, dlg) -> int:
+    """在同一弹层内勾选两框：已勾的跳过，未勾的只点一次方框。"""
+    checked = 0
+    for text in _NOTICE_ACK_TEXTS:
+        lab = dlg.locator("label.el-checkbox").filter(has_text=text).first
+        if not _visible(lab, timeout=500):
+            short = "告知书》内容" if "告知书" in text else "承诺书》内容"
+            lab = dlg.locator("label.el-checkbox").filter(has_text=short).first
+        if not _visible(lab, timeout=400):
+            continue
+        if _ack_label_checked(lab):
+            checked += 1
+            continue
+        try:
+            lab.locator(".el-checkbox__inner").first.click(timeout=1500)
+        except Exception:
+            box = lab.bounding_box()
+            if box:
+                _click_point(page, box, dx=8)
+        page.wait_for_timeout(150)
+        if _ack_label_checked(lab):
+            checked += 1
+        else:
+            # Vue 受控：原生勾上
+            try:
+                inp = lab.locator("input.el-checkbox__original, input[type=checkbox]").first
+                inp.evaluate(
+                    """el => {
+                      el.checked = true;
+                      el.dispatchEvent(new Event('change', { bubbles: true }));
+                      el.dispatchEvent(new Event('input', { bubbles: true }));
+                      const wrap = el.closest('.el-checkbox');
+                      if (wrap) {
+                        wrap.classList.add('is-checked');
+                        const inputWrap = wrap.querySelector('.el-checkbox__input');
+                        if (inputWrap) inputWrap.classList.add('is-checked');
+                      }
+                    }"""
+                )
+                if _ack_label_checked(lab):
+                    checked += 1
+            except Exception:
+                pass
+    return checked
+
+
+def _click_notice_confirm_now(page: Page, dlg, scope: Page | Frame | None = None) -> bool:
+    """勾选后立刻点本弹层「确定」，不点取消/其它区域。"""
+    roots = [dlg]
+    if scope is not None:
+        roots.append(scope)
+
+    def _try_btn(btn) -> bool:
+        if btn is None:
+            return False
+        try:
+            if btn.count() == 0:
+                return False
+        except Exception:
+            return False
+        try:
+            if not btn.is_visible(timeout=500):
+                return False
+        except Exception:
+            return False
+        # 禁用态也尝试强点（有的主题未解除 disabled class）
+        try:
+            btn.evaluate(
+                """el => {
+                  el.disabled = false;
+                  el.classList.remove('is-disabled');
+                  el.removeAttribute('disabled');
+                  el.click();
+                }"""
+            )
+            return True
+        except Exception:
+            pass
+        box = None
+        try:
+            box = btn.bounding_box()
+        except Exception:
+            box = None
+        if box and box.get("width", 0) > 2:
+            _click_point(page, box, dx=box["width"] / 2)
+            return True
+        try:
+            btn.click(timeout=2000, force=True)
+            return True
+        except Exception:
+            return False
+
+    confirm_re = re.compile(r"^\s*确\s*定\s*$")
+    for root in roots:
+        finders = (
+            lambda r=root: r.locator(".el-dialog__footer button.el-button--primary").filter(
+                has_text=confirm_re
+            ).last,
+            lambda r=root: r.locator(".dialog-footer button.el-button--primary, footer button.el-button--primary").filter(
+                has_text=confirm_re
+            ).last,
+            lambda r=root: r.locator("button.el-button--primary").filter(has_text=confirm_re).last,
+            lambda r=root: r.get_by_role("button", name=confirm_re).last,
+            lambda r=root: r.locator("button").filter(has_text=confirm_re).last,
+        )
+        for finder in finders:
+            try:
+                if _try_btn(finder()):
+                    return True
+            except Exception:
+                continue
+
+    # 全 frame 兜底：与「取消」同级的「确定」
+    for sc in _all_scopes(page):
+        try:
+            cancel = sc.locator("button").filter(has_text=re.compile(r"^\s*取\s*消\s*$")).last
+            if cancel.count() == 0 or not cancel.is_visible(timeout=300):
+                continue
+            parent = cancel.locator("xpath=..")
+            btn = parent.locator("button").filter(has_text=confirm_re).last
+            if _try_btn(btn):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _dismiss_know_all_tip(page: Page) -> bool:
+    """仅当出现校验提示时关掉，便于下一轮重新「勾选→确定」。"""
+    if not _any_visible_phrase(page, "请确认已知晓所有内容", "已知晓所有内容"):
+        return False
     for scope in _all_scopes(page):
         try:
-            dlg = scope.locator(".el-dialog").filter(has_text="告知书").filter(has_text="承诺书").first
-            if _visible(dlg, timeout=400):
-                return True
-            dlg2 = scope.locator(".el-dialog").filter(has_text="已详细阅读").filter(has_text="确定").first
-            if _visible(dlg2, timeout=400):
+            tip = scope.locator(".el-message-box").filter(has_text="已知晓所有内容").first
+            if not _visible(tip, timeout=300):
+                continue
+            btn = tip.locator("button.el-button--primary").filter(has_text="确定").first
+            if _visible(btn):
+                box = btn.bounding_box()
+                if box:
+                    _click_point(page, box, dx=box["width"] / 2)
+                else:
+                    btn.click(timeout=1500)
+                page.wait_for_timeout(300)
                 return True
         except Exception:
             continue
@@ -101,93 +305,82 @@ def _notice_dialog_visible(page: Page) -> bool:
 
 
 def _force_dismiss_notice(page: Page, case_id: str) -> dict[str, Any]:
-    """勾选告知/承诺并点确定，仅在弹窗消失时返回 ok。"""
+    """流程：勾选两框 → 立刻点确定（中间不点别处）。比对通过后主路径。"""
     info: dict[str, Any] = {"ok": False, "checked": 0, "clicks": 0}
     for attempt in range(12):
         if not _notice_dialog_visible(page):
             info["ok"] = True
             info["attempt"] = attempt
             return info
+
+        # 若上次确定触发了校验提示，先关掉再按「勾选→确定」重来
+        if _dismiss_know_all_tip(page):
+            info["dismissedKnowAllTip"] = True
+
+        # 优先 JS（ElementUI 在 iframe/传送门里对 Playwright 定位不稳）
         res = _eval_all_frames(page, _js_handle_notice())
         info["js"] = res
-        for scope in _all_scopes(page):
-            try:
-                dlg = scope.locator(".el-dialog").filter(has_text="告知书").filter(has_text="承诺书").first
-                if not _visible(dlg):
-                    dlg = scope.locator(".el-dialog").filter(has_text="已详细阅读").first
-                if not _visible(dlg):
-                    continue
-                tab = dlg.get_by_text("企业名称登记承诺书", exact=True).first
-                if _visible(tab):
-                    try:
-                        tab.click(timeout=1200)
-                    except Exception:
-                        pass
-                for kw in ("告知书", "承诺书"):
-                    lab = dlg.locator("label.el-checkbox").filter(has_text=kw).first
-                    if not _visible(lab):
-                        continue
-                    cls = lab.get_attribute("class") or ""
-                    if "is-checked" not in cls:
-                        try:
-                            lab.locator(".el-checkbox__inner").first.click(force=True, timeout=2000)
-                        except Exception:
-                            try:
-                                lab.click(force=True, timeout=2000)
-                            except Exception:
-                                pass
-                checked_n = dlg.locator("label.el-checkbox.is-checked").count()
-                info["checked"] = checked_n
-                if checked_n < 2:
-                    break
-                page.wait_for_timeout(350)
-                btn = dlg.locator("button.el-button--primary").filter(has_text="确定").first
-                if not _visible(btn):
-                    btn = dlg.get_by_role("button", name=re.compile(r"确\s*定")).first
-                if not _visible(btn):
-                    btn = dlg.locator("button, .el-button").filter(has_text="确定").last
-                if not _visible(btn):
-                    break
-                # 多种点击方式，避免 Vue/shadow 吞事件
-                try:
-                    btn.scroll_into_view_if_needed(timeout=1500)
-                except Exception:
-                    pass
-                try:
-                    btn.evaluate(
-                        """el => {
-                          el.disabled = false;
-                          el.classList.remove('is-disabled');
-                          el.click();
-                          el.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true, composed:true}));
-                        }"""
-                    )
-                    info["clicks"] += 1
-                except Exception:
-                    pass
-                try:
-                    btn.click(force=True, timeout=2500)
-                    info["clicks"] += 1
-                except Exception:
-                    box = btn.bounding_box()
-                    if box:
-                        page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-                        info["clicks"] += 1
-                break
-            except Exception:
+        if isinstance(res, dict):
+            if res.get("checked"):
+                info["checked"] = max(info["checked"], int(res.get("checked") or 0))
+            if res.get("confirm") or res.get("tipDismissed"):
+                info["clicks"] += 1
+                page.wait_for_timeout(700)
+                _shot(page, case_id, f"after-notice-try-{attempt}")
+                if not _notice_ack_visible(page):
+                    info["ok"] = True
+                    info["attempt"] = attempt
+                    return info
                 continue
-        page.wait_for_timeout(900)
+
+        scope, dlg = _notice_scope_and_dialog(page)
+        if dlg is None:
+            for scope2 in _all_scopes(page):
+                try:
+                    if not scope2.get_by_text("我已详细阅读并知晓", exact=False).count():
+                        continue
+                    dlg = scope2.locator("body")
+                    scope = scope2
+                    break
+                except Exception:
+                    continue
+        if dlg is None:
+            page.wait_for_timeout(400)
+            continue
+
+        checked = _ensure_notice_acks(page, dlg)
+        info["checked"] = max(info["checked"], checked)
+        # 勾满后立刻点确定；不点取消、不按 Esc
+        if checked >= 2 or _ensure_notice_acks(page, dlg) >= 2:
+            if _click_notice_confirm_now(page, dlg, scope):
+                info["clicks"] += 1
+            else:
+                # 再跑一遍 JS 点确定
+                res2 = _eval_all_frames(page, _js_handle_notice())
+                info["js2"] = res2
+                if isinstance(res2, dict) and res2.get("confirm"):
+                    info["clicks"] += 1
+        page.wait_for_timeout(700)
         _shot(page, case_id, f"after-notice-try-{attempt}")
-        if not _notice_dialog_visible(page):
+
+        if not _notice_ack_visible(page):
             info["ok"] = True
             info["attempt"] = attempt
             return info
-        if _dialog_visible(page, "温馨提示") or _dialog_visible(page, "经办人信息") or _dialog_visible(
-            page, "请上传身份证人像面"
-        ):
-            info["ok"] = True
-            info["attempt"] = attempt
-            return info
+        if _any_visible_phrase(page, "温馨提示", "我已知晓上述内容", "经办人信息", "请上传身份证人像面"):
+            if not _notice_ack_visible(page):
+                info["ok"] = True
+                info["attempt"] = attempt
+                return info
+        if attempt in (2, 5, 8):
+            try:
+                _dump(
+                    case_id,
+                    f"notice-probe-{attempt}.json",
+                    {"checked": info["checked"], "clicks": info["clicks"], "attempt": attempt, "js": info.get("js")},
+                )
+            except Exception:
+                pass
     info["ok"] = not _notice_dialog_visible(page)
     return info
 
@@ -259,48 +452,6 @@ def _check_in_dialog(dialog, keywords: list[str]) -> bool:
     return False
 
 
-def _click_in_dialog(dialog, texts: list[str]) -> bool:
-    if dialog is None:
-        return False
-    for t in texts:
-        try:
-            btn = dialog.get_by_role("button", name=t).first
-            if _visible(btn):
-                btn.click(timeout=5000)
-                return True
-        except Exception:
-            pass
-        try:
-            btn = dialog.locator("button, .el-button").filter(has_text=t).first
-            if _visible(btn):
-                btn.click(timeout=5000)
-                return True
-        except Exception:
-            pass
-    return False
-
-
-def _check_near_text(page: Page, keywords: list[str]) -> bool:
-    """勾选文案附近的复选框（未勾选才点）。"""
-    for hint in ("比对结果", "告知书", "承诺书", "已详细阅读", "温馨提示"):
-        dialog, _ = _visible_dialog(page, hint)
-        if dialog is not None and _check_in_dialog(dialog, keywords):
-            return True
-    checked_any = False
-    for scope in _all_scopes(page):
-        for kw in keywords:
-            try:
-                lab = scope.locator("label.el-checkbox").filter(has_text=kw).first
-                if _visible(lab):
-                    cls = lab.get_attribute("class") or ""
-                    if "is-checked" not in cls:
-                        lab.locator(".el-checkbox__inner").first.click(timeout=3000, force=True)
-                    checked_any = True
-            except Exception:
-                continue
-    return checked_any
-
-
 def _body(scope: Page | Frame):
     """wujie 下可能有两个 body，优先业务 body。"""
     try:
@@ -338,6 +489,54 @@ def _dialog_visible(page: Page, *texts: str) -> bool:
             return True
     except Exception:
         pass
+    return False
+
+
+def _any_visible_phrase(page: Page, *texts: str) -> bool:
+    """可见文案（避免已关闭弹窗残留 DOM 误判）。"""
+    for scope in _all_scopes(page):
+        for t in texts:
+            if not t:
+                continue
+            try:
+                loc = scope.get_by_text(t, exact=False)
+                n = min(loc.count(), 10)
+            except Exception:
+                continue
+            for i in range(n):
+                try:
+                    if loc.nth(i).is_visible(timeout=350):
+                        return True
+                except Exception:
+                    continue
+    return False
+
+
+def _compare_pass_visible(page: Page) -> bool:
+    """比对结果：计算机比对通过（需勾选已知晓→下一步）。"""
+    if _any_visible_phrase(page, "计算机比对通过"):
+        return True
+    if _any_visible_phrase(page, "已知晓该名称存在") and _any_visible_phrase(page, "比对结果"):
+        # 通过窗是「下一步」，失败备用字号是「继续申请」
+        if not _any_visible_phrase(page, "继续申请", "备用字号1", "可进行备用字号"):
+            return True
+    return False
+
+
+def _compare_fail_visible(page: Page) -> bool:
+    """备用字号 / 比对未通过（可见弹窗）。通过弹窗优先。"""
+    if _compare_pass_visible(page):
+        return False
+    if _any_visible_phrase(
+        page, "备用字号1", "备用字号2", "可进行备用字号", "备用拟设名称"
+    ):
+        return True
+    if _any_visible_phrase(page, "继续申请") and _any_visible_phrase(page, "返回修改"):
+        return True
+    if _any_visible_phrase(page, "计算机比对未通过"):
+        return True
+    if _any_visible_phrase(page, "比对未通过") and not _any_visible_phrase(page, "比对通过"):
+        return True
     return False
 
 
@@ -381,17 +580,33 @@ def _js_handle_compare() -> str:
   const root = document.body;
   if (!root) return {ok:false, reason:'no-body'};
   const has = (t) => (root.innerText || '').includes(t);
-  if (!(has('比对结果') || has('已知晓该名称'))) return {ok:false, reason:'no-compare'};
-  // 取文本最短且同时含关键文案的容器，避免点到整页
-  const candidates = [...document.querySelectorAll('.el-dialog, .el-message-box, .el-overlay-dialog, [class*="dialog"], div')]
+  // 可见通过弹窗优先；有「计算机比对通过」时绝不当失败
+  if (has('计算机比对通过') || has('已知晓该名称') || has('比对结果')) {
+    /* continue */
+  } else {
+    return {ok:false, reason:'no-compare'};
+  }
+  if (has('备用字号1') || has('可进行备用字号') || (has('继续申请') && has('返回修改') && !has('计算机比对通过'))) {
+    return {ok:false, reason:'beiyong-fail'};
+  }
+  // 已进入告知书则交由 notice 处理，绝不可回退到 document.body 乱点
+  if ((root.innerText || '').includes('我已详细阅读并知晓') && (root.innerText || '').includes('企业名称登记告知书')) {
+    return {ok:false, reason:'notice-dialog-open'};
+  }
+  const candidates = [...document.querySelectorAll('.el-dialog, .el-message-box, .el-overlay-dialog, [role=dialog]')]
     .filter(n => {
       const t = n.innerText || '';
       const r = n.getBoundingClientRect();
-      return t.includes('已知晓该名称') && t.includes('下一步') && n.offsetParent !== null
+      const st = getComputedStyle(n);
+      if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) === 0) return false;
+      if (t.includes('我已详细阅读并知晓')) return false;
+      const pass = t.includes('计算机比对通过') || (t.includes('已知晓该名称') && t.includes('下一步'));
+      return pass && t.includes('下一步') && n.offsetParent !== null
         && r.width > 280 && r.height > 180 && r.width < 1200;
     })
     .sort((a, b) => (a.innerText||'').length - (b.innerText||'').length);
-  const dialog = candidates[0] || root;
+  if (!candidates.length) return {ok:false, reason:'no-compare-dialog'};
+  const dialog = candidates[0];
   const info = {
     dialogClass: dialog.className || '',
     checkboxHtml: (dialog.querySelector('.el-checkbox, input[type=checkbox]') || {}).outerHTML || null,
@@ -404,7 +619,6 @@ def _js_handle_compare() -> str:
     el.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true, view:window}));
     if (typeof el.click === 'function') el.click();
   };
-  // Element Plus: original + inner + label
   const originals = [...dialog.querySelectorAll('input.el-checkbox__original, input[type=checkbox]')];
   for (const inp of originals) {
     clickEl(inp);
@@ -430,7 +644,7 @@ def _js_handle_compare() -> str:
   const btns = [...dialog.querySelectorAll('button, .el-button')].filter(b =>
     (b.innerText || '').replace(/\\s/g,'') === '下一步' && b.offsetParent !== null);
   let next = false;
-  if (btns.length) {
+  if (btns.length && isChecked) {
     clickEl(btns[btns.length - 1]);
     next = true;
   }
@@ -454,6 +668,12 @@ def _js_handle_notice() -> str:
     walk(document);
     return out;
   };
+  const visible = (el) => {
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    const st = getComputedStyle(el);
+    return r.width > 2 && r.height > 2 && st.display !== 'none' && st.visibility !== 'hidden' && Number(st.opacity) !== 0;
+  };
   const clickEl = (el) => {
     if (!el) return;
     el.dispatchEvent(new MouseEvent('mousedown', {bubbles:true, cancelable:true, composed:true, view:window}));
@@ -461,53 +681,103 @@ def _js_handle_notice() -> str:
     el.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true, composed:true, view:window}));
     if (typeof el.click === 'function') el.click();
   };
-  const dialogs = deepQueryAll('.el-dialog, [role=dialog]');
-  const dialog = dialogs.find(n => {
-    const t = n.innerText || '';
-    const r = n.getBoundingClientRect();
-    return t.includes('告知书') && t.includes('承诺书') && t.includes('确定')
-      && r.width > 280 && r.height > 180;
-  }) || dialogs.find(n => {
-    const t = n.innerText || '';
-    const r = n.getBoundingClientRect();
-    return t.includes('已详细阅读') && t.includes('确定') && r.height > 200;
+  const isChecked = (lab) => {
+    if (!lab) return false;
+    if ((lab.className || '').toString().includes('is-checked')) return true;
+    const wrap = lab.querySelector && lab.querySelector('.el-checkbox__input.is-checked');
+    if (wrap) return true;
+    const inp = lab.querySelector && lab.querySelector('input[type=checkbox], input.el-checkbox__original');
+    return !!(inp && inp.checked);
+  };
+  // 不依赖 dialog class：直接找两句勾选文案对应的 checkbox
+  let labels = deepQueryAll('label.el-checkbox, label, .el-checkbox').filter(lab => {
+    const t = (lab.innerText || '').replace(/\\s+/g, '');
+    return visible(lab) && t.includes('我已详细阅读并知晓') && (t.includes('告知书') || t.includes('承诺书'));
   });
-  if (!dialog) return {ok:false, reason:'no-notice-dialog', dialogCount: dialogs.length};
-  const commitTab = [...dialog.querySelectorAll('.el-tabs__item, [role=tab], button, span, div')]
-    .find(el => (el.innerText || '').trim() === '企业名称登记承诺书');
-  if (commitTab) clickEl(commitTab);
-  const labels = [...dialog.querySelectorAll('label.el-checkbox')].filter(lab => {
-    const t = lab.innerText || '';
-    return t.includes('告知书') || t.includes('承诺书') || t.includes('已详细阅读');
+  // 去重：按文案
+  const seen = new Set();
+  labels = labels.filter(lab => {
+    const t = (lab.innerText || '').replace(/\\s+/g, '').slice(0, 40);
+    if (seen.has(t)) return false;
+    seen.add(t);
+    return true;
   });
-  let n = 0;
-  for (const lab of labels) {
-    const inp = lab.querySelector('input.el-checkbox__original, input[type=checkbox]');
-    const inner = lab.querySelector('.el-checkbox__inner');
-    if (!lab.classList.contains('is-checked')) {
-      clickEl(inner || inp || lab);
-      if (inp) {
-        try {
-          inp.checked = true;
-          inp.dispatchEvent(new Event('input', {bubbles:true}));
-          inp.dispatchEvent(new Event('change', {bubbles:true}));
-        } catch (e) {}
+  if (!labels.length) {
+    // 再按短文案找，向上找 label
+    const tips = deepQueryAll('span, div, p, label').filter(el => {
+      const t = (el.innerText || '').trim();
+      return visible(el) && t.includes('我已详细阅读并知晓') && t.length < 60;
+    });
+    for (const tip of tips) {
+      let p = tip;
+      for (let i = 0; i < 6 && p; i++) {
+        if ((p.className || '').toString().includes('checkbox') || p.tagName === 'LABEL') {
+          labels.push(p);
+          break;
+        }
+        p = p.parentElement;
       }
     }
-    n++;
   }
-  const both = dialog.querySelectorAll('label.el-checkbox.is-checked').length >= 2;
-  const btn = [...dialog.querySelectorAll('button.el-button--primary, button.el-button, button')]
+  let n = 0;
+  for (const lab of labels) {
+    if (isChecked(lab)) { n++; continue; }
+    const inner = lab.querySelector ? lab.querySelector('.el-checkbox__inner') : null;
+    const inp = lab.querySelector ? lab.querySelector('input.el-checkbox__original, input[type=checkbox]') : null;
+    // 只点一次，避免连点取消勾选；不伪造 is-checked
+    clickEl(inner || lab);
+    if (isChecked(lab)) n++;
+  }
+  const both = labels.length >= 2 && labels.every(isChecked);
+  // 校验提示优先关掉
+  const tipBox = deepQueryAll('.el-message-box, .el-dialog, [role=dialog]').find(d =>
+    visible(d) && (d.innerText || '').includes('已知晓所有内容')
+  );
+  if (tipBox) {
+    const tipBtn = [...tipBox.querySelectorAll('button')].find(b => {
+      const t = (b.innerText || '').replace(/\\s/g,'');
+      return visible(b) && (t === '确定' || t === '确 定');
+    });
+    if (tipBtn) clickEl(tipBtn);
+    return {ok:true, checked:n, both, confirm:false, tipDismissed:true, labelCount: labels.length};
+  }
+  // 找确定按钮：优先靠近勾选文案的容器；兼容无 footer class
+  const dialogs = deepQueryAll('.el-dialog, [role=dialog], .el-overlay-dialog, .el-dialog__wrapper');
+  let dialog = dialogs.find(d => visible(d) && (d.innerText || '').includes('我已详细阅读') && ((d.innerText || '').includes('告知书') || (d.innerText || '').includes('承诺书')));
+  if (!dialog && labels[0]) {
+    let p = labels[0].parentElement;
+    for (let i = 0; i < 14 && p; i++) {
+      const t = p.innerText || '';
+      if (t.includes('取消') && t.includes('告知书') && /确\\s*定/.test(t)) { dialog = p; break; }
+      p = p.parentElement;
+    }
+  }
+  const btnRoot = dialog || document.body;
+  let btn = [...(btnRoot.querySelectorAll ? btnRoot.querySelectorAll('button.el-button--primary, button.el-button, button') : [])]
     .find(b => {
       const t = (b.innerText || '').replace(/\\s/g,'');
-      return (t === '确定' || t === '确 定') && !b.disabled && !b.classList.contains('is-disabled');
+      return visible(b) && (t === '确定' || t === '确 定');
     });
-  if (both && btn) {
-    const r = btn.getBoundingClientRect();
-    clickEl(btn);
-    return {ok:true, checked:n, both, confirm:true, btnBox:{x:r.x,y:r.y,w:r.width,h:r.height}};
+  // 与取消同级兜底
+  if (!btn) {
+    const cancel = [...(btnRoot.querySelectorAll ? btnRoot.querySelectorAll('button') : [])]
+      .find(b => visible(b) && (b.innerText || '').replace(/\\s/g,'') === '取消');
+    if (cancel && cancel.parentElement) {
+      btn = [...cancel.parentElement.querySelectorAll('button')]
+        .find(b => visible(b) && (b.innerText || '').replace(/\\s/g,'') === '确定');
+    }
   }
-  return {ok:true, checked:n, both, confirm:false};
+  // 两勾后点确定；必要时解除 disabled
+  if ((both || n >= 2) && btn) {
+    try {
+      btn.disabled = false;
+      btn.classList.remove('is-disabled');
+      btn.removeAttribute('disabled');
+    } catch (e) {}
+    clickEl(btn);
+    return {ok:true, checked:n, both, confirm:true, labelCount: labels.length, dialogClass: (dialog && dialog.className) || ''};
+  }
+  return {ok:n > 0, checked:n, both, confirm:false, labelCount: labels.length, dialogCount: dialogs.length, hasBtn: !!btn};
 }"""
 
 
@@ -532,27 +802,9 @@ def _js_handle_warm() -> str:
 
 
 def _dismiss_system_busy(page: Page) -> bool:
-    dismissed = False
-    for scope in _all_scopes(page):
-        try:
-            if not (
-                _frame_has_text(scope, "系统繁忙")
-                or _frame_has_text(scope, "请稍后重试")
-                or _frame_has_text(scope, "请稍后再试")
-            ):
-                continue
-            dlg = scope.locator(".el-message-box, .el-dialog").filter(
-                has_text=re.compile("系统繁忙|稍后")
-            ).first
-            btn = dlg.locator("button, .el-button").filter(has_text="确定").first if _visible(dlg) else None
-            if _visible(btn):
-                btn.click(force=True, timeout=3000)
-                dismissed = True
-            elif _click_text(scope, ["确定"], exact=True):
-                dismissed = True
-        except Exception:
-            continue
-    return dismissed
+    from apps.worker.playbooks.retry_gate import dismiss_system_busy
+
+    return dismiss_system_busy(page)
 
 
 def handle_post_name_dialogs(page: Page, case_id: str) -> dict[str, Any]:
@@ -565,89 +817,165 @@ def handle_post_name_dialogs(page: Page, case_id: str) -> dict[str, Any]:
         out["skippedAlreadyBasic"] = True
         return out
 
-    # 名称下一步偶发系统繁忙：先关掉再等比对
-    if _dismiss_system_busy(page):
+    # 已到告知书：跳过比对等待，直接勾选确定（与核名通过后路径一致）
+    already_notice = _notice_dialog_visible(page)
+    out["alreadyNotice"] = already_notice
+
+    # 名称下一步偶发系统繁忙：先关掉再等比对（比对结果在时不要点页面下一步）
+    if (not already_notice) and _dismiss_system_busy(page):
         out["dismissedBusy"] = True
         page.wait_for_timeout(1500)
-        _click_text_any(page, ["下一步"], exact=True)
-        page.wait_for_timeout(1200)
+        if not (
+            _dialog_visible(page, "比对结果")
+            or _dialog_visible(page, "已知晓该名称")
+            or _notice_dialog_visible(page)
+        ):
+            _click_text_any(page, ["下一步"], exact=True)
+            page.wait_for_timeout(1200)
 
     # 1) 比对结果（放宽等待；检测失败也尝试直接点）
-    saw_compare = _wait_text(
-        page, ["比对结果", "计算机比对通过", "已知晓该名称", "已知晓该名称存在审核"], timeout_sec=20
-    )
-    out["sawCompare"] = saw_compare
-    # 检测失败时仍尝试（弹窗常在 iframe，文案扫描可能漏检）
-    if True:
-        _shot(page, case_id, "dialog-compare")
-        for attempt in range(6):
-            res = _eval_all_frames(page, _js_handle_compare())
-            out["compareJs"] = res
-            checked = bool(isinstance(res, dict) and (res.get("isChecked") or res.get("checked")))
-            for fr in page.frames:
-                try:
-                    # 不依赖 .el-dialog class，用文案过滤可见容器
-                    dlg = fr.locator("div").filter(has_text="比对结果").filter(has_text="已知晓该名称").first
-                    if not _visible(dlg, timeout=500):
-                        dlg = fr.locator(".el-dialog, .el-message-box").filter(has_text="已知晓该名称").first
-                    if not _visible(dlg, timeout=500):
-                        continue
-                    for sel in (
-                        "input[type='checkbox']",
-                        "input.el-checkbox__original",
-                        ".el-checkbox__inner",
-                        "label.el-checkbox",
-                        ".el-checkbox",
-                    ):
-                        try:
-                            el = dlg.locator(sel).first
-                            if el.count() == 0:
-                                continue
-                            if sel.startswith("input"):
-                                try:
-                                    el.check(force=True, timeout=1500)
-                                except Exception:
-                                    el.click(force=True, timeout=1500)
-                            else:
-                                el.click(force=True, timeout=1500)
-                            checked = True
-                        except Exception:
-                            continue
-                    tip = dlg.get_by_text("已知晓该名称存在审核不通过", exact=False).first
-                    if not _visible(tip):
-                        tip = dlg.get_by_text("已知晓该名称", exact=False).first
-                    if _visible(tip):
-                        box = tip.bounding_box()
-                        if box:
-                            page.mouse.click(box["x"] - 24, box["y"] + 12)
-                            checked = True
-                    # 弹层下一步
-                    btn = dlg.locator("button, .el-button").filter(has_text="下一步").last
-                    if _visible(btn):
-                        btn.click(timeout=4000)
-                        out["compareNext"] = True
+    if not already_notice and not _notice_dialog_visible(page):
+        saw_compare = _wait_text(
+            page,
+            [
+                "比对结果",
+                "计算机比对通过",
+                "已知晓该名称",
+                "已知晓该名称存在审核",
+                "企业名称登记告知书",
+                "我已详细阅读",
+            ],
+            timeout_sec=20,
+        )
+        out["sawCompare"] = saw_compare
+        # 等待中途已弹出告知书：转交 notice
+        if _notice_dialog_visible(page):
+            out["compareNext"] = True
+        # 仅当「可见」失败弹窗时交回换字号；残留 DOM「备用字号」文案不得盖过「计算机比对通过」
+        elif _compare_fail_visible(page) and not _compare_pass_visible(page):
+            out["compareFailed"] = True
+            _shot(page, case_id, "dialog-compare-or-alt-failed")
+            return out
+        else:
+            _shot(page, case_id, "dialog-compare")
+            for attempt in range(8):
+                if _notice_dialog_visible(page):
+                    out["compareNext"] = True
                     break
-                except Exception:
-                    continue
-            out["compareChecked"] = checked
-            if isinstance(res, dict) and res.get("next"):
-                out["compareNext"] = True
-            page.wait_for_timeout(900)
-            _shot(page, case_id, f"after-compare-try-{attempt}")
-            if out["compareNext"] and not _dialog_visible(page, "比对结果"):
-                break
-            # 若已进入告知书也算过了比对
-            if _dialog_visible(page, "已详细阅读") or _dialog_visible(page, "企业名称登记告知书"):
-                out["compareNext"] = True
-                break
-            if _dialog_visible(page, "经办人信息") or _dialog_visible(page, "请上传身份证人像面"):
-                out["compareNext"] = True
-                break
-        page.wait_for_timeout(800)
-        _shot(page, case_id, "after-compare-next")
+                # 中途若真正弹出备用字号：交回换字号，勿点继续申请
+                if _compare_fail_visible(page) and not _compare_pass_visible(page):
+                    out["compareFailed"] = True
+                    _shot(page, case_id, "dialog-compare-or-alt-failed")
+                    return out
+                res = _eval_all_frames(page, _js_handle_compare())
+                out["compareJs"] = res
+                checked = bool(
+                    isinstance(res, dict)
+                    and (res.get("isChecked") or res.get("checked") or res.get("next"))
+                )
+                for fr in page.frames:
+                    try:
+                        if _notice_dialog_visible(page):
+                            out["compareNext"] = True
+                            break
+                        # 通过弹窗：比对结果 + 已知晓；也兼容仅「计算机比对通过」
+                        dlg = fr.locator(".el-dialog, .el-message-box, [role='dialog']").filter(
+                            has_text="计算机比对通过"
+                        ).first
+                        if not _visible(dlg, timeout=400):
+                            dlg = fr.locator("div").filter(has_text="比对结果").filter(
+                                has_text="已知晓该名称"
+                            ).first
+                        if not _visible(dlg, timeout=400):
+                            dlg = fr.locator(".el-dialog, .el-message-box").filter(
+                                has_text="已知晓该名称"
+                            ).first
+                        if not _visible(dlg, timeout=500):
+                            continue
+                        # 勾选「已知晓」
+                        for sel in (
+                            "label.el-checkbox",
+                            ".el-checkbox__inner",
+                            "input.el-checkbox__original",
+                            "input[type='checkbox']",
+                            ".el-checkbox",
+                        ):
+                            try:
+                                el = dlg.locator(sel).first
+                                if el.count() == 0:
+                                    continue
+                                if "input" in sel:
+                                    try:
+                                        el.check(force=True, timeout=1500)
+                                    except Exception:
+                                        el.click(force=True, timeout=1500)
+                                else:
+                                    el.click(force=True, timeout=1500)
+                                checked = True
+                                break
+                            except Exception:
+                                continue
+                        tip = dlg.get_by_text("已知晓该名称存在审核不通过", exact=False).first
+                        if not _visible(tip):
+                            tip = dlg.get_by_text("已知晓该名称", exact=False).first
+                        if _visible(tip):
+                            try:
+                                tip.click(timeout=1500, force=True)
+                                checked = True
+                            except Exception:
+                                box = tip.bounding_box()
+                                if box:
+                                    # 点文字左侧方框
+                                    page.mouse.click(box["x"] - 28, box["y"] + box["height"] / 2)
+                                    checked = True
+                        # 确认已勾选
+                        try:
+                            if dlg.locator(
+                                ".el-checkbox.is-checked, .el-checkbox__input.is-checked, input[type=checkbox]:checked"
+                            ).count():
+                                checked = True
+                        except Exception:
+                            pass
+                        if not checked:
+                            continue
+                        btn = dlg.locator("button, .el-button").filter(
+                            has_text=re.compile(r"^\s*下一步\s*$")
+                        ).last
+                        if not _visible(btn):
+                            btn = dlg.get_by_role("button", name=re.compile(r"下一步")).last
+                        if _visible(btn):
+                            btn.click(timeout=4000)
+                            out["compareNext"] = True
+                            out["compareChecked"] = True
+                        break
+                    except Exception:
+                        continue
+                out["compareChecked"] = checked
+                if isinstance(res, dict) and res.get("next"):
+                    out["compareNext"] = True
+                page.wait_for_timeout(900)
+                _shot(page, case_id, f"after-compare-try-{attempt}")
+                if _notice_dialog_visible(page):
+                    out["compareNext"] = True
+                    break
+                if _compare_fail_visible(page) and not _compare_pass_visible(page):
+                    out["compareFailed"] = True
+                    _shot(page, case_id, "dialog-compare-or-alt-failed")
+                    return out
+                if out["compareNext"] and not _compare_pass_visible(page):
+                    break
+                # 若已进入告知书也算过了比对
+                if _dialog_visible(page, "已详细阅读") or _dialog_visible(page, "企业名称登记告知书"):
+                    out["compareNext"] = True
+                    break
+                if _dialog_visible(page, "经办人信息") or _dialog_visible(page, "请上传身份证人像面"):
+                    out["compareNext"] = True
+                    break
+            page.wait_for_timeout(800)
+            _shot(page, case_id, "after-compare-next")
 
     # 2) 告知书 / 承诺书（两勾 + 确定关闭弹窗才算成功）
-    if _wait_text(page, ["企业名称登记告知书", "已详细阅读", "承诺书"], timeout_sec=15) or _notice_dialog_visible(
+    if _wait_text(page, ["企业名称登记告知书", "已详细阅读", "承诺书", "我已详细阅读并知晓"], timeout_sec=15) or _notice_dialog_visible(
         page
     ):
         _shot(page, case_id, "dialog-notice")
@@ -658,8 +986,8 @@ def handle_post_name_dialogs(page: Page, case_id: str) -> dict[str, Any]:
         out["noticeConfirm"] = bool(notice.get("ok"))
         page.wait_for_timeout(800)
 
-    # 3) 温馨提示
-    if _wait_text(page, ["温馨提示", "我已知晓上述内容"], timeout_sec=15):
+    # 3) 温馨提示（告知书未关时不要空等）
+    if not _notice_dialog_visible(page) and _wait_text(page, ["温馨提示", "我已知晓上述内容"], timeout_sec=15):
         _shot(page, case_id, "dialog-warm")
         for _ in range(4):
             res = _eval_all_frames(page, _js_handle_warm())
@@ -672,7 +1000,7 @@ def handle_post_name_dialogs(page: Page, case_id: str) -> dict[str, Any]:
                 out["warmAck"] = True
                 break
 
-    if not out["warmAck"]:
+    if not out["warmAck"] and not _notice_dialog_visible(page):
         out["warmAck"] = _click_text_any(page, ["我已知晓上述内容"], exact=False)
         if not out["warmAck"]:
             res = _eval_all_frames(page, _js_handle_warm())
@@ -716,7 +1044,7 @@ def _frame_basic(page: Page, timeout_ms: int = 60000) -> Frame | None:
             page.wait_for_timeout(500)
             continue
         if _notice_dialog_visible(page):
-            _eval_all_frames(page, _js_handle_notice())
+            _force_dismiss_notice(page, case_id)
             page.wait_for_timeout(600)
             continue
         if _dialog_visible(page, "我已知晓上述内容") or _dialog_visible(page, "温馨提示"):
@@ -916,66 +1244,1043 @@ def _wait_ocr(frame: Frame, timeout_sec: float = 90) -> dict[str, Any]:
     return info
 
 
+def _normalize_district_name(text: str) -> str:
+    """下拉选项一般为「虹口区」，去掉「上海市/上海」前缀，避免匹配成「上海市虹口区」。"""
+    s = re.sub(r"\s+", "", (text or "").strip())
+    if not s:
+        return ""
+    s = re.sub(r"^上海市?", "", s)
+    m = re.search(r"([\u4e00-\u9fff]{1,3}区)", s)
+    if m:
+        return m.group(1)
+    if s.endswith("区") and 1 < len(s) <= 6:
+        return s
+    return ""
+
+
 def _district_from_payload(payload: dict[str, Any]) -> str:
     reg = payload.get("registration") or {}
     addr = reg.get("address") or {}
-    for raw in (reg.get("district"), addr.get("district"), addr.get("detail"), reg.get("authority")):
-        text = str(raw or "").strip()
-        if not text:
-            continue
-        m = re.search(r"([\u4e00-\u9fff]{1,6}区)", text)
-        if m:
-            return m.group(1)
-        if text.endswith("区") and 1 < len(text) <= 8:
-            return text
+    for raw in (addr.get("district"), reg.get("district"), addr.get("detail"), reg.get("authority")):
+        d = _normalize_district_name(str(raw or ""))
+        if d:
+            return d
     return ""
 
 
 def _authority_candidates(payload: dict[str, Any]) -> list[str]:
+    """申请机关固定优先上海市市场监督(管理)局，再回落区局。"""
+    from apps.worker.playbooks.org_fill_profile import profile_for
+
+    profile = profile_for(payload)
+    out: list[str] = list(profile.get("authority_options") or [])
     reg = payload.get("registration") or {}
     explicit = str(reg.get("authority") or "").strip()
-    district = _district_from_payload(payload)
-    out: list[str] = []
-    if explicit:
+    if explicit and explicit not in out:
         out.append(explicit)
+    district = _district_from_payload(payload)
     if district:
-        out.extend(
-            [
-                f"{district}市场监督管理局",
-                f"{district}市场监管局",
-                district,
-            ]
-        )
-    # 兜底：仍保留虹口，避免无区时完全无法选
-    for x in ("虹口区市场监督管理局", "虹口区市场监管局", "虹口区"):
-        if x not in out:
-            out.append(x)
+        for x in (f"{district}市场监督管理局", f"{district}市场监管局", district):
+            if x not in out:
+                out.append(x)
     return out
+
+
+def _pick_odd_even_mode(dialog, page: Page) -> str | None:
+    """住所填报：单双号选「不连号」（勿点到区县下拉）。"""
+    # 已是不连号则跳过
+    try:
+        sels = dialog.locator(".el-select")
+        for i in range(min(sels.count(), 8)):
+            sel = sels.nth(i)
+            inp = sel.locator("input").first
+            if not _visible(inp, timeout=200):
+                continue
+            val = (inp.input_value(timeout=300) or "").strip()
+            if "不连号" in val:
+                return "不连号"
+    except Exception:
+        pass
+
+    for text in ("不连号",):
+        try:
+            lab = dialog.locator("label.el-radio, .el-radio").filter(has_text=text).first
+            if _visible(lab):
+                lab.click(force=True, timeout=2500)
+                return text
+        except Exception:
+            pass
+    # 打开选项含「不连号」的那个 select（通常在号/幢之间）
+    try:
+        sels = dialog.locator(".el-select")
+        for i in range(min(sels.count(), 8) - 1, -1, -1):
+            sel = sels.nth(i)
+            if not _visible(sel, timeout=200):
+                continue
+            # 跳过区/街道/路（已选区名）
+            try:
+                val = (sel.locator("input").first.input_value(timeout=200) or "").strip()
+                if val.endswith("区") or "街道" in val or val.endswith("路"):
+                    continue
+            except Exception:
+                pass
+            _close_open_select_dropdowns(page, dialog)
+            trig = sel.locator(".el-input__inner, input").first
+            (trig if _visible(trig, timeout=200) else sel).click(timeout=2500)
+            page.wait_for_timeout(300)
+            opts = _wait_select_options(page, dialog, min_count=1, timeout_ms=2000)
+            texts = [t for _, t in opts]
+            if any("不连号" in t for t in texts):
+                if _click_matched_option(page, dialog, "不连号"):
+                    _close_open_select_dropdowns(page, dialog)
+                    return "不连号"
+            _close_open_select_dropdowns(page, dialog)
+    except Exception:
+        pass
+    return None
 
 
 def _parse_shanghai_address(detail: str) -> dict[str, str]:
-    """从详细地址尽量拆出街道/路/号/室；解析失败则返回空字段。"""
+    """从详细地址拆出区/街道/路/弄/号/幢/室。
+
+    例：上海市虹口区四川北路街道四川北路1318号4楼室
+    → district=虹口区 street=四川北路街道 road=四川北路 number=1318 room=4楼
+    """
     text = re.sub(r"\s+", "", (detail or "").strip())
-    out = {"street": "", "road": "", "number": "", "room": ""}
+    out = {
+        "district": "",
+        "street": "",
+        "road": "",
+        "lane": "",
+        "number": "",
+        "building": "",
+        "room": "",
+    }
     if not text:
         return out
-    m = re.search(
-        r"(?:上海市)?(?:[\u4e00-\u9fff]+区)?"
-        r"(?P<street>[\u4e00-\u9fff]+(?:街道|镇|乡))?"
-        r"(?P<road>[\u4e00-\u9fff0-9]+(?:路|街|道|巷|弄))?"
-        r"(?P<number>\d+号)?"
-        r"(?P<room>.+)?$",
-        text,
-    )
-    if not m:
-        return out
-    out["street"] = (m.group("street") or "").strip()
-    out["road"] = (m.group("road") or "").strip()
-    num = (m.group("number") or "").strip()
-    out["number"] = num.replace("号", "") if num else ""
-    room = (m.group("room") or "").strip()
+    text = re.sub(r"^上海市", "", text)
+    m_dist = re.match(r"([\u4e00-\u9fff]{1,6}区)", text)
+    if m_dist:
+        out["district"] = m_dist.group(1)
+        text = text[m_dist.end() :]
+    m_street = re.match(r"([\u4e00-\u9fff0-9]+(?:街道|镇|乡))", text)
+    if m_street:
+        out["street"] = m_street.group(1)
+        text = text[m_street.end() :]
+    # 路名：路/街/道/巷；「N弄」另作弄号，不把整段当路名
+    m_road = re.match(r"([\u4e00-\u9fff0-9]+(?:路|街|道|巷))", text)
+    if m_road:
+        out["road"] = m_road.group(1)
+        text = text[m_road.end() :]
+    m_lane = re.match(r"(\d+)弄", text)
+    if m_lane:
+        out["lane"] = m_lane.group(1)
+        text = text[m_lane.end() :]
+    m_num = re.match(r"(\d+)号", text)
+    if m_num:
+        out["number"] = m_num.group(1)
+        text = text[m_num.end() :]
+    m_bld = re.match(r"(\d+)幢", text)
+    if m_bld:
+        out["building"] = m_bld.group(1)
+        text = text[m_bld.end() :]
+    room = text.strip()
+    if room.endswith("室") and len(room) > 1:
+        room = room[:-1]
     out["room"] = room
     return out
+
+
+def _dialog_pick_select(
+    dialog, page: Page, placeholder_or_hint: str, option_text: str
+) -> bool:
+    """住所弹窗内点开 el-select 并选选项（下拉层常 teleport 到 iframe body）。"""
+    if not option_text:
+        return False
+    try:
+        _close_open_select_dropdowns(page, dialog)
+        opened = False
+        # 按 placeholder 点开（实测：请选择区县 / 请选择街道/乡镇）
+        inp = dialog.locator(
+            f".el-select input[placeholder*='{placeholder_or_hint}']"
+        ).first
+        if not _visible(inp, timeout=700):
+            inp = dialog.locator(f"input[placeholder*='{placeholder_or_hint}']").first
+        if _visible(inp, timeout=700):
+            wrap = dialog.locator(
+                f".el-select:has(input[placeholder*='{placeholder_or_hint}'])"
+            ).first
+            if _visible(wrap, timeout=400):
+                caret = wrap.locator(".el-select__caret, .el-input__suffix").first
+                try:
+                    if _visible(caret, timeout=200):
+                        caret.click(timeout=2500)
+                        opened = True
+                except Exception:
+                    pass
+                if not opened:
+                    wrap.click(timeout=3000)
+                    opened = True
+            else:
+                inp.click(timeout=3000)
+                opened = True
+        if not opened:
+            sel = dialog.locator(".el-select").filter(
+                has_text=re.compile(re.escape(placeholder_or_hint))
+            ).first
+            if _visible(sel, timeout=600):
+                sel.click(timeout=3000)
+                opened = True
+        if not opened:
+            return False
+
+        page.wait_for_timeout(400)
+        opts = _wait_select_options(page, dialog, min_count=1, timeout_ms=5000)
+        texts = [t for _, t in opts]
+        matched = _match_option_text(option_text, texts)
+        if not matched:
+            return False
+        if _click_matched_option(page, dialog, matched):
+            page.wait_for_timeout(350)
+            try:
+                wrap = dialog.locator(
+                    f".el-select:has(input[placeholder*='{placeholder_or_hint}'])"
+                ).first
+                if _visible(wrap, timeout=300):
+                    shown = re.sub(r"\s+", "", wrap.inner_text(timeout=500) or "")
+                    if matched in shown or option_text in shown:
+                        _close_open_select_dropdowns(page, dialog)
+                        return True
+                    vin = wrap.locator("input").first
+                    if _visible(vin, timeout=200):
+                        vv = (vin.input_value(timeout=400) or "").strip()
+                        if matched in vv or option_text in vv or vv in option_text:
+                            _close_open_select_dropdowns(page, dialog)
+                            return True
+            except Exception:
+                pass
+            _close_open_select_dropdowns(page, dialog)
+            return True
+    except Exception:
+        return False
+    return False
+
+
+def _close_open_select_dropdowns(page: Page, dialog=None) -> None:
+    """关掉残留下拉。禁止 Escape：会关掉整个「住所填报」弹窗。"""
+    try:
+        # 优先点弹窗标题/空白，收起下拉且不关 dialog
+        if dialog is not None:
+            try:
+                if _visible(dialog, timeout=250):
+                    hdr = dialog.locator(".el-dialog__header, .el-dialog__title").first
+                    if _visible(hdr, timeout=200):
+                        hdr.click(timeout=1200, position={"x": 8, "y": 8})
+                        page.wait_for_timeout(100)
+                        return
+                    body = dialog.locator(".el-dialog__body").first
+                    if _visible(body, timeout=200):
+                        body.click(timeout=1200, position={"x": 12, "y": 12})
+                        page.wait_for_timeout(100)
+                        return
+            except Exception:
+                pass
+        # 兜底：用 JS 隐藏可见下拉层（不触发 dialog 关闭）
+        for scope in _all_scopes(page):
+            try:
+                scope.evaluate(
+                    """() => {
+                      document.querySelectorAll(
+                        '.el-select-dropdown, .el-popper[x-placement], .el-autocomplete-suggestion'
+                      ).forEach((el) => {
+                        el.style.display = 'none';
+                        el.classList.remove('el-zoom-in-top-enter-active');
+                      });
+                    }"""
+                )
+            except Exception:
+                continue
+        page.wait_for_timeout(80)
+    except Exception:
+        pass
+
+
+def _find_address_dialog(page: Page):
+    for scope in _all_scopes(page):
+        try:
+            for title in ("住所填报", "经营场所填报", "主要经营场所", "住所地址"):
+                d = scope.locator(".el-dialog:visible, .el-drawer:visible").filter(
+                    has_text=title
+                ).first
+                if _visible(d, timeout=400):
+                    return d
+            d = scope.locator(".el-dialog:visible").filter(has_text="邮政编码").first
+            if _visible(d, timeout=300):
+                return d
+        except Exception:
+            continue
+    return None
+
+
+def _click_open_address_field(page: Page, frame: Frame) -> bool:
+    """点表单「住所 / 主要经营场所」触发弹窗（只读 input 需点 wrapper / force）。
+
+    有限公司多为「住所」；普通/有限合伙为「主要经营场所」。
+    """
+    scopes = []
+    try:
+        scopes.append(frame)
+    except Exception:
+        pass
+    scopes.extend(_all_scopes(page))
+    label_re = re.compile(r"主要经营场所|经营场所|住所")
+    seen = set()
+    for scope in scopes:
+        try:
+            sid = id(scope)
+            if sid in seen:
+                continue
+            seen.add(sid)
+        except Exception:
+            pass
+        try:
+            item = scope.locator(".el-form-item").filter(has_text=label_re).first
+            if not _visible(item, timeout=500):
+                continue
+            # 1) 点整个表单项里的 input/textarea
+            inp = item.locator("input, textarea").first
+            if _visible(inp, timeout=400):
+                try:
+                    inp.click(timeout=3000)
+                    return True
+                except Exception:
+                    try:
+                        inp.click(timeout=3000, force=True)
+                        return True
+                    except Exception:
+                        pass
+            # 2) 点 el-input 外壳
+            wrap = item.locator(".el-input, .el-textarea").first
+            if _visible(wrap, timeout=300):
+                try:
+                    wrap.click(timeout=3000)
+                    return True
+                except Exception:
+                    try:
+                        wrap.click(timeout=3000, force=True)
+                        return True
+                    except Exception:
+                        pass
+            # 3) JS 点击（绕过遮挡）
+            try:
+                clicked = item.evaluate(
+                    """(el) => {
+                      const t = el.querySelector('input, textarea, .el-input__inner');
+                      if (!t) return false;
+                      t.focus();
+                      t.click();
+                      t.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                      return true;
+                    }"""
+                )
+                if clicked:
+                    return True
+            except Exception:
+                pass
+        except Exception:
+            continue
+    return _click_text(
+        frame,
+        ["主要经营场所", "经营场所", "住所"],
+        exact=False,
+    )
+
+
+def _ensure_address_dialog(page: Page, frame: Frame, *, retries: int = 3):
+    """确保住所/经营场所填报弹窗打开；关掉后会重新点击入口字段。"""
+    dialog = _find_address_dialog(page)
+    if dialog is not None:
+        return dialog
+    for _ in range(max(1, retries)):
+        if not _click_open_address_field(page, frame):
+            # 合伙企业常见 placeholder：请输入经营场所
+            try:
+                ph = frame.get_by_placeholder(re.compile(r"经营场所|住所")).first
+                if _visible(ph, timeout=400):
+                    ph.click(timeout=3000, force=True)
+            except Exception:
+                pass
+        page.wait_for_timeout(700)
+        dialog = _find_address_dialog(page)
+        if dialog is not None:
+            return dialog
+        page.wait_for_timeout(400)
+    return None
+
+
+def _visible_select_options(page: Page, dialog=None) -> list:
+    """收集可见选项；下拉常 teleport 到 iframe/body，须扫全部 frame。"""
+    items = []
+    for scope in _all_scopes(page):
+        try:
+            opts = scope.locator(
+                ".el-select-dropdown:visible .el-select-dropdown__item:not(.is-disabled), "
+                ".el-popper:visible .el-select-dropdown__item:not(.is-disabled), "
+                "div[x-placement] .el-select-dropdown__item:not(.is-disabled), "
+                ".el-select-dropdown__list:visible .el-select-dropdown__item:not(.is-disabled)"
+            )
+            n = min(opts.count(), 100)
+            for i in range(n):
+                try:
+                    loc = opts.nth(i)
+                    if not loc.is_visible(timeout=300):
+                        continue
+                    t = (loc.inner_text(timeout=400) or "").strip()
+                    if t:
+                        items.append((loc, t))
+                except Exception:
+                    continue
+            if items:
+                break
+        except Exception:
+            continue
+    return items
+
+
+def _wait_select_options(page: Page, dialog=None, *, min_count: int = 1, timeout_ms: int = 4000) -> list:
+    deadline = time.time() + timeout_ms / 1000.0
+    last: list = []
+    while time.time() < deadline:
+        last = _visible_select_options(page, dialog)
+        if len(last) >= min_count:
+            return last
+        page.wait_for_timeout(200)
+    return last
+
+
+def _match_option_text(option_text: str, candidates: list[str]) -> str | None:
+    """精确 → 去空白相等 → 包含 → 被包含。"""
+    want = re.sub(r"\s+", "", (option_text or "").strip())
+    if not want:
+        return None
+    cleaned = [(c, re.sub(r"\s+", "", c)) for c in candidates if c]
+    for raw, c in cleaned:
+        if c == want:
+            return raw
+    for raw, c in cleaned:
+        if want in c or c in want:
+            return raw
+    want2 = re.sub(r"(路|街|道|巷|区|街道)$", "", want)
+    if want2 and want2 != want:
+        for raw, c in cleaned:
+            c2 = re.sub(r"(路|街|道|巷|区|街道)$", "", c)
+            if c2 == want2 or want2 in c or c2 in want2:
+                return raw
+    return None
+
+
+def _click_matched_option(page: Page, dialog, matched_text: str) -> bool:
+    """只点可见下拉项（扫全部 frame），禁止点已选触发器。"""
+    for scope in _all_scopes(page):
+        try:
+            opt = scope.locator(
+                ".el-select-dropdown:visible .el-select-dropdown__item:not(.is-disabled), "
+                ".el-popper:visible .el-select-dropdown__item:not(.is-disabled), "
+                "div[x-placement] .el-select-dropdown__item:not(.is-disabled)"
+            ).filter(has_text=re.compile(rf"^\s*{re.escape(matched_text)}\s*$")).first
+            if _visible(opt, timeout=600):
+                opt.click(timeout=3000)
+                return True
+            opt2 = scope.locator(
+                ".el-select-dropdown:visible .el-select-dropdown__item:not(.is-disabled), "
+                ".el-popper:visible .el-select-dropdown__item:not(.is-disabled)"
+            ).filter(has_text=re.compile(re.escape(matched_text))).first
+            if _visible(opt2, timeout=500):
+                opt2.click(timeout=3000)
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _pick_region_by_placeholder(
+    dialog, page: Page, *, placeholders: list[str], option_text: str, retries: int = 3
+) -> bool:
+    """按真实 placeholder 选择区县/街道（主路径）。"""
+    want = (option_text or "").strip()
+    if not want:
+        return False
+    for ph in placeholders:
+        try:
+            wrap = dialog.locator(f".el-select:has(input[placeholder*='{ph}'])").first
+            if _visible(wrap, timeout=400):
+                shown = re.sub(r"\s+", "", wrap.inner_text(timeout=400) or "")
+                if "请选择" not in shown and want in shown:
+                    return True
+        except Exception:
+            pass
+        for _ in range(retries):
+            if _dialog_pick_select(dialog, page, ph, want):
+                return True
+            page.wait_for_timeout(300)
+    return False
+
+
+def _address_row_selects(dialog):
+    """定位区县/街道 el-select（路名是 input；排除不连号）。"""
+    keep = []
+    try:
+        for ph in ("区县", "街道"):
+            sel = dialog.locator(f".el-select:has(input[placeholder*='{ph}'])").first
+            if _visible(sel, timeout=400):
+                keep.append(sel)
+        if keep:
+            return keep
+        item = dialog.locator(".el-form-item").filter(
+            has_text=re.compile(r"住址|住所地址|详细地址")
+        ).first
+        root = item if _visible(item, timeout=500) else dialog
+        sels = root.locator(".el-select")
+        n = min(sels.count(), 8)
+        for i in range(n):
+            sel = sels.nth(i)
+            try:
+                val = ""
+                ph = ""
+                inp = sel.locator("input").first
+                if _visible(inp, timeout=200):
+                    val = (inp.input_value(timeout=300) or "").strip()
+                    ph = inp.get_attribute("placeholder") or ""
+                txt = re.sub(r"\s+", "", (sel.inner_text(timeout=300) or "") + val + ph)
+                if any(k in txt for k in ("不连号", "单号", "双号", "单双号", "路名", "村名")):
+                    continue
+                keep.append(sel)
+                if len(keep) >= 2:
+                    break
+            except Exception:
+                continue
+    except Exception:
+        return []
+    return keep
+
+
+def _open_select_nth(dialog, page: Page, index: int) -> bool:
+    sels = _address_row_selects(dialog)
+    if not sels or index >= len(sels):
+        return False
+    try:
+        sel = sels[index]
+        if not _visible(sel, timeout=800):
+            return False
+        _close_open_select_dropdowns(page, dialog)
+        page.wait_for_timeout(120)
+        caret = sel.locator(".el-select__caret, .el-input__suffix").first
+        if _visible(caret, timeout=250):
+            try:
+                caret.click(timeout=2500)
+                page.wait_for_timeout(280)
+                return True
+            except Exception:
+                pass
+        trig = sel.locator(".el-input__inner, input, .el-input").first
+        if _visible(trig, timeout=400):
+            trig.click(timeout=3000)
+        else:
+            sel.click(timeout=3000)
+        page.wait_for_timeout(280)
+        return True
+    except Exception:
+        return False
+
+
+def _read_select_nth_value(dialog, index: int) -> str:
+    sels = _address_row_selects(dialog)
+    if not sels or index >= len(sels):
+        return ""
+    try:
+        sel = sels[index]
+        inp = sel.locator("input").first
+        if _visible(inp, timeout=300):
+            v = (inp.input_value(timeout=500) or "").strip()
+            if v:
+                return v
+        txt = re.sub(r"\s+", "", (sel.inner_text(timeout=500) or ""))
+        return "" if "请选择" in txt else txt
+    except Exception:
+        return ""
+
+
+def _pick_region_select(
+    dialog,
+    page: Page,
+    *,
+    index: int,
+    option_text: str,
+    hints: list[str] | None = None,
+    retries: int = 3,
+) -> bool:
+    """区域选择：先 placeholder，再下标回落。"""
+    want = (option_text or "").strip()
+    if not want:
+        return False
+    hints = [h for h in (hints or []) if h and h != "请选择"]
+
+    if hints and _pick_region_by_placeholder(
+        dialog, page, placeholders=hints, option_text=want, retries=retries
+    ):
+        return True
+
+    cur = _read_select_nth_value(dialog, index)
+    if cur and (want in cur or cur in want or re.sub(r"\s+", "", cur) == re.sub(r"\s+", "", want)):
+        return True
+
+    for attempt in range(max(1, retries)):
+        if not _open_select_nth(dialog, page, index):
+            page.wait_for_timeout(250)
+            continue
+        opts = _wait_select_options(page, dialog, min_count=1, timeout_ms=5000)
+        if not opts:
+            _open_select_nth(dialog, page, index)
+            opts = _wait_select_options(page, dialog, min_count=1, timeout_ms=3500)
+        texts = [t for _, t in opts]
+        if texts and all(any(k in t for k in ("不连号", "单号", "双号")) for t in texts[:5]):
+            _close_open_select_dropdowns(page, dialog)
+            return False
+        matched = _match_option_text(want, texts)
+        if matched and _click_matched_option(page, dialog, matched):
+            page.wait_for_timeout(350)
+            _close_open_select_dropdowns(page, dialog)
+            return True
+        got = _read_select_nth_value(dialog, index)
+        if got and (want in got or got in want):
+            _close_open_select_dropdowns(page, dialog)
+            return True
+        _close_open_select_dropdowns(page, dialog)
+        page.wait_for_timeout(280 + attempt * 200)
+    return False
+
+
+def _fill_road_field(dialog, page: Page, frame: Frame, road: str) -> bool:
+    """路名是输入框（placeholder=请输入汉字路名/村名），常为 autocomplete，须触发 input 并点联想。"""
+    road = (road or "").strip()
+    if not road:
+        return False
+    _close_open_select_dropdowns(page, dialog)
+    page.wait_for_timeout(250)
+
+    def _locate_road_input():
+        for sel in (
+            "input[placeholder*='汉字路名']",
+            "input[placeholder*='路名/村名']",
+            "input[placeholder*='路名']",
+            "input[placeholder*='村名']",
+            "input[placeholder*='请输入路']",
+        ):
+            loc = dialog.locator(sel).first
+            if _visible(loc, timeout=500):
+                return loc
+        return None
+
+    def _read_val(inp) -> str:
+        try:
+            return (inp.input_value(timeout=500) or "").strip()
+        except Exception:
+            return ""
+
+    def _ok(val: str) -> bool:
+        v = re.sub(r"\s+", "", val or "")
+        w = re.sub(r"\s+", "", road)
+        return bool(v) and (w in v or v in w or v.rstrip("路村街") == w.rstrip("路村街"))
+
+    def _pick_suggestion() -> bool:
+        # 联想可能挂在 iframe body
+        candidates = [road, road.rstrip("路"), f"{road}路" if not road.endswith("路") else road]
+        for scope in _all_scopes(page):
+            for kw in candidates:
+                if not kw:
+                    continue
+                try:
+                    sug = scope.locator(
+                        ".el-autocomplete-suggestion:visible li, "
+                        ".el-autocomplete-suggestion__list:visible li, "
+                        ".el-popper:visible li.el-autocomplete-suggestion__item, "
+                        ".el-popper:visible .el-autocomplete-suggestion li, "
+                        ".el-select-dropdown:visible .el-select-dropdown__item"
+                    ).filter(has_text=re.compile(re.escape(kw))).first
+                    if _visible(sug, timeout=600):
+                        sug.click(timeout=3000)
+                        page.wait_for_timeout(250)
+                        return True
+                except Exception:
+                    continue
+        # 键盘选第一项
+        try:
+            page.keyboard.press("ArrowDown")
+            page.wait_for_timeout(120)
+            page.keyboard.press("Enter")
+            page.wait_for_timeout(200)
+            return True
+        except Exception:
+            return False
+
+    def _js_set(inp, value: str) -> bool:
+        try:
+            return bool(
+                inp.evaluate(
+                    """(el, v) => {
+                      const root = el.closest('.el-dialog') || document;
+                      const setter = Object.getOwnPropertyDescriptor(
+                        window.HTMLInputElement.prototype, 'value'
+                      )?.set;
+                      el.focus();
+                      if (setter) setter.call(el, '');
+                      else el.value = '';
+                      el.dispatchEvent(new Event('input', { bubbles: true }));
+                      if (setter) setter.call(el, v);
+                      else el.value = v;
+                      el.dispatchEvent(new InputEvent('input', { bubbles: true, data: v, inputType: 'insertText' }));
+                      el.dispatchEvent(new Event('change', { bubbles: true }));
+                      // Element autocomplete 有时靠 composition/keydown
+                      el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Unidentified' }));
+                      el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'Unidentified' }));
+                      return (el.value || '') === v;
+                    }""",
+                    value,
+                )
+            )
+        except Exception:
+            return False
+
+    road_inp = _locate_road_input()
+    if road_inp is None:
+        return False
+    if _ok(_read_val(road_inp)):
+        return True
+
+    # 策略1：清空后逐字输入（最容易弹出标准路名联想）
+    try:
+        road_inp.click(timeout=2500)
+        page.wait_for_timeout(150)
+        try:
+            road_inp.fill("")
+        except Exception:
+            pass
+        try:
+            road_inp.press("Control+A")
+            road_inp.press("Backspace")
+        except Exception:
+            pass
+        # Playwright 1.40+ press_sequentially；旧版用 type
+        typed = False
+        try:
+            road_inp.press_sequentially(road, delay=60)
+            typed = True
+        except Exception:
+            try:
+                road_inp.type(road, delay=60)
+                typed = True
+            except Exception:
+                pass
+        if typed:
+            page.wait_for_timeout(700)
+            _pick_suggestion()
+            page.wait_for_timeout(200)
+            if _ok(_read_val(road_inp)):
+                return True
+            # 再点一次联想 / Enter 确认
+            _pick_suggestion()
+            if _ok(_read_val(road_inp)):
+                return True
+    except Exception:
+        pass
+
+    # 策略2：JS 写入 + 再点联想
+    road_inp = _locate_road_input() or road_inp
+    try:
+        road_inp.click(timeout=2000)
+        if _js_set(road_inp, road):
+            page.wait_for_timeout(500)
+            _pick_suggestion()
+            page.wait_for_timeout(200)
+            if _ok(_read_val(road_inp)):
+                return True
+    except Exception:
+        pass
+
+    # 策略3：Playwright fill
+    try:
+        road_inp = _locate_road_input() or road_inp
+        road_inp.click(timeout=2000)
+        road_inp.fill(road)
+        page.wait_for_timeout(500)
+        _pick_suggestion()
+        if _ok(_read_val(road_inp)):
+            return True
+    except Exception:
+        pass
+
+    # 最终回读（有时联想写入后 input_value 短暂空，看 DOM value）
+    try:
+        road_inp = _locate_road_input() or road_inp
+        val = _read_val(road_inp)
+        if _ok(val):
+            return True
+        # 检查校验错误是否消失：父级无 is-error 且无「请输入路」
+        wrap = dialog.locator(
+            ".el-form-item, .el-input, .el-autocomplete"
+        ).filter(has=dialog.locator("input[placeholder*='路名'], input[placeholder*='村名']")).first
+        txt = ""
+        try:
+            txt = wrap.inner_text(timeout=400) or ""
+        except Exception:
+            pass
+        if val and "请输入路" not in txt and "请输入汉字" not in txt:
+            return True
+    except Exception:
+        pass
+    return False
+
+
+
+def _fill_address_units(
+    dialog, *, lane: str, number: str, building: str, room: str
+) -> dict[str, Any]:
+    """按后缀「弄/号/幢/室」定位各自输入框；地址里没有的字段只清空、不乱填。
+
+    典型 DOM（Element UI）：
+      <div class="el-input el-input-group el-input-group--append">
+        <input /> <div class="el-input-group__append">号</div>
+      </div>
+    """
+    lane = (lane or "").strip()
+    number = (number or "").strip()
+    building = (building or "").strip()
+    room = (room or "").strip()
+    # 有值才写入；无弄/幢则写空串清空，避免残留错值
+    fields = {"弄": lane, "号": number, "幢": building, "室": room}
+    info: dict[str, Any] = {"ok": False, "values": {}, "bySuffix": {}}
+
+    try:
+        js_res = dialog.evaluate(
+            """(dialogEl, fields) => {
+              const root = dialogEl || document;
+              const bad = (inp) => {
+                if (!inp) return true;
+                if (inp.closest && inp.closest('.el-select, .el-textarea')) return true;
+                const t = (inp.type || '').toLowerCase();
+                return t === 'radio' || t === 'checkbox' || t === 'hidden' || t === 'file';
+              };
+              const setVal = (inp, v) => {
+                inp.focus();
+                const setter = Object.getOwnPropertyDescriptor(
+                  window.HTMLInputElement.prototype, 'value'
+                )?.set;
+                const write = (x) => {
+                  if (setter) setter.call(inp, x);
+                  else inp.value = x;
+                  inp.dispatchEvent(new InputEvent('input', { bubbles: true, data: x }));
+                  inp.dispatchEvent(new Event('change', { bubbles: true }));
+                };
+                write('');
+                if (v !== '') write(String(v));
+                inp.blur();
+              };
+              const findInput = (suffix) => {
+                // 1) Element 后缀/前缀（限弹窗内）
+                for (const a of root.querySelectorAll(
+                  '.el-input-group__append, .el-input-group__prepend'
+                )) {
+                  if ((a.textContent || '').replace(/\\s+/g, '') !== suffix) continue;
+                  const wrap =
+                    a.closest('.el-input') ||
+                    a.closest('.el-input-group') ||
+                    a.parentElement;
+                  const inp = wrap && wrap.querySelector('input');
+                  if (inp && !bad(inp)) return inp;
+                }
+                // 2) 纯文本「弄/号/幢/室」
+                const walker = document.createTreeWalker(
+                  root, NodeFilter.SHOW_TEXT
+                );
+                let n;
+                while ((n = walker.nextNode())) {
+                  if ((n.textContent || '').trim() !== suffix) continue;
+                  const lab = n.parentElement;
+                  if (!lab) continue;
+                  if ((lab.textContent || '').replace(/\\s+/g, '') !== suffix) continue;
+                  const wrap =
+                    lab.closest('.el-input') ||
+                    lab.closest('.el-input-group') ||
+                    lab.parentElement;
+                  if (wrap) {
+                    const inp = wrap.querySelector('input');
+                    if (inp && !bad(inp)) return inp;
+                  }
+                  for (const el of [lab.previousElementSibling, lab.nextElementSibling]) {
+                    if (!el) continue;
+                    const inp = el.tagName === 'INPUT' ? el : el.querySelector?.('input');
+                    if (inp && !bad(inp)) return inp;
+                  }
+                }
+                return null;
+              };
+              const out = {};
+              for (const [suffix, val] of Object.entries(fields || {})) {
+                const inp = findInput(suffix);
+                if (!inp) {
+                  out[suffix] = { found: false, value: '' };
+                  continue;
+                }
+                setVal(inp, val == null ? '' : String(val));
+                out[suffix] = { found: true, value: inp.value || '' };
+              }
+              return out;
+            }""",
+            fields,
+        )
+        if isinstance(js_res, dict):
+            info["bySuffix"] = js_res
+            info["values"] = {
+                "lane": (js_res.get("弄") or {}).get("value") or "",
+                "number": (js_res.get("号") or {}).get("value") or "",
+                "building": (js_res.get("幢") or {}).get("value") or "",
+                "room": (js_res.get("室") or {}).get("value") or "",
+            }
+            info["found"] = {
+                k: bool((js_res.get(s) or {}).get("found"))
+                for k, s in (
+                    ("lane", "弄"),
+                    ("number", "号"),
+                    ("building", "幢"),
+                    ("room", "室"),
+                )
+            }
+    except Exception as e:
+        info["error"] = str(e)
+
+    # Playwright 回落：号未写入时按 append 文案补填
+    if not (info.get("found") or {}).get("number") or info.get("error"):
+        try:
+            for suffix, val in (("弄", lane), ("号", number), ("幢", building), ("室", room)):
+                lab = dialog.locator(
+                    ".el-input-group__append, .el-input-group__prepend"
+                ).filter(has_text=re.compile(rf"^\s*{re.escape(suffix)}\s*$")).first
+                if not _visible(lab, timeout=300):
+                    continue
+                wrap = lab.locator(
+                    "xpath=ancestor::*[contains(@class,'el-input')][1]"
+                )
+                inp = wrap.locator("input").first
+                if not _visible(inp, timeout=300):
+                    continue
+                inp.click(timeout=1500)
+                inp.fill("")
+                if val:
+                    inp.fill(val)
+                    try:
+                        inp.press("Tab")
+                    except Exception:
+                        pass
+            read2 = dialog.evaluate(
+                """(root) => {
+                  const grab = (suffix) => {
+                    for (const a of root.querySelectorAll(
+                      '.el-input-group__append, .el-input-group__prepend'
+                    )) {
+                      if ((a.textContent || '').replace(/\\s+/g,'') !== suffix) continue;
+                      const wrap = a.closest('.el-input') || a.parentElement;
+                      const inp = wrap && wrap.querySelector('input');
+                      if (inp) return inp.value || '';
+                    }
+                    return '';
+                  };
+                  return {
+                    lane: grab('弄'), number: grab('号'),
+                    building: grab('幢'), room: grab('室'),
+                  };
+                }"""
+            )
+            if isinstance(read2, dict):
+                info["values"] = read2
+                info["via"] = "playwright-append"
+                info["found"] = {
+                    "lane": True,
+                    "number": True,
+                    "building": True,
+                    "room": True,
+                }
+        except Exception as e:
+            info["fallbackError"] = str(e)
+
+    got = info.get("values") or {}
+    got_num = str(got.get("number") or "").strip()
+    got_room = str(got.get("room") or "").strip()
+    got_lane = str(got.get("lane") or "").strip()
+    got_bld = str(got.get("building") or "").strip()
+    info["numberOk"] = got_num == number if number else got_num == ""
+    info["roomOk"] = (
+        (not room and got_room == "")
+        or got_room == room
+        or got_room == f"{room}室"
+        or (bool(room) and room in got_room)
+    )
+    # 无弄/幢时必须保持空，防止再出现「号进弄、室进幢」
+    info["laneOk"] = got_lane == lane
+    info["buildingOk"] = got_bld == building
+    info["ok"] = bool(
+        number
+        and info["numberOk"]
+        and room
+        and info["roomOk"]
+        and info["laneOk"]
+        and info["buildingOk"]
+    )
+    return info
+
+
+def _fill_address_unit_input(dialog, suffix: str, value: str) -> bool:
+    """按后缀 append 定位单个框；无值则清空。"""
+    value = "" if value is None else str(value).strip()
+    try:
+        lab = dialog.locator(
+            ".el-input-group__append, .el-input-group__prepend"
+        ).filter(has_text=re.compile(rf"^\s*{re.escape(suffix)}\s*$")).first
+        if not _visible(lab, timeout=400):
+            return False
+        wrap = lab.locator("xpath=ancestor::*[contains(@class,'el-input')][1]")
+        inp = wrap.locator("input").first
+        if not _visible(inp, timeout=400):
+            return False
+        inp.click(timeout=1500)
+        inp.fill("")
+        if value:
+            inp.fill(value)
+        return True
+    except Exception:
+        return False
+
+
+def _read_address_unit(dialog, suffix: str) -> str:
+    try:
+        return str(
+            dialog.evaluate(
+                """(suffix) => {
+                  for (const a of document.querySelectorAll(
+                    '.el-input-group__append, .el-input-group__prepend'
+                  )) {
+                    if ((a.textContent || '').replace(/\\s+/g,'') !== suffix) continue;
+                    const wrap = a.closest('.el-input') || a.parentElement;
+                    const inp = wrap && wrap.querySelector('input');
+                    if (inp) return inp.value || '';
+                  }
+                  return '';
+                }""",
+                suffix,
+            )
+            or ""
+        ).strip()
+    except Exception:
+        return ""
 
 
 def _fill_address_dialog(
@@ -985,136 +2290,109 @@ def _fill_address_dialog(
     addr = reg.get("address") or {}
     result: dict[str, Any] = {"opened": False, "ok": False}
 
-    # 点住所输入框打开弹窗
-    opened = False
-    item = frame.locator(".el-form-item").filter(has_text=re.compile("住所")).first
-    try:
-        if _visible(item):
-            inp = item.locator("input, textarea").first
-            if _visible(inp):
-                inp.click(timeout=4000)
-                opened = True
-    except Exception:
-        pass
-    if not opened:
-        opened = _click_text(frame, ["住所"], exact=False)
-    page.wait_for_timeout(800)
-
-    # 找住所填报弹层
-    dialog = None
-    for scope in _all_scopes(page):
-        d = scope.locator(".el-dialog:visible, .el-drawer:visible").filter(has_text="住所填报").first
-        if _visible(d):
-            dialog = d
-            break
-        d = scope.locator(".el-dialog:visible").filter(has_text="邮政编码").first
-        if _visible(d):
-            dialog = d
-            break
+    # 点住所输入框打开弹窗（禁止 Escape 关弹窗；失败会重试）
+    dialog = _ensure_address_dialog(page, frame, retries=4)
     if dialog is None:
         result["error"] = "住所填报弹窗未出现"
+        _shot(page, case_id, "address-dialog-missing")
         return result
     result["opened"] = True
     _shot(page, case_id, "address-dialog")
 
     detail = str(addr.get("detail") or "").strip()
     parsed = _parse_shanghai_address(detail)
-    # payload 有 detail 则优先用解析结果；解析不全时回落原演示默认（虹口四川北路）
-    street = parsed["street"] or "四川北路街道"
-    road = parsed["road"] or "四川北路"
-    number = parsed["number"] or "1318"
-    room = parsed["room"] or "4楼"
+    district = (
+        _normalize_district_name(parsed.get("district") or "")
+        or _district_from_payload(payload)
+        or _normalize_district_name(str(addr.get("district") or ""))
+        or "虹口区"
+    )
+    street = parsed.get("street") or "四川北路街道"
+    road = parsed.get("road") or "四川北路"
+    lane = (parsed.get("lane") or "").strip()
+    number = parsed.get("number") or "1318"
+    building = (parsed.get("building") or "").strip()
+    room = parsed.get("room") or "4楼"
     postal = (addr.get("postalCode") or "200081").strip()
     result["detailSource"] = detail or "(fallback)"
     result["parsed"] = parsed
 
-    # 街道/乡镇
-    try:
-        st = dialog.locator(".el-select").filter(has_text="街道").first
-        if not _visible(st):
-            # 点含「请选择」的第二个下拉（区后面）
-            selects = dialog.locator(".el-select")
-            if selects.count() >= 2:
-                selects.nth(1).click(timeout=3000)
-            else:
-                dialog.get_by_text("街道", exact=False).first.click(timeout=3000)
-        else:
-            st.click(timeout=3000)
+    # —— 区域级联：区县 → 街道 → 路名（每层等待选项加载并回读校验）——
+    dialog = _ensure_address_dialog(page, frame) or dialog
+    if _pick_region_select(
+        dialog,
+        page,
+        index=0,
+        option_text=district,
+        hints=["请选择区县", "区县"],
+        retries=4,
+    ):
+        result["district"] = district
+    else:
+        result["districtError"] = f"区县未选中: {district}"
+    page.wait_for_timeout(600)
+
+    dialog = _ensure_address_dialog(page, frame) or dialog
+    if _pick_region_select(
+        dialog,
+        page,
+        index=1,
+        option_text=street,
+        hints=["请选择街道/乡镇", "街道/乡镇", "街道"],
+        retries=4,
+    ):
+        result["street"] = street
+    else:
+        result["streetError"] = f"街道未选中: {street}"
+    # 街道级联后路名输入框会重建，稍等再填
+    page.wait_for_timeout(900)
+
+    dialog = _ensure_address_dialog(page, frame) or dialog
+    road_ok = False
+    for _road_try in range(3):
+        if _fill_road_field(dialog, page, frame, road):
+            road_ok = True
+            break
         page.wait_for_timeout(400)
-        for scope in (dialog, page, frame):
-            opt = scope.locator(".el-select-dropdown:visible .el-select-dropdown__item").filter(
-                has_text=street
-            ).first
-            if _visible(opt):
-                opt.click(timeout=3000)
-                result["street"] = street
-                break
-            opt2 = scope.get_by_text(street, exact=True).first
-            if _visible(opt2):
-                opt2.click(timeout=3000)
-                result["street"] = street
-                break
-    except Exception as e:
-        result["streetError"] = str(e)
-
-    page.wait_for_timeout(400)
-
-    # 路名
-    try:
-        road_inp = dialog.get_by_placeholder("请输入").first
-        # 更稳：路名旁输入
-        inputs = dialog.locator("input.el-input__inner:visible")
-        # 常见布局：区、街道是 select，随后路/弄/号/幢/室
-        filled_road = False
-        for i in range(min(inputs.count(), 12)):
-            inp = inputs.nth(i)
-            ph = (inp.get_attribute("placeholder") or "")
-            # 跳过日期/邮编等
-            if "邮" in ph or "不动产权" in ph:
-                continue
-            # 尝试填第一个空文本框为路名
-            try:
-                val = inp.input_value(timeout=300)
-            except Exception:
-                val = ""
-            if not val and not filled_road:
-                inp.click(timeout=2000)
-                inp.fill(road)
-                page.wait_for_timeout(600)
-                # 点建议路名
-                for scope in (page, frame, dialog):
-                    sug = scope.get_by_text(road, exact=True).first
-                    if _visible(sug):
-                        sug.click(timeout=3000)
-                        break
-                filled_road = True
-                result["road"] = road
-                break
-        if not filled_road and _visible(road_inp):
-            road_inp.fill(road)
-            result["road"] = road
-    except Exception as e:
-        result["roadError"] = str(e)
-
-    page.wait_for_timeout(400)
-
-    # 号 / 室：按后缀 label 找前一个 input
-    def _fill_before_label(suffix: str, value: str) -> bool:
+        dialog = _ensure_address_dialog(page, frame) or dialog
+    if road_ok:
+        result["road"] = road
+    else:
+        # 级联后路名常已展示；只要区/街道已选且页面含路名，继续填号室
+        page_txt = ""
         try:
-            lab = dialog.locator(f"xpath=//*[normalize-space()='{suffix}']").first
-            if not _visible(lab):
-                return False
-            inp = lab.locator("xpath=preceding::input[1]")
-            if inp.count() == 0:
-                return False
-            inp.first.click(timeout=2000)
-            inp.first.fill(value)
-            return True
+            page_txt = re.sub(r"\s+", "", dialog.inner_text(timeout=800) or "")
         except Exception:
-            return False
+            pass
+        if result.get("district") and result.get("street") and road and road in page_txt:
+            result["road"] = road
+            result["roadInferred"] = True
+        else:
+            result["roadError"] = f"路名未填选: {road}"
+            _shot(page, case_id, "address-road-failed")
 
-    result["number"] = _fill_before_label("号", number) or _fill_before_label("号", f"{number}号")
-    result["room"] = _fill_before_label("室", room) or _fill_before_label("室", f"{room}室")
+    # 区域选完后必须收起下拉，再填号/室，避免又点到「区」
+    dialog = _ensure_address_dialog(page, frame) or dialog
+    _close_open_select_dropdowns(page, dialog)
+    page.wait_for_timeout(300)
+
+    # 弄/号/幢/室：按后缀绑定；地址无弄/幢则只清空对应框
+    units = _fill_address_units(
+        dialog, lane=lane, number=number, building=building, room=room
+    )
+    result["units"] = units
+    got = units.get("values") or {}
+    result["number"] = bool(units.get("numberOk"))
+    result["numberValue"] = got.get("number") or ""
+    result["room"] = bool(units.get("roomOk"))
+    result["roomValue"] = got.get("room") or ""
+    result["laneValue"] = got.get("lane") or ""
+    result["buildingValue"] = got.get("building") or ""
+    if not units.get("laneOk") or not units.get("buildingOk"):
+        result["unitMisplaced"] = True
+
+    # 单双号：固定选「不连号」（软尝试，失败继续）
+    result["oddEven"] = _pick_odd_even_mode(dialog, page)
 
     # 邮编
     try:
@@ -1128,7 +2406,6 @@ def _fill_address_dialog(
                 pin.fill(postal)
                 result["postal"] = postal
             else:
-                # 含 200081 模式的空 input
                 for i in range(dialog.locator("input.el-input__inner").count()):
                     inp = dialog.locator("input.el-input__inner").nth(i)
                     ph = inp.get_attribute("placeholder") or ""
@@ -1139,9 +2416,27 @@ def _fill_address_dialog(
     except Exception as e:
         result["postalError"] = str(e)
 
-    # 生成地址（可选）
+    complete = bool(
+        result.get("district")
+        and result.get("street")
+        and result.get("road")
+        and result.get("number")
+        and result.get("room")
+        and units.get("ok")
+        and not result.get("unitMisplaced")
+        and result.get("postal")
+    )
+    result["complete"] = complete
+    if not complete:
+        result["ok"] = False
+        result["error"] = "住所未填完整（区县/街道/路/号/室/邮编）"
+        _shot(page, case_id, "address-incomplete")
+        # 不点确定，避免写入残缺地址
+        return result
+
+    # 生成地址后确定
     _click_text(dialog, ["生成地址"], exact=False)
-    page.wait_for_timeout(400)
+    page.wait_for_timeout(500)
 
     result["ok"] = _click_text(dialog, ["确定", "确 定"], exact=False)
     if not result["ok"]:
@@ -1225,10 +2520,6 @@ def _find_scope_plugin_frame(page: Page) -> Page | Frame | None:
     return None
 
 
-def _find_scope_host(page: Page) -> Page | Frame | None:
-    return _find_scope_plugin_frame(page)
-
-
 def _find_scope_tabs(page: Page) -> list[Page]:
     out: list[Page] = []
     for p in page.context.pages:
@@ -1279,12 +2570,86 @@ def _wait_basic_stable(page: Page, timeout_sec: float = 20) -> Frame | None:
     return _frame_basic(page, timeout_ms=5000)
 
 
+def _scope_items_from_payload(payload: dict[str, Any]) -> list[dict[str, str]]:
+    """用户勾选的经营范围：名称 + 规范码（如 I3002），与前端目录对齐。"""
+    company = payload.get("company") or {}
+    names = [
+        str(x).strip()
+        for x in (company.get("businessScopeNames") or [])
+        if str(x).strip()
+    ]
+    codes_raw = [str(x or "").strip() for x in (company.get("businessScopeCodes") or [])]
+    codes: list[str] = []
+    for c in codes_raw:
+        if re.fullmatch(r"[A-Za-z]+\d+", c):
+            codes.append(c)
+        else:
+            codes.append("")
+    items: list[dict[str, str]] = []
+    if names:
+        for i, n in enumerate(names):
+            items.append({"name": n, "code": codes[i] if i < len(codes) else ""})
+    elif any(codes):
+        for c in codes:
+            if c:
+                items.append({"name": c, "code": c})
+    else:
+        text = str(company.get("businessScope") or "").strip()
+        if text:
+            text = re.sub(r"^一般项目\s*[：:]\s*", "", text)
+            text = re.sub(r"[（(]除依法.*$", "", text).strip()
+            for part in re.split(r"[；;]", text):
+                p = part.strip().strip("、").strip()
+                if len(p) >= 2:
+                    items.append({"name": p, "code": ""})
+    # 去重（按 name）
+    seen: set[str] = set()
+    out: list[dict[str, str]] = []
+    for it in items:
+        key = it["name"]
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(it)
+    return out
+
+
+def _scope_names_from_payload(payload: dict[str, Any]) -> list[str]:
+    return [it["name"] for it in _scope_items_from_payload(payload)]
+
+
 def _fill_business_scope_flow(
-    page: Page, frame: Frame, case_id: str, industry: str = "科技"
+    page: Page,
+    frame: Frame,
+    case_id: str,
+    industry: str = "科技",
+    scope_names: list[str] | None = None,
+    scope_items: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
-    """按用户截图路径选择经营范围。industry 用于搜索与主营一致的科技类条目。"""
+    """选择经营范围。优先按用户勾选名称/编码逐项搜索添加；无勾选时回退行业词前 5 条。"""
     result: dict[str, Any] = {"ok": False, "opened": False}
     keyword = (industry or "科技").strip() or "科技"
+    items: list[dict[str, str]] = []
+    if scope_items:
+        items = [
+            {"name": str(it.get("name") or "").strip(), "code": str(it.get("code") or "").strip()}
+            for it in scope_items
+            if str(it.get("name") or "").strip()
+        ]
+    elif scope_names:
+        items = [{"name": str(n).strip(), "code": ""} for n in scope_names if str(n).strip()]
+    # 去重保序
+    seen_n: set[str] = set()
+    uniq_items: list[dict[str, str]] = []
+    for it in items:
+        if it["name"] in seen_n:
+            continue
+        seen_n.add(it["name"])
+        uniq_items.append(it)
+    items = uniq_items
+    user_names = [it["name"] for it in items]
+    result["userScopeNames"] = user_names[:]
+    result["userScopeItems"] = items[:]
 
     # 暂存后可能白屏，先稳住再点
     stable = _wait_basic_stable(page, timeout_sec=18)
@@ -1827,11 +3192,21 @@ def _fill_business_scope_flow(
                 return [fr]
         return [primary] if _scope_ui_ready(primary) else []
 
-    # 跳过引导（只在经营范围插件帧）
-    for scope in _scope_scopes():
-        if _click_text(scope, ["跳过"], exact=True):
-            result["skipped"] = True
-            page.wait_for_timeout(700)
+    # 跳过引导（多步教程，直到没有「跳过」）
+    skipped_n = 0
+    for _ in range(8):
+        hit = False
+        for scope in _scope_scopes():
+            if _click_text(scope, ["跳过"], exact=True):
+                hit = True
+                skipped_n += 1
+                page.wait_for_timeout(450)
+                break
+        if not hit:
+            break
+    if skipped_n:
+        result["skipped"] = True
+        result["skippedSteps"] = skipped_n
 
     def _handle_naics_modal() -> dict[str, Any]:
         """处理「国民经济行业分类选择」：点选对应行业后弹窗才会消失，否则生成结果无法回填。"""
@@ -2083,9 +3458,22 @@ def _fill_business_scope_flow(
         page.wait_for_timeout(400)
     result["sawRecommendModal"] = bool(found_rec)
 
-    # 推荐弹窗：仅当真有「选好了/推荐的主营业务」时处理（避免把国民经济行业分类弹窗误当成推荐）
+    # 推荐弹窗：有用户勾选时只关闭弹层；否则按原逻辑添加推荐项
     added_rec = 0
-    if not found_rec:
+    if user_names:
+        if found_rec:
+            for scope in _scope_scopes():
+                try:
+                    done = scope.get_by_text("选好了", exact=True).first
+                    if done.count() > 0 and done.is_visible(timeout=600):
+                        done.click(force=True, timeout=3000)
+                        result["recommendDismissedForUserScopes"] = True
+                        page.wait_for_timeout(600)
+                        break
+                except Exception:
+                    continue
+        result["recommendSkipped"] = "user_selected_scopes"
+    elif not found_rec:
         # 二次确认可见文案，避免 count>0 但不可见的假阳性
         for scope in _scope_scopes():
             try:
@@ -2099,173 +3487,360 @@ def _fill_business_scope_flow(
                 continue
         result["sawRecommendModal"] = bool(found_rec)
 
-    for attempt in range(8 if found_rec else 0):
-        js_last = None
-        for scope in _scope_scopes():
-            try:
-                js_last = scope.evaluate(_js_handle_recommend_modal())
-                if isinstance(js_last, dict) and js_last.get("ok") and int(js_last.get("added") or 0) > 0:
-                    added_rec += int(js_last.get("added") or 0)
+    if not user_names:
+        for attempt in range(8 if found_rec else 0):
+            js_last = None
+            for scope in _scope_scopes():
+                try:
+                    js_last = scope.evaluate(_js_handle_recommend_modal())
+                    if isinstance(js_last, dict) and js_last.get("ok") and int(js_last.get("added") or 0) > 0:
+                        added_rec += int(js_last.get("added") or 0)
+                        result["recommendJs"] = js_last
+                        result["recommendDone"] = True
+                        break
+                    if isinstance(js_last, dict):
+                        result["recommendJs"] = js_last
+                except Exception as e:
+                    js_last = {"ok": False, "error": str(e)}
                     result["recommendJs"] = js_last
-                    result["recommendDone"] = True
-                    break
-                if isinstance(js_last, dict):
-                    result["recommendJs"] = js_last
-            except Exception as e:
-                js_last = {"ok": False, "error": str(e)}
-                result["recommendJs"] = js_last
 
-        # Playwright：弹层内先加后关；未加到条目绝不点「选好了」
-        before_cnt = _added_count(sp)
-        for scope in _scope_scopes():
-            try:
-                for title in (
-                    "技术服务、技术开发、技术咨询、技术交流、技术转让、技术推广",
-                    "工程和技术研究和试验发展",
-                ):
-                    loc = scope.get_by_text(title, exact=False).first
-                    if loc.count() == 0:
-                        continue
-                    try:
-                        parent = loc.locator(
-                            "xpath=ancestor::div[.//button or .//span[contains(normalize-space(.),'添')]][1]"
-                        )
-                        btn = parent.get_by_role("button", name=_ADD_BTN_ROLE_RE).first
-                        if btn.count() == 0:
-                            btn = parent.locator("button, a, span").filter(has_text=_ADD_BTN_RE).first
-                        if btn.count() > 0 and btn.is_visible(timeout=800):
-                            btn.click(force=True, timeout=3000)
+            # Playwright：弹层内先加后关；未加到条目绝不点「选好了」
+            before_cnt = _added_count(sp)
+            for scope in _scope_scopes():
+                try:
+                    for title in (
+                        "技术服务、技术开发、技术咨询、技术交流、技术转让、技术推广",
+                        "工程和技术研究和试验发展",
+                    ):
+                        loc = scope.get_by_text(title, exact=False).first
+                        if loc.count() == 0:
+                            continue
+                        try:
+                            parent = loc.locator(
+                                "xpath=ancestor::div[.//button or .//span[contains(normalize-space(.),'添')]][1]"
+                            )
+                            btn = parent.get_by_role("button", name=_ADD_BTN_ROLE_RE).first
+                            if btn.count() == 0:
+                                btn = parent.locator("button, a, span").filter(has_text=_ADD_BTN_RE).first
+                            if btn.count() > 0 and btn.is_visible(timeout=800):
+                                btn.click(force=True, timeout=3000)
+                                added_rec += 1
+                                page.wait_for_timeout(500)
+                                continue
+                        except Exception:
+                            pass
+                        box = loc.bounding_box()
+                        if box:
+                            # 卡片右侧蓝色「添加」
+                            sp.mouse.click(min(box["x"] + box["width"] + 120, box["x"] + 520), box["y"] + 28)
                             added_rec += 1
                             page.wait_for_timeout(500)
-                            continue
-                    except Exception:
-                        pass
-                    box = loc.bounding_box()
-                    if box:
-                        # 卡片右侧蓝色「添加」
-                        sp.mouse.click(min(box["x"] + box["width"] + 120, box["x"] + 520), box["y"] + 28)
-                        added_rec += 1
-                        page.wait_for_timeout(500)
-                after_cnt = _added_count(sp)
-                if after_cnt > before_cnt or added_rec > 0:
-                    done = scope.get_by_text("选好了", exact=True).first
-                    if done.count() > 0:
-                        try:
-                            done.click(force=True, timeout=4000)
-                        except Exception:
-                            box = done.bounding_box()
-                            if box:
-                                sp.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-                        result["recommendDone"] = True
-            except Exception:
-                continue
+                    after_cnt = _added_count(sp)
+                    if after_cnt > before_cnt or added_rec > 0:
+                        done = scope.get_by_text("选好了", exact=True).first
+                        if done.count() > 0:
+                            try:
+                                done.click(force=True, timeout=4000)
+                            except Exception:
+                                box = done.bounding_box()
+                                if box:
+                                    sp.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+                            result["recommendDone"] = True
+                except Exception:
+                    continue
 
-        page.wait_for_timeout(900)
-        _shot_host(f"scope-recommend-try-{attempt}")
-        still = False
-        for scope in _scope_scopes():
-            try:
-                if scope.get_by_text("推荐的主营业务", exact=False).count() > 0:
-                    still = True
-                    break
-                if scope.get_by_text("选好了", exact=True).count() > 0 and scope.get_by_text(
-                    "科技(", exact=False
-                ).count() > 0:
-                    still = True
-                    break
-            except Exception:
-                continue
-        # 仅当弹窗关闭且已有选中条目才算成功
-        cnt_now = _added_count(sp)
-        if not still and cnt_now > 0:
-            result["recommendDone"] = True
-            break
-        if result.get("recommendDone") and not still and cnt_now > 0:
-            break
-        # 弹窗已关但没选中：退出推荐阶段，交给后面主列表添加
-        if not still and attempt >= 2:
-            result["recommendDone"] = False
-            result["recommendClosedEmpty"] = True
-            break
+            page.wait_for_timeout(900)
+            _shot_host(f"scope-recommend-try-{attempt}")
+            still = False
+            for scope in _scope_scopes():
+                try:
+                    if scope.get_by_text("推荐的主营业务", exact=False).count() > 0:
+                        still = True
+                        break
+                    if scope.get_by_text("选好了", exact=True).count() > 0 and scope.get_by_text(
+                        "科技(", exact=False
+                    ).count() > 0:
+                        still = True
+                        break
+                except Exception:
+                    continue
+            # 仅当弹窗关闭且已有选中条目才算成功
+            cnt_now = _added_count(sp)
+            if not still and cnt_now > 0:
+                result["recommendDone"] = True
+                break
+            if result.get("recommendDone") and not still and cnt_now > 0:
+                break
+            # 弹窗已关但没选中：退出推荐阶段，交给后面主列表添加
+            if not still and attempt >= 2:
+                result["recommendDone"] = False
+                result["recommendClosedEmpty"] = True
+                break
     result["recommendAdded"] = added_rec
     # 行业「科技」常直接带出主营条目并弹出国民经济行业分类，优先处理该弹窗
     naics0 = _handle_naics_modal()
     result["naicsAfterRecommend"] = naics0
     _shot_host("scope-after-recommend")
 
-    scopes = _scope_scopes()
-    # 即使已有主营推荐条目，仍搜行业词（默认「科技」）补齐与主营一致的科技类一般事项
     selected_after_rec = _added_count(sp)
-    scopes = _scope_scopes()
     result["countAfterRecommend"] = selected_after_rec
     result["scopeKeyword"] = keyword
 
-    searched = False
-    for scope in scopes:
-        try:
-            # 避开仍含「选好了」的弹层内搜索框
-            if _visible(scope.get_by_text("选好了", exact=True).first, timeout=300):
-                if _visible(scope.get_by_text("推荐的主营业务", exact=False).first, timeout=200):
+    def _do_search(term: str) -> bool:
+        term = (term or "").strip()
+        if not term:
+            return False
+        for scope in _scope_scopes():
+            try:
+                if _visible(scope.get_by_text("选好了", exact=True).first, timeout=200):
+                    if _visible(scope.get_by_text("推荐的主营业务", exact=False).first, timeout=150):
+                        continue
+                box = scope.get_by_placeholder("请输入搜索关键字", exact=False).first
+                if not _visible(box):
+                    box = scope.locator("input[placeholder*='搜索'], input[placeholder*='关键字']").first
+                if not _visible(box):
                     continue
-            box = scope.get_by_placeholder("请输入搜索关键字", exact=False).first
-            if not _visible(box):
-                box = scope.locator("input[placeholder*='搜索'], input[placeholder*='关键字']").first
-            if not _visible(box):
+                box.click(timeout=3000)
+                box.fill("")
+                box.fill(term)
+                page.wait_for_timeout(250)
+                clicked_search = False
+                for sel in (
+                    "button:has(i.el-icon-search)",
+                    ".el-input-group__append button",
+                    "button:has-text('搜索')",
+                    ".el-icon-search",
+                ):
+                    btn = scope.locator(sel).first
+                    if _visible(btn):
+                        btn.click(timeout=3000)
+                        clicked_search = True
+                        break
+                if not clicked_search:
+                    box.press("Enter")
+                page.wait_for_timeout(1600)
+                return True
+            except Exception:
                 continue
-            box.click(timeout=3000)
-            box.fill("")
-            box.fill(keyword)
-            page.wait_for_timeout(300)
-            clicked_search = False
-            for sel in (
-                "button:has(i.el-icon-search)",
-                ".el-input-group__append button",
-                "button:has-text('搜索')",
-                ".el-icon-search",
-            ):
-                btn = scope.locator(sel).first
-                if _visible(btn):
-                    btn.click(timeout=3000)
-                    clicked_search = True
-                    break
-            if not clicked_search:
-                box.press("Enter")
-            searched = True
-            page.wait_for_timeout(2000)
-            break
-        except Exception:
-            continue
-    result["searched"] = searched
-    _shot_host(f"scope-search-{keyword}")
+        return False
 
-    # 搜索「科技」后：必须添加结果列表前 5 条
-    add_info = _add_top_n_from_search(sp, n=5)
-    if int(add_info.get("added") or 0) < 5:
-        page.wait_for_timeout(800)
-        add_info2 = _add_top_n_from_search(sp, n=5 - int(add_info.get("added") or 0))
+    def _add_named_item(target_name: str, code: str = "") -> dict[str, Any]:
+        """在搜索结果中按编码/名称匹配并点「添加」。"""
+        info: dict[str, Any] = {"name": target_name, "code": code, "ok": False, "picked": ""}
+        before = _added_count(sp)
+        needle = re.sub(r"\s+", "", target_name)
+        short = needle[:12] if len(needle) > 12 else needle
+        code = (code or "").strip()
+
+        # JS：在结果卡中找编码或标题完全匹配的「添加」
+        js = """([name, code]) => {
+          const deepAll = (selector) => {
+            const out = [];
+            const walk = (root) => {
+              if (!root || !root.querySelectorAll) return;
+              try { out.push(...root.querySelectorAll(selector)); } catch (e) {}
+              let all = [];
+              try { all = root.querySelectorAll('*'); } catch (e) { return; }
+              for (const el of all) { if (el.shadowRoot) walk(el.shadowRoot); }
+            };
+            walk(document);
+            return out;
+          };
+          const clickEl = (el) => {
+            if (!el) return false;
+            const r = el.getBoundingClientRect();
+            if (r.width < 8 || r.height < 8) return false;
+            el.scrollIntoView({block:'center', inline:'nearest'});
+            const x = r.left + r.width/2, y = r.top + r.height/2;
+            for (const type of ['pointerdown','mousedown','mouseup','pointerup','click']) {
+              el.dispatchEvent(new MouseEvent(type, {bubbles:true, cancelable:true, composed:true, clientX:x, clientY:y, view:window}));
+            }
+            if (typeof el.click === 'function') el.click();
+            return true;
+          };
+          const norm = (s) => (s || '').replace(/\\s+/g,'').replace(/\\u00a0/g,'');
+          const wantName = norm(name);
+          const wantCode = norm(code);
+          const addBtns = deepAll('button, a, span, div').filter(el => {
+            const t = norm(el.innerText || '');
+            const r = el.getBoundingClientRect();
+            return t === '添加' && r.width > 24 && r.height > 14 && r.x < (window.innerWidth * 0.78);
+          });
+          const scored = [];
+          for (const btn of addBtns) {
+            let card = btn, text = '';
+            for (let i = 0; i < 10 && card; i++) {
+              text = card.innerText || text;
+              if ((text.includes('一般事项') || text.includes('前置许可') || /[A-Z]\\d{3,}/.test(text)) && text.length > 8) break;
+              card = card.parentElement;
+            }
+            const nt = norm(text);
+            if (nt.includes('小额贷款')) continue;
+            if (nt.includes('前置许可') && !nt.includes('一般事项')) continue;
+            let score = 0;
+            if (wantCode && nt.includes(wantCode)) score += 100;
+            if (wantName && nt.includes(wantName)) score += 80;
+            if (wantName && wantName.length >= 6 && nt.includes(wantName.slice(0, 8))) score += 40;
+            if (score > 0) scored.push({btn, score, title: (text.split('\\n')[0] || '').slice(0, 48)});
+          }
+          scored.sort((a,b) => b.score - a.score);
+          if (!scored.length) return {ok:false, btnCount: addBtns.length};
+          const top = scored[0];
+          clickEl(top.btn);
+          return {ok:true, picked: top.title, score: top.score, btnCount: addBtns.length};
+        }"""
+
+        for scope in _scope_scopes():
+            try:
+                js_res = scope.evaluate(js, [target_name, code])
+                info["js"] = js_res
+                page.wait_for_timeout(800)
+                try:
+                    _handle_naics_modal()
+                except Exception:
+                    pass
+                after = _added_count(sp)
+                if after > before:
+                    info["ok"] = True
+                    info["picked"] = (js_res or {}).get("picked") or target_name
+                    info["after"] = after
+                    return info
+            except Exception as e:
+                info["jsError"] = str(e)
+
+        # Playwright 回落：先码后名
+        markers = [m for m in (code, target_name, short) if m]
+        for scope in _scope_scopes():
+            for marker in markers:
+                try:
+                    loc = scope.get_by_text(marker, exact=False).first
+                    if loc.count() == 0:
+                        continue
+                    parent = loc.locator(
+                        "xpath=ancestor::div[.//button or .//span[contains(normalize-space(.),'添')]][1]"
+                    )
+                    btn = parent.get_by_role("button", name=_ADD_BTN_ROLE_RE).first
+                    if btn.count() == 0:
+                        btn = parent.locator("button, a, span").filter(has_text=_ADD_BTN_RE).first
+                    if btn.count() == 0:
+                        continue
+                    try:
+                        parent_txt = parent.first.inner_text(timeout=600) or ""
+                    except Exception:
+                        parent_txt = ""
+                    if "小额贷款" in parent_txt or (
+                        "前置许可" in parent_txt and "一般事项" not in parent_txt
+                    ):
+                        continue
+                    btn.first.click(force=True, timeout=3000)
+                    page.wait_for_timeout(700)
+                    try:
+                        _handle_naics_modal()
+                    except Exception:
+                        pass
+                    after = _added_count(sp)
+                    if after > before:
+                        info["ok"] = True
+                        info["picked"] = (parent_txt.split("\n")[0] or target_name)[:50]
+                        info["after"] = after
+                        return info
+                except Exception as e:
+                    info["error"] = str(e)
+                    continue
+        info["after"] = _added_count(sp)
+        return info
+
+    if user_names:
+        # 按用户勾选逐项搜索添加；禁止回退「搜科技前5」以免与用户选择不一致
+        _shot_host("scope-before-user-names")
+        # 添加前再清一次引导
+        for _ in range(4):
+            cleared = False
+            for scope in _scope_scopes():
+                if _click_text(scope, ["跳过"], exact=True):
+                    cleared = True
+                    page.wait_for_timeout(350)
+                    break
+            if not cleared:
+                break
+
+        add_details: list[dict[str, Any]] = []
+        ok_n = 0
+        for it in items:
+            name = it["name"]
+            code = it.get("code") or ""
+            term = code if code else (name if len(name) <= 24 else name[:18])
+            searched_one = _do_search(term)
+            page.wait_for_timeout(500)
+            one = _add_named_item(name, code)
+            if not one.get("ok") and code and term != name:
+                # 编码搜不到时再用名称搜
+                searched_one = _do_search(name if len(name) <= 24 else name[:18]) or searched_one
+                page.wait_for_timeout(400)
+                one = _add_named_item(name, code)
+            one["searched"] = searched_one
+            one["term"] = term
+            add_details.append(one)
+            if one.get("ok"):
+                ok_n += 1
+            _shot_host(f"scope-user-add-{ok_n}")
+            try:
+                _handle_naics_modal()
+            except Exception:
+                pass
+
+        after_cnt = _added_count(sp)
         add_info = {
-            **add_info,
-            "retry": add_info2,
-            "added": int(add_info.get("added") or 0) + int(add_info2.get("added") or 0),
-            "after": add_info2.get("after", add_info.get("after")),
-            "picked": list(add_info.get("picked") or []) + list(add_info2.get("picked") or []),
-            "clicked": int(add_info.get("clicked") or 0) + int(add_info2.get("clicked") or 0),
+            "mode": "user_selected",
+            "target": len(items),
+            "added": ok_n,
+            "after": after_cnt,
+            "details": add_details,
+            "picked": [d.get("picked") or d.get("name") for d in add_details if d.get("ok")],
         }
-    if int(add_info.get("after") or 0) < max(5, selected_after_rec + 1):
-        # 仍不足时按偏好码兜底补齐
-        fill = _add_verified(sp, limit=5, min_total=5)
-        add_info = {**add_info, "fallback": fill, "after": fill.get("after", add_info.get("after"))}
-    result["addInfo"] = add_info
-    result["addedTop5"] = int(add_info.get("added") or 0)
-    result["selectedCount"] = int(add_info.get("after") or 0)
+        result["searched"] = any(d.get("searched") for d in add_details)
+        result["addInfo"] = add_info
+        result["addedTop5"] = ok_n
+        result["selectedCount"] = after_cnt
+        result["userScopeOk"] = ok_n
+        result["userScopeMiss"] = [d.get("name") for d in add_details if not d.get("ok")]
+        # 用户有勾选时：必须全部加上才算成功，绝不回退行业词
+        if ok_n < len(items):
+            result["error"] = f"用户勾选 {len(items)} 项，仅成功添加 {ok_n} 项"
+    else:
+        searched = _do_search(keyword)
+        result["searched"] = searched
+        _shot_host(f"scope-search-{keyword}")
+
+        # 搜索行业词后：必须添加结果列表前 5 条
+        add_info = _add_top_n_from_search(sp, n=5)
+        if int(add_info.get("added") or 0) < 5:
+            page.wait_for_timeout(800)
+            add_info2 = _add_top_n_from_search(sp, n=5 - int(add_info.get("added") or 0))
+            add_info = {
+                **add_info,
+                "retry": add_info2,
+                "added": int(add_info.get("added") or 0) + int(add_info2.get("added") or 0),
+                "after": add_info2.get("after", add_info.get("after")),
+                "picked": list(add_info.get("picked") or []) + list(add_info2.get("picked") or []),
+                "clicked": int(add_info.get("clicked") or 0) + int(add_info2.get("clicked") or 0),
+            }
+        if int(add_info.get("after") or 0) < max(5, selected_after_rec + 1):
+            # 仍不足时按偏好码兜底补齐
+            fill = _add_verified(sp, limit=5, min_total=5)
+            add_info = {**add_info, "fallback": fill, "after": fill.get("after", add_info.get("after"))}
+        result["addInfo"] = add_info
+        result["addedTop5"] = int(add_info.get("added") or 0)
+        result["selectedCount"] = int(add_info.get("after") or 0)
     # 添加后通常再次弹出国民经济行业分类
     naics1 = _handle_naics_modal()
     result["naicsAfterAdd"] = naics1
     _shot_host("scope-after-add")
 
     gen = False
-    selected_n = int(add_info.get("after") or selected_after_rec or 0)
-    if selected_n > 0:
+    selected_n = int(result.get("selectedCount") or selected_after_rec or 0)
+    user_all_ok = (not user_names) or (int(result.get("userScopeOk") or 0) >= len(user_names))
+    if selected_n > 0 and user_all_ok:
         # 生成前再确保行业分类已选
         naics2 = _handle_naics_modal()
         result["naicsBeforeGenerate"] = naics2
@@ -2358,7 +3933,10 @@ def _fill_business_scope_flow(
         body = _body(frame2).inner_text(timeout=2000)
         result["stillEmpty"] = "尚未添加经营范围" in body
         result["ok"] = not result.get("stillEmpty", True)
-        if not result["ok"] and selected_n > 0:
+        # 用户勾选模式：必须全部添加成功
+        if user_names and int(result.get("userScopeOk") or 0) < len(user_names):
+            result["ok"] = False
+        if not result["ok"] and selected_n > 0 and (not user_names or user_all_ok):
             # 末次补救：若插件仍开着，再选行业分类并生成
             for p in page.context.pages:
                 u = p.url or ""
@@ -2396,8 +3974,18 @@ def _fill_business_scope_flow(
 
 def run_basic_info_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dict[str, Any]:
     store.set_status(case_id, statuses.FILLING_ESTABLISHMENT, customer_message="正在处理核名后弹窗与基本信息…")
+    if _dismiss_system_busy(page):
+        page.wait_for_timeout(1200)
 
     dialogs = handle_post_name_dialogs(page, case_id)
+    if dialogs.get("compareFailed"):
+        store.set_status(
+            case_id,
+            statuses.NAME_FAILED,
+            reason="字号核名未通过（备用字号/比对未通过），需返回修改换下一字号",
+            customer_message="当前字号未通过，正在尝试返回修改并换下一字号…",
+        )
+        return {"ok": False, "nameFailed": True, "reason": "比对未通过/备用字号", "dialogs": dialogs}
     if _notice_dialog_visible(page):
         notice = _force_dismiss_notice(page, case_id)
         dialogs["noticeRetry"] = notice
@@ -2472,8 +4060,17 @@ def run_basic_info_flow(case_id: str, page: Page, payload: dict[str, Any]) -> di
     lr = (payload.get("personnel") or {}).get("legalRepresentative") or {}
     mobile = lr.get("mobile") or inv0.get("mobile") or mobile
 
+    from apps.worker.playbooks.org_fill_profile import profile_for
+
+    profile = profile_for(payload)
+    result["orgProfile"] = {
+        "orgForm": profile.get("orgForm"),
+        "skipCompanyType": profile.get("skip_company_type"),
+        "agentTypes": profile.get("agent_types"),
+    }
+
     result["mobile"] = _fill_label(frame, "移动电话", mobile)
-    result["agentType"] = _pick_select(frame, "经办人类型", ["法定代表人"])
+    result["agentType"] = _pick_select(frame, "经办人类型", list(profile.get("agent_types") or ["法定代表人"]))
     page.wait_for_timeout(400)
 
     # 企业信息
@@ -2496,15 +4093,15 @@ def run_basic_info_flow(case_id: str, page: Page, payload: dict[str, Any]) -> di
     except Exception:
         result["acceptPoint"] = False
 
-    result["companyType"] = _pick_select(
-        frame,
-        "企业类型",
-        [
-            "有限责任公司(自然人独资)",
-            "有限责任公司（自然人独资）",
-            "有限责任公司(自然人投资或控股)",
-        ],
-    )
+    if profile.get("skip_company_type"):
+        result["companyType"] = "skipped"
+        result["companyTypeSkipped"] = True
+    else:
+        result["companyType"] = _pick_select(
+            frame,
+            "企业类型",
+            list(profile.get("company_types") or []),
+        )
     result["term"] = _pick_select(frame, "经营期限", ["不约定期限"])
 
     # 住所弹窗
@@ -2515,10 +4112,15 @@ def run_basic_info_flow(case_id: str, page: Page, payload: dict[str, Any]) -> di
     result["contact"] = _fill_label(frame, "联系电话", mobile)
 
     today = date.today().isoformat()
-    result["resolutionDate"] = _fill_label(frame, "章程决议日期", today)
-    if not result["resolutionDate"]:
+    result["resolutionDate"] = False
+    for lab in profile.get("resolution_labels") or ["章程决议日期"]:
+        ok = _fill_label(frame, lab, today)
+        if ok:
+            result["resolutionDate"] = True
+            result["resolutionLabel"] = lab
+            break
         try:
-            di = frame.get_by_placeholder("请选择章程决议日期").first
+            di = frame.get_by_placeholder(f"请选择{lab}").first
             if _visible(di):
                 di.click(timeout=3000)
                 page.wait_for_timeout(400)
@@ -2528,11 +4130,14 @@ def run_basic_info_flow(case_id: str, page: Page, payload: dict[str, Any]) -> di
                 if _visible(cell):
                     cell.click(timeout=3000)
                     result["resolutionDate"] = True
-                else:
-                    di.fill(today)
-                    result["resolutionDate"] = True
+                    result["resolutionLabel"] = lab
+                    break
+                di.fill(today)
+                result["resolutionDate"] = True
+                result["resolutionLabel"] = lab
+                break
         except Exception:
-            pass
+            continue
 
     # 暂存（之后页面常短暂白屏，需等经营范围区恢复）
     result["saved"] = _click_text(frame, ["暂存"], exact=True)
@@ -2542,23 +4147,48 @@ def run_basic_info_flow(case_id: str, page: Page, payload: dict[str, Any]) -> di
     frame = _wait_basic_stable(page, timeout_sec=25) or frame
     _shot(page, case_id, "after-draft-save")
 
-    # 经营范围：按名称申报行业（默认科技）搜索并添加与主营一致的条目
+    # 经营范围：住所未完成则跳过，避免继续推进
     industry = ((payload.get("name") or {}).get("industry") or "科技").strip() or "科技"
-    scope = _fill_business_scope_flow(page, frame, case_id, industry=industry)
-    if not scope.get("ok"):
-        # 若上次已开过经营范围页，先关掉再重试，避免叠多个 master 窗口
-        _close_scope_tabs(page)
-        frame = _frame_basic(page, timeout_ms=20000) or frame
-        scope2 = _fill_business_scope_flow(page, frame, case_id, industry=industry)
-        scope = {**scope, "retry": scope2}
-        if scope2.get("ok"):
-            scope = scope2
+    scope_items = _scope_items_from_payload(payload)
+    scope_names = [it["name"] for it in scope_items]
+    if not addr_result.get("ok"):
+        scope = {
+            "ok": False,
+            "skipped": True,
+            "reason": "住所未完成，跳过经营范围",
+        }
+    else:
+        scope = _fill_business_scope_flow(
+            page,
+            frame,
+            case_id,
+            industry=industry,
+            scope_items=scope_items,
+            scope_names=scope_names,
+        )
+        if not scope.get("ok"):
+            # 若上次已开过经营范围页，先关掉再重试，避免叠多个 master 窗口
+            _close_scope_tabs(page)
+            frame = _frame_basic(page, timeout_ms=20000) or frame
+            scope2 = _fill_business_scope_flow(
+                page,
+                frame,
+                case_id,
+                industry=industry,
+                scope_items=scope_items,
+                scope_names=scope_names,
+            )
+            scope = {**scope, "retry": scope2}
+            if scope2.get("ok"):
+                scope = scope2
     result["businessScope"] = scope
+    result["scopeNamesUsed"] = scope_names
+    result["scopeItemsUsed"] = scope_items
     # 确保回到设立页（经营范围标签已关）
     _close_scope_tabs(page)
     frame = _frame_basic(page, timeout_ms=20000) or frame
 
-    # 下拉到底 → 下一步（经营范围未填则不点，避免空提交）
+    # 下拉到底 → 下一步（住所或经营范围未完成则不点）
     try:
         frame.evaluate("window.scrollTo(0, document.body.scrollHeight)")
     except Exception:
@@ -2567,14 +4197,28 @@ def run_basic_info_flow(case_id: str, page: Page, payload: dict[str, Any]) -> di
         except Exception:
             pass
     page.wait_for_timeout(500)
-    if scope.get("ok"):
-        result["nextClicked"] = _click_text(frame, ["下一步"], exact=True)
-        if not result["nextClicked"]:
-            result["nextClicked"] = _click_text_any(page, ["下一步"], exact=True)
-        page.wait_for_timeout(1500)
+    can_next = bool(addr_result.get("ok") and scope.get("ok"))
+    if can_next:
+        result["nextClicked"] = False
+        for _ in range(3):
+            _dismiss_system_busy(page)
+            clicked = _click_text(frame, ["下一步"], exact=True)
+            if not clicked:
+                clicked = _click_text_any(page, ["下一步"], exact=True)
+            page.wait_for_timeout(1500)
+            if _dismiss_system_busy(page):
+                page.wait_for_timeout(1200)
+                continue
+            result["nextClicked"] = bool(clicked)
+            break
     else:
         result["nextClicked"] = False
-        result["nextSkippedReason"] = "经营范围未完成"
+        reasons = []
+        if not addr_result.get("ok"):
+            reasons.append("住所未完成")
+        if not scope.get("ok"):
+            reasons.append("经营范围未完成")
+        result["nextSkippedReason"] = "；".join(reasons) or "前置步骤未完成"
     _shot(page, case_id, "basic-after-next")
 
     missing = []

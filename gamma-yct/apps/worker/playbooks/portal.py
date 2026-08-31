@@ -117,20 +117,72 @@ def dismiss_portal_overlays(page: Page) -> None:
 
 
 def looks_logged_in(page: Page) -> bool:
+    """是否已登录门户。
+
+    注意：登录前「告知书」也可能含「我已知晓」文案，不能单凭该句判定已登录，
+    否则会跳过扫码、演示页一直等不到二维码。
+    """
     url = (page.url or "").lower()
-    if "login.jsp" in url or "/uc/login" in url:
+    if any(k in url for k in ("login.jsp", "/uc/login", "zwdtuser", "ssoLogin", "login?")):
         return False
     try:
         if page.get_by_text("退出", exact=False).first.is_visible(timeout=800):
             return True
     except Exception:
         pass
-    # 登录后常见须知页
     try:
-        body = page.locator("body").inner_text(timeout=1000)
+        body = page.locator("body").inner_text(timeout=1000) or ""
     except Exception:
         body = ""
-    return "我已知晓上述内容" in body or "不涉及前置审批" in body
+    # 登录后须知/设立入口：须同时具备设立相关文案，避免把告知书当成已登录
+    if "不涉及前置审批" in body and (
+        "企业设立登记" in body or "我已知晓上述内容" in body
+    ):
+        return True
+    if "企业设立登记" in body and "不涉及前置审批" in body:
+        return True
+    return False
+
+
+def _handle_blocking_notice(page: Page) -> bool:
+    """关闭挡住扫码入口的告知书/须知（点已知晓/同意等）。"""
+    labels = [
+        "我已知晓上述内容",
+        "我已知晓",
+        "同意并继续",
+        "已阅读并同意",
+        "同意",
+    ]
+    clicked = False
+    for p in _active_pages(page):
+        try:
+            p.bring_to_front()
+        except Exception:
+            pass
+        for label in labels:
+            if _click_text_in(p, [label], exact=False, timeout=1200):
+                clicked = True
+                time.sleep(0.5)
+                break
+        if clicked:
+            break
+        for fr in p.frames:
+            for label in labels:
+                if _click_text_in(fr, [label], exact=False, timeout=800):
+                    clicked = True
+                    time.sleep(0.5)
+                    break
+            if clicked:
+                break
+        if clicked:
+            break
+    # 弹层关闭钮（勿关业务选择层）
+    if not clicked:
+        try:
+            dismiss_portal_overlays(page)
+        except Exception:
+            pass
+    return clicked
 
 
 def goto_portal(page: Page, case_id: Optional[str] = None) -> None:
@@ -232,6 +284,14 @@ def click_kaiban_then_enterprise(page: Page, case_id: str) -> None:
         raise RuntimeError("未找到「开办」后的「企业」入口（含 kbLst4 iframe）")
     time.sleep(1.5)
     _shot(page, case_id, "portal-after-enterprise")
+    # 首次进入常弹出告知书，挡住扫码；点掉后再等登录页
+    for _ in range(4):
+        if looks_logged_in(page):
+            break
+        if not _handle_blocking_notice(page):
+            break
+        time.sleep(0.6)
+    _shot(page, case_id, "portal-after-enterprise-notice")
 
 
 def _active_pages(page: Page) -> list[Page]:
@@ -295,7 +355,7 @@ def wait_qr_login(
     on_login=None,
 ) -> Page:
     """强制扫码：必须点到扫码入口并等待登录成功（不跳过）。"""
-    from apps.worker.playbooks.qr_login import _capture_qr, capture_qr_data_uri
+    from apps.worker.playbooks.qr_login import capture_qr_data_uri, wait_capture_qr_data_uri
 
     store.set_status(
         case_id,
@@ -303,16 +363,36 @@ def wait_qr_login(
         customer_message="请使用随申办扫描演示页中的二维码登录一网通办",
     )
 
+    # 已真实登录（有退出/设立入口）才跳过扫码
+    if looks_logged_in(page):
+        _shot(page, case_id, "already-logged-in-before-qr")
+        store.set_status(
+            case_id,
+            statuses.LOGGED_IN,
+            reason="企业入口后已是登录态，未再出现扫码页",
+        )
+        if on_login:
+            try:
+                on_login()
+            except Exception:
+                pass
+        return page
+
+    # 告知书挡在扫码前：先处理再点扫码
+    for _ in range(3):
+        _handle_blocking_notice(page)
+        time.sleep(0.4)
+
     clicked, page = _click_scan_login(page)
     if not clicked:
-        # 若已在须知页，说明上一跳已带登录态——按「不跳过登录」仍视为异常，要求显式扫码页
-        body = ""
-        try:
-            body = page.locator("body").inner_text(timeout=1000)
-        except Exception:
-            pass
-        if "我已知晓上述内容" in body or looks_logged_in(page):
-            # 已登录：仍截图，允许继续（用户已完成历史扫码）；但记录 reason
+        for _ in range(3):
+            _handle_blocking_notice(page)
+            time.sleep(0.5)
+            clicked, page = _click_scan_login(page)
+            if clicked:
+                break
+    if not clicked:
+        if looks_logged_in(page):
             _shot(page, case_id, "already-logged-in-after-enterprise")
             store.set_status(
                 case_id,
@@ -330,24 +410,34 @@ def wait_qr_login(
 
     time.sleep(1.0)
     _shot(page, case_id, "qr-login-shown")
+    # 首次截取常早于二维码渲染：等待重试后再推送（勿用整页截图冒充）
     if config.CAPTURE_QR or on_qr:
-        uri = capture_qr_data_uri(page, case_id=case_id)
+        uri = wait_capture_qr_data_uri(page, case_id=case_id, timeout_sec=20)
         if on_qr and uri:
             try:
                 on_qr(uri)
             except Exception:
                 pass
-        elif config.CAPTURE_QR:
-            _capture_qr(page, case_id)
+        elif config.CAPTURE_QR and uri:
+            capture_qr_data_uri(page, case_id=case_id)
 
     deadline = time.time() + config.LOGIN_TIMEOUT_SEC
     last_qr_push = 0.0
     while time.time() < deadline:
-        if store.get_case(case_id)["status"] == statuses.CANCELLED:
+        if store.is_cancelled(case_id) or store.consume_cancel(case_id):
             raise RuntimeError("cancelled")
+        try:
+            if str(store.get_case(case_id).get("status") or "") == statuses.CANCELLED:
+                raise RuntimeError("cancelled")
+        except RuntimeError:
+            raise
+        except Exception:
+            pass
 
         # 新标签可能在扫码后成为主页面
         for p in _active_pages(page):
+            if store.is_cancelled(case_id):
+                raise RuntimeError("cancelled")
             if looks_logged_in(p):
                 try:
                     p.bring_to_front()
@@ -361,85 +451,290 @@ def wait_qr_login(
                     except Exception:
                         pass
                 return p
-            try:
-                body = p.locator("body").inner_text(timeout=800)
-            except Exception:
-                body = ""
-            if "我已知晓上述内容" in body or "不涉及前置审批" in body:
-                store.set_status(case_id, statuses.LOGGED_IN)
-                _shot(p, case_id, "logged-in-post-redirect")
-                if on_login:
-                    try:
-                        on_login()
-                    except Exception:
-                        pass
-                return p
 
-        # 二维码会刷新：周期性推送到演示页
+        # 二维码会刷新：周期性推送到演示页（已取消则不再拉取）
         now = time.time()
-        if on_qr and now - last_qr_push >= 4.0:
+        if on_qr and now - last_qr_push >= 3.0:
             last_qr_push = now
+            if store.is_cancelled(case_id):
+                raise RuntimeError("cancelled")
             try:
-                uri = capture_qr_data_uri(page, case_id=case_id)
+                uri = capture_qr_data_uri(
+                    page, case_id=case_id, allow_fullpage=False
+                )
                 if uri:
                     on_qr(uri)
             except Exception:
                 pass
-        time.sleep(2)
+        time.sleep(0.5)
 
     _shot(page, case_id, "login-timeout")
     raise TimeoutError(f"扫码登录超时（{config.LOGIN_TIMEOUT_SEC}s）")
 
 
-def acknowledge_and_enter_establishment(page: Page, case_id: str) -> Page:
-    time.sleep(1.0)
-    dismiss_portal_overlays(page)
+def _js_click_ack_known() -> str:
+    """精确点「我已知晓上述内容」按钮（须知页底部）。"""
+    return """() => {
+      const needles = ['我已知晓上述内容', '我已知晓'];
+      const nodes = Array.from(document.querySelectorAll(
+        'button, a, .el-button, [role="button"], span, div, li, p'
+      ));
+      for (const want of needles) {
+        const hits = nodes.filter(el => {
+          const t = (el.innerText || el.textContent || '').replace(/\\s+/g, '');
+          if (t !== want && !(want.length >= 4 && t === want)) return false;
+          const r = el.getBoundingClientRect();
+          return r.width > 40 && r.height > 14 && r.bottom > 0 && r.top < (window.innerHeight + 200);
+        });
+        // 优先短节点（真按钮），避免点到整页容器
+        hits.sort((a, b) => {
+          const ta = (a.innerText || '').replace(/\\s+/g, '').length;
+          const tb = (b.innerText || '').replace(/\\s+/g, '').length;
+          return ta - tb;
+        });
+        const btn = hits.find(el => {
+          const t = (el.innerText || '').replace(/\\s+/g, '');
+          return t === '我已知晓上述内容' || t === '我已知晓';
+        });
+        if (btn) {
+          try { btn.scrollIntoView({block: 'center', inline: 'nearest'}); } catch (e) {}
+          btn.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true, view:window}));
+          if (typeof btn.click === 'function') btn.click();
+          return {ok:true, text:(btn.innerText || '').trim().slice(0, 20)};
+        }
+      }
+      return {ok:false};
+    }"""
 
-    acknowledged = False
-    for _ in range(12):
+
+def _ack_button_present(page: Page) -> bool:
+    """页面上是否仍有可点的「我已知晓」——有则绝不能跳过。"""
+    for p in _active_pages(page):
         try:
-            page.mouse.wheel(0, 800)
+            loc = p.get_by_text("我已知晓上述内容", exact=False)
+            if loc.count() > 0 and loc.first.is_visible(timeout=600):
+                return True
         except Exception:
+            pass
+        try:
+            for fr in p.frames:
+                loc = fr.get_by_text("我已知晓上述内容", exact=False)
+                if loc.count() > 0 and loc.first.is_visible(timeout=400):
+                    return True
+        except Exception:
+            pass
+        try:
+            hit = p.evaluate(
+                """() => {
+                  const nodes = Array.from(document.querySelectorAll('button,a,.el-button,[role="button"],span,div'));
+                  return nodes.some(el => {
+                    const t = (el.innerText || '').replace(/\\s+/g, '');
+                    if (t !== '我已知晓上述内容' && t !== '我已知晓') return false;
+                    const r = el.getBoundingClientRect();
+                    return r.width > 40 && r.height > 14;
+                  });
+                }"""
+            )
+            if hit:
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def _click_ack_known(page: Page) -> bool:
+    """滚动并点击「我已知晓上述内容」。"""
+    labels = ["我已知晓上述内容", "我已知晓"]
+    for p in _active_pages(page):
+        try:
+            p.bring_to_front()
+        except Exception:
+            pass
+        # 须知很长，按钮在底部：多滚几屏
+        for _ in range(10):
             try:
-                page.evaluate("window.scrollBy(0, 700)")
+                p.mouse.wheel(0, 900)
+            except Exception:
+                try:
+                    p.evaluate("window.scrollBy(0, 800)")
+                except Exception:
+                    pass
+            time.sleep(0.2)
+            if _click_text_in(p, labels, exact=False, timeout=1200):
+                return True
+            for fr in p.frames:
+                if _click_text_in(fr, labels, exact=False, timeout=800):
+                    return True
+            try:
+                res = p.evaluate(_js_click_ack_known())
+                if isinstance(res, dict) and res.get("ok"):
+                    time.sleep(0.5)
+                    return True
             except Exception:
                 pass
-        time.sleep(0.25)
-        if _click_text_in(page, ["我已知晓上述内容"], exact=False):
-            acknowledged = True
-            break
-        for fr in page.frames:
-            if _click_text_in(fr, ["我已知晓上述内容"], exact=False):
-                acknowledged = True
-                break
-        if acknowledged:
-            break
+            for fr in p.frames:
+                try:
+                    res = fr.evaluate(_js_click_ack_known())
+                    if isinstance(res, dict) and res.get("ok"):
+                        time.sleep(0.5)
+                        return True
+                except Exception:
+                    pass
+    return False
 
-    if not acknowledged:
-        _shot(page, case_id, "ack-missing")
-        raise RuntimeError("未找到「我已知晓上述内容」")
 
-    time.sleep(0.8)
-    _shot(page, case_id, "after-acknowledge")
-
+def _click_establish_no_preapproval(page: Page) -> bool:
+    """点击「企业设立登记（不涉及前置审批事项）」，多种策略 + 重试。"""
     labels = [
         "企业设立登记（不涉及前置审批事项）",
         "企业设立登记(不涉及前置审批事项)",
         "不涉及前置审批事项",
     ]
-    entered = False
+    # 先常规文本点击
     for p in _active_pages(page):
-        if _click_text_in(p, labels, exact=False):
-            entered = True
-            page = p
-            break
+        if _click_text_in(p, labels, exact=False, timeout=2500):
+            return True
         for fr in p.frames:
-            if _click_text_in(fr, labels, exact=False):
-                entered = True
+            if _click_text_in(fr, labels, exact=False, timeout=1500):
+                return True
+    # 卡片常是 div/可点区域：用 JS 按全文匹配点击
+    for p in _active_pages(page):
+        try:
+            ok = p.evaluate(
+                """() => {
+                  const needles = [
+                    '企业设立登记（不涉及前置审批事项）',
+                    '企业设立登记(不涉及前置审批事项)',
+                    '不涉及前置审批事项',
+                  ];
+                  const nodes = Array.from(document.querySelectorAll('a,button,div,li,span,p'));
+                  for (const n of needles) {
+                    const hit = nodes.find(el => {
+                      const t = (el.innerText || el.textContent || '').replace(/\\s+/g, '');
+                      if (!t.includes(n.replace(/\\s+/g, ''))) return false;
+                      // 避免点到整页容器：优先短文案节点
+                      return t.length < 80;
+                    });
+                    if (hit) { hit.click(); return true; }
+                  }
+                  return false;
+                }"""
+            )
+            if ok:
+                time.sleep(0.8)
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def _on_establish_choice_page(page: Page) -> bool:
+    """是否已在「三项设立入口」选择页。
+
+    注意：登录后「须知」正文也会出现「不涉及/涉及前置审批」字样，
+    不能单凭文案判断；若仍有「我已知晓」按钮则一定还在须知页。
+    """
+    if _ack_button_present(page):
+        return False
+    url = (page.url or "").lower()
+    if "establish-firm" in url:
+        return True
+    try:
+        body = page.locator("body").inner_text(timeout=1200) or ""
+    except Exception:
+        body = ""
+    # 三选一页特征：返回首页/进度查询 + 两条设立登记入口，且无我已知晓按钮
+    has_two = "不涉及前置审批" in body and "涉及前置审批" in body
+    has_nav = ("返回首页" in body and "进度查询" in body) or "已办理企业名称预保留" in body
+    return has_two and has_nav and ("我已知晓上述内容" not in body)
+
+
+def acknowledge_and_enter_establishment(page: Page, case_id: str) -> Page:
+    time.sleep(1.0)
+    dismiss_portal_overlays(page)
+    _shot(page, case_id, "before-acknowledge")
+
+    # 只要还能看到「我已知晓」，就必须点，绝不能因文案误判跳过
+    already_choice = _on_establish_choice_page(page) and not _ack_button_present(page)
+    if already_choice:
+        for p in _active_pages(page):
+            if _on_establish_choice_page(p):
                 page = p
+                try:
+                    p.bring_to_front()
+                except Exception:
+                    pass
                 break
-        if entered:
+
+    if not already_choice:
+        acknowledged = False
+        for attempt in range(15):
+            if store.is_cancelled(case_id):
+                raise RuntimeError("cancelled")
+            if _click_ack_known(page):
+                acknowledged = True
+                break
+            # 点完或路由中：已进入三选一则视为成功
+            if _on_establish_choice_page(page):
+                acknowledged = True
+                break
+            if attempt in (4, 9):
+                dismiss_portal_overlays(page)
+                _shot(page, case_id, f"ack-retry-{attempt}")
+            time.sleep(0.45)
+
+        if not acknowledged:
+            # 最后再确认一次：若按钮仍在则失败；若已到三选一则继续
+            if _on_establish_choice_page(page):
+                acknowledged = True
+            else:
+                _shot(page, case_id, "ack-missing")
+                raise RuntimeError("未找到或未能点击「我已知晓上述内容」")
+
+        time.sleep(1.2)
+        _shot(page, case_id, "after-acknowledge")
+        # 等 SPA 路由到 establish-firm（须知点过后才出现三选一）
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            if _ack_button_present(page):
+                # 偶发点了没生效：再点一次
+                _click_ack_known(page)
+                time.sleep(0.8)
+            for p in _active_pages(page):
+                if _on_establish_choice_page(p):
+                    page = p
+                    try:
+                        p.bring_to_front()
+                    except Exception:
+                        pass
+                    break
+            else:
+                time.sleep(0.4)
+                continue
             break
+
+    dismiss_portal_overlays(page)
+    time.sleep(0.4)
+
+    entered = False
+    for attempt in range(8):
+        dismiss_portal_overlays(page)
+        # Chrome「要恢复页面吗」提示条偶发挡点击：先点一下空白再试
+        if attempt > 0:
+            try:
+                page.mouse.click(40, 120)
+            except Exception:
+                pass
+            try:
+                page.keyboard.press("Escape")
+            except Exception:
+                pass
+            time.sleep(0.35)
+        if _click_establish_no_preapproval(page):
+            entered = True
+            break
+        time.sleep(0.6 + attempt * 0.2)
+
     if not entered:
         _shot(page, case_id, "establish-entry-missing")
         raise RuntimeError("未找到「企业设立登记（不涉及前置审批事项）」")

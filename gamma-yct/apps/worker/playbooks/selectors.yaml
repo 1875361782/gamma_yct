@@ -20,8 +20,8 @@ name_self_declaration:
   defaults:
     division: "上海"
     org_form: "有限公司"
-  # 企业类型（弹层第1步）：内资「有限公司」
-  # 组织形式（弹层第2步）：优先用 payload.name.orgForm；此处仅为缺省回退
+  # 企业类型 / 组织形式：优先用 payload.name.orgForm 映射（见 fill_pipeline._org_form_select_plan）
+  # 下列仅作 orgForm 为空时的缺省回退
   org_type_option: "有限公司"
   org_form_option: "有限公司"
   next_button_text: "下一步"

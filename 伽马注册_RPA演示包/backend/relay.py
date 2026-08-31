@@ -108,11 +108,16 @@ class RelayHub:
         asyncio.run_coroutine_threadsafe(coro, loop)
 
     def push_qr(self, sid: str, qr_b64: str) -> None:
+        # 同步写入，避免事件循环调度失败时轮询一直拿不到二维码
+        job = self._jobs.get(sid)
+        if job and qr_b64:
+            job.qr_b64 = qr_b64
+
         async def _do():
             async with self._lock:
-                job = self._jobs.get(sid)
-                if job:
-                    job.qr_b64 = qr_b64
+                j = self._jobs.get(sid)
+                if j and qr_b64:
+                    j.qr_b64 = qr_b64
             from .protocol import msg_qr_update, msg_step
 
             await self._broadcast(sid, "qr", msg_qr_update(qr_b64))
@@ -123,11 +128,16 @@ class RelayHub:
         self._schedule(_do())
 
     def push_login(self, sid: str, user: str = "法人") -> None:
+        # 同步置位：演示页轮询依赖 logged_in，不能只靠异步广播
+        job = self._jobs.get(sid)
+        if job:
+            job.logged_in = True
+
         async def _do():
             async with self._lock:
-                job = self._jobs.get(sid)
-                if job:
-                    job.logged_in = True
+                j = self._jobs.get(sid)
+                if j:
+                    j.logged_in = True
             from .protocol import msg_login_success, msg_step
 
             await self._broadcast(sid, "step", msg_step("login_success", "扫码成功"))
@@ -204,6 +214,61 @@ class RelayHub:
         job.logged_in = False
         t.start()
         return True
+
+    def cancel_job(self, sid: str) -> dict:
+        """取消填报：置案件 CANCELLED、异步关闭浏览器、标记 job 结束。"""
+        job = self._jobs.get(sid)
+        if job is None:
+            return {"ok": False, "error": "unknown sid"}
+        case_id = (job.case_id or "").strip()
+        cancel_err = None
+        if case_id:
+            try:
+                import sys
+                from pathlib import Path
+
+                # relay.py → backend → 演示包 → 仓库根
+                gamma_root = str(Path(__file__).resolve().parents[2] / "gamma-yct")
+                if gamma_root not in sys.path:
+                    sys.path.insert(0, gamma_root)
+                from apps.api import store as gamma_store
+                from apps.worker.run_fill_session import abort_fill_browser
+
+                gamma_store.request_cancel(case_id)
+
+                def _close_browser() -> None:
+                    try:
+                        abort_fill_browser(case_id)
+                    except Exception:
+                        logger.exception("abort browser failed case=%s", case_id)
+
+                # 不阻塞 HTTP：关窗放后台线程，接口侧还有二次兜底
+                threading.Thread(
+                    target=_close_browser, name=f"abort-{sid}", daemon=True
+                ).start()
+                try:
+                    abort_fill_browser(case_id)
+                except Exception:
+                    pass
+            except Exception as e:
+                logger.exception("cancel fill failed sid=%s", sid)
+                cancel_err = str(e)
+
+        self.mark_finished(sid, False, "用户取消")
+        try:
+            self.push_error(sid, "用户取消填报")
+        except Exception:
+            pass
+        out = {
+            "ok": True,
+            "sid": sid,
+            "caseId": case_id,
+            "browserClosed": "async",
+            "message": "已取消填报",
+        }
+        if cancel_err:
+            out["warn"] = cancel_err
+        return out
 
 
 relay_hub = RelayHub()

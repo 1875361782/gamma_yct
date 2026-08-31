@@ -234,11 +234,69 @@ def worker_busy() -> bool:
         return _worker_busy
 
 
+CANCEL_FLAG = "cancel.flag"
+RESUME_FLAG = "resume.flag"
+
+
+def request_cancel(case_id: str) -> bool:
+    """用户取消填报：写信号 + 置 CANCELLED。"""
+    d = _case_dir(case_id)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / CANCEL_FLAG).write_text(_now(), encoding="utf-8")
+    cancel_case(case_id)
+    return True
+
+
+def consume_cancel(case_id: str) -> bool:
+    path = _case_dir(case_id) / CANCEL_FLAG
+    if not path.exists():
+        return False
+    try:
+        path.unlink()
+    except Exception:
+        pass
+    return True
+
+
+def is_cancelled(case_id: str) -> bool:
+    try:
+        meta = _read_json(_case_dir(case_id) / "meta.json")
+        if str(meta.get("status") or "") == statuses.CANCELLED:
+            return True
+    except Exception:
+        pass
+    return (_case_dir(case_id) / CANCEL_FLAG).exists()
+
+
+def request_resume(case_id: str) -> bool:
+    """人工处理完成后通知 worker 继续（不关浏览器）。"""
+    d = _case_dir(case_id)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / RESUME_FLAG).write_text(_now(), encoding="utf-8")
+    return True
+
+
+def consume_resume(case_id: str) -> bool:
+    path = _case_dir(case_id) / RESUME_FLAG
+    if not path.exists():
+        return False
+    try:
+        path.unlink()
+    except Exception:
+        pass
+    return True
+
+
 def cancel_case(case_id: str) -> dict[str, Any]:
     meta = _read_json(_case_dir(case_id) / "meta.json")
     if meta["status"] in statuses.TERMINAL and meta["status"] != statuses.NEED_HUMAN:
         if meta["status"] == statuses.CANCELLED:
             return get_case(case_id)
-    set_status(case_id, statuses.CANCELLED)
+    set_status(
+        case_id,
+        statuses.CANCELLED,
+        customer_message="已取消填报",
+        reason="用户取消",
+    )
     release_worker(case_id)
     return get_case(case_id)

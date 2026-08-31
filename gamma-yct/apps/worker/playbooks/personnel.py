@@ -1,15 +1,18 @@
 """人员信息 + 受益所有人备案（新增，不改核名/基本信息/出资情况代码）。
 
 出资情况「下一步」之后：
-1. 董事信息：设一名董事；监事信息：规模较小…不设监事
-2. 添加董事 → 复用人员第一条 → 是否担任法定代表人=是 → 确定（不另填其它项）
-3. 添加高级管理人员 → 复用第一条 → 职务=财务负责人 → 产生方式=董事聘任 → 确定
-4. 添加联络员 → 复用第一条 → 代表登录公示系统=是 → 邮箱/住所 → 确定
-5. 下一步 → 填报受益所有人信息
-6. 自行填报 → 下一步
-7. 存在符合下列条件之一的自然人 → 下一步
-8. 填受益所有人（基本信息选吴文彬/证件期限/手机/地址/股权100%/形成日=当日）→ 下一步 → 确定
-9. 已完成，进入下一步
+1. 董事信息：设一名董事；监事：可设立或不设立；设立时仅一名（不设监事会）
+2. 添加董事 → 上传身份证 OCR → 是否担任法定代表人=是 → 确定
+3. 添加监事（如有）→ 职务默认监事 → 上传身份证 OCR → 确定
+4. 财务负责人：有限公司走「添加高级管理人员」；个人独资等为页面内联表单（复用/OCR）
+5. 添加联络员 → 上传身份证 OCR → 代表登录公示系统=是 → 邮箱/住所 → 确定
+6. 下一步 → 填报受益所有人信息
+7. 自行填报 → 下一步
+8. 存在符合下列条件之一的自然人 → 下一步
+9. 填受益所有人（基本信息选吴文彬/证件期限/手机/地址/股权100%/形成日=当日）→ 下一步 → 确定
+10. 已完成，进入下一步
+   注：自然人不走「复用人员信息」；有上传位则身份证识别，无上传位才回退复用。
+   注：股份有限公司必须设立一名监事；其它组织形式可选设立/不设立。
 """
 
 from __future__ import annotations
@@ -32,6 +35,142 @@ DEFAULT_ID_VALID = "2032-06-24"
 DEFAULT_NAME = "吴文彬"
 DEFAULT_ID_FRONT = Path(r"C:\Users\Lenovo\Desktop\身份证正面.jpg")
 DEFAULT_ID_BACK = Path(r"C:\Users\Lenovo\Desktop\身份证反面.jpg")
+
+
+def _parse_cn_region_address(detail: str) -> dict[str, str]:
+    """从中文地址拆出国家/省/市/区 + 详细地址（受益人经常居住地用）。"""
+    text = re.sub(r"\s+", "", (detail or "").strip())
+    out = {
+        "country": "中国",
+        "province": "",
+        "city": "",
+        "district": "",
+        "detail": text,
+    }
+    if not text:
+        return out
+    # 直辖市
+    m = re.match(r"^(北京市|天津市|上海市|重庆市)", text)
+    if m:
+        out["province"] = m.group(1)
+        out["city"] = m.group(1)
+        rest = text[m.end() :]
+        md = re.match(r"^([\u4e00-\u9fff]{1,12}?(?:区|县))", rest)
+        if md:
+            out["district"] = md.group(1)
+            rest = rest[md.end() :]
+        out["detail"] = rest or text
+        return out
+    # 省 + 市 + 区县
+    m = re.match(
+        r"^([\u4e00-\u9fff]{2,12}?(?:省|自治区))"
+        r"([\u4e00-\u9fff]{1,12}?市)?"
+        r"([\u4e00-\u9fff]{1,12}?(?:区|县|旗))?"
+        r"(.*)$",
+        text,
+    )
+    if m:
+        out["province"] = m.group(1) or ""
+        out["city"] = m.group(2) or ""
+        out["district"] = m.group(3) or ""
+        out["detail"] = (m.group(4) or "").strip() or text
+        return out
+    return out
+
+
+def _addr_option_variants(name: str) -> tuple[str, ...]:
+    """下拉匹配用：全称 + 去后缀简称。"""
+    name = (name or "").strip()
+    if not name:
+        return ()
+    variants = [name]
+    for suf in ("省", "市", "区", "县", "自治区", "壮族自治区", "回族自治区", "维吾尔自治区"):
+        if name.endswith(suf) and len(name) > len(suf):
+            short = name[: -len(suf)]
+            if short and short not in variants:
+                variants.append(short)
+            break
+    return tuple(variants)
+
+
+def _id_card_region_parts(id_no: str) -> dict[str, str]:
+    """按身份证号前 6 位推断省/市/区（身份证住址级联兜底）。"""
+    code = re.sub(r"\D", "", id_no or "")[:6]
+    # 常用演示/已知人员
+    table = {
+        "520402": ("贵州省", "安顺市", "西秀区"),
+        "520400": ("贵州省", "安顺市", "西秀区"),
+        "370781": ("山东省", "潍坊市", "青州市"),
+        "370700": ("山东省", "潍坊市", ""),
+    }
+    prov = city = dist = ""
+    if code in table:
+        prov, city, dist = table[code]
+    elif code[:4] + "00" in table:
+        prov, city, dist = table[code[:4] + "00"]
+    elif code[:2] == "52":
+        prov, city, dist = "贵州省", "安顺市", "西秀区"
+    elif code[:2] == "37":
+        prov, city, dist = "山东省", "潍坊市", ""
+    elif code[:2] == "31":
+        prov, city, dist = "上海市", "上海市", ""
+    return {
+        "country": "中国",
+        "province": prov,
+        "city": city,
+        "district": dist,
+        "detail": "",
+    }
+
+
+def _resolve_bo_user_address(
+    payload: dict[str, Any], bo: dict[str, Any], *, fallback_name: str = ""
+) -> tuple[str, dict[str, str]]:
+    """受益人经常居住地：用原型「最终受益人 → 住所*」用户填写值。
+
+    对应 payload.beneficialOwner.address（uboAddress）。
+    解析国家/省/市/区；国家默认中国。不用 OCR、不用企业住所。
+    """
+    bo_name = str(bo.get("name") or fallback_name or "").strip()
+    id_no = str(bo.get("idNumber") or "").strip()
+    addr = str((bo or {}).get("address") or "").strip()
+    personnel = payload.get("personnel") or {}
+
+    # 空时仅回退同名联络员住所（旧案件兼容）
+    if not addr and bo_name:
+        liaison = personnel.get("liaisonOfficer") or {}
+        if str(liaison.get("name") or "").strip() == bo_name:
+            addr = str(liaison.get("address") or "").strip()
+
+    if not id_no and bo_name:
+        for inv in payload.get("investors") or []:
+            if isinstance(inv, dict) and str(inv.get("name") or "").strip() == bo_name:
+                id_no = str(inv.get("idNumber") or "").strip()
+                break
+        if not id_no:
+            lr = personnel.get("legalRepresentative") or {}
+            if str(lr.get("name") or "").strip() == bo_name:
+                id_no = str(lr.get("idNumber") or "").strip()
+
+    if addr:
+        parts = _parse_cn_region_address(addr)
+        parts["country"] = "中国"
+        if (not parts.get("province") or not parts.get("city")) and id_no:
+            region = _id_card_region_parts(id_no)
+            for k in ("province", "city", "district"):
+                if not parts.get(k) and region.get(k):
+                    parts[k] = region[k]
+        if not parts.get("detail"):
+            parts["detail"] = addr
+        return addr, parts
+
+    region = _id_card_region_parts(id_no)
+    region["country"] = "中国"
+    assembled = "".join(
+        x for x in (region.get("province"), region.get("city"), region.get("district")) if x
+    )
+    region["detail"] = assembled
+    return assembled, region
 
 
 def _shot(page: Page, case_id: str, name: str) -> None:
@@ -360,13 +499,52 @@ def _fix_id_upload(
     return out
 
 
+def _natural_via_id_ocr(
+    dialog,
+    page: Page,
+    *,
+    case_id: str = "",
+    payload: dict | None = None,
+    person_name: str = "",
+) -> dict[str, Any]:
+    """自然人弹窗：优先上传身份证等 OCR；无上传控件时才回退复用人员。"""
+    info: dict[str, Any] = {"via": ""}
+    n_files = 0
+    try:
+        n_files = dialog.locator("input[type='file']").count()
+    except Exception:
+        n_files = 0
+    if n_files >= 1:
+        info["via"] = "id-upload"
+        info["idUpload"] = _fix_id_upload(
+            dialog,
+            page,
+            force=True,
+            case_id=case_id,
+            payload=payload,
+            person_name=person_name,
+        )
+        if not (info.get("idUpload") or {}).get("ocr"):
+            info["ocr"] = _wait_ocr_idle(dialog, page, timeout_ms=30000)
+        else:
+            info["ocr"] = (info.get("idUpload") or {}).get("ocr")
+        return info
+    # 无上传位（部分角色弹窗只允许选已有投资人）
+    info["via"] = "reuse-fallback"
+    info["reuse"] = _reuse_first_person(
+        page, host_dialog=dialog, person_name=person_name
+    )
+    page.wait_for_timeout(800)
+    info["ocr"] = _wait_ocr_idle(dialog, page, timeout_ms=15000)
+    return info
+
+
 def _prepare_director_dialog(dlg, page: Page, cfg: dict[str, Any]) -> dict[str, Any]:
-    """董事弹窗提交前必填项：法定代表人=是、证件图。户籍按计划不填。"""
+    """董事弹窗提交前必填项：法定代表人=是、证件图。"""
     info: dict[str, Any] = {}
     info["legalRep"] = _set_yes_no(dlg, "法定代表人", True) or _set_yes_no(
         dlg, "是否由董事担任", True
     )
-    info["hukou"] = "skipped"
     # 职务保持默认「董事（代表公司执行事务的董事）」即可
     # 产生方式若空则选股东委派
     try:
@@ -425,6 +603,332 @@ def _fill_by_label(scope: Page | Frame, label: str, value: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def _person_mobile(
+    payload: dict | None, person_name: str, cfg: dict[str, Any] | None = None
+) -> str:
+    """按姓名从投资人取手机号，否则用法人/默认。"""
+    name = (person_name or "").strip()
+    for inv in (payload or {}).get("investors") or []:
+        if not isinstance(inv, dict):
+            continue
+        if str(inv.get("name") or "").strip() != name:
+            continue
+        m = str(inv.get("mobile") or "").strip()
+        if m:
+            return m
+    cfg = cfg or {}
+    return str(cfg.get("mobile") or "").strip() or DEFAULT_MOBILE
+
+
+def _select_nationality_china(dialog, page: Page) -> bool:
+    """国别（地区）默认中国。"""
+    labels = ("国别（地区）", "国别(地区)", "国别", "国家/地区", "国家")
+    options = ("中国", "中华人民共和国")
+    for lab in labels:
+        for opt in options:
+            if _select_dropdown(dialog, lab, opt):
+                return True
+            if _select_inline_option(page, dialog, lab, opt):
+                return True
+    return False
+
+
+def _exec_partner_form_item(dialog):
+    """定位弹窗顶部短表单项「执行事务合伙人」（避免匹配整页大容器）。"""
+    try:
+        labels = dialog.locator(".el-form-item__label").filter(
+            has_text=re.compile(r"执行事务合伙人")
+        )
+        n = min(labels.count(), 8)
+        for i in range(n):
+            lab = labels.nth(i)
+            if not _visible(lab, timeout=250):
+                continue
+            item = lab.locator("xpath=ancestor::div[contains(@class,'el-form-item')][1]")
+            if not _visible(item, timeout=250):
+                continue
+            try:
+                box = item.bounding_box()
+                if box and box.get("height", 0) > 140:
+                    continue
+            except Exception:
+                pass
+            return item
+    except Exception:
+        pass
+    item = dialog.locator(".el-form-item").filter(
+        has_text=re.compile(r"执行事务合伙人")
+    ).first
+    if _visible(item, timeout=400):
+        return item
+    return None
+
+
+def _select_exec_partner_person(dialog, page: Page, person_name: str) -> bool:
+    """「执行事务合伙人」下拉选指定合伙人姓名（非「是/否」）。"""
+    person_name = (person_name or "").strip()
+    if not person_name:
+        return False
+
+    def _read_val(item) -> str:
+        try:
+            inp = item.locator(
+                ".el-select .el-input__inner, input.el-input__inner, input"
+            ).first
+            if _visible(inp, timeout=250):
+                return (inp.input_value(timeout=300) or "").strip()
+        except Exception:
+            pass
+        return ""
+
+    def _pick_from_open() -> bool:
+        for root in _all_scopes(page):
+            try:
+                opts = root.locator(
+                    ".el-select-dropdown:visible li.el-select-dropdown__item, "
+                    ".el-select-dropdown:visible li, "
+                    ".el-popper:visible li.el-select-dropdown__item, "
+                    ".el-popper:visible li"
+                )
+                n = min(opts.count(), 40)
+            except Exception:
+                continue
+            # 精确匹配姓名
+            for i in range(n):
+                o = opts.nth(i)
+                try:
+                    t = (o.inner_text(timeout=200) or "").strip()
+                except Exception:
+                    continue
+                if t == person_name and _visible(o, timeout=250):
+                    try:
+                        o.click(timeout=2500)
+                        page.wait_for_timeout(350)
+                        return True
+                    except Exception:
+                        continue
+            # 包含姓名（选项可能带证件号等后缀）
+            for i in range(n):
+                o = opts.nth(i)
+                try:
+                    t = (o.inner_text(timeout=200) or "").strip()
+                except Exception:
+                    continue
+                if (
+                    person_name in t
+                    and t not in ("请选择", "是", "否")
+                    and _visible(o, timeout=250)
+                ):
+                    try:
+                        o.click(timeout=2500)
+                        page.wait_for_timeout(350)
+                        return True
+                    except Exception:
+                        continue
+        return False
+
+    item = _exec_partner_form_item(dialog)
+    if item is None:
+        # 回退通用下拉
+        if _select_dropdown(dialog, "执行事务合伙人", person_name):
+            return True
+        if _select_inline_option(page, dialog, "执行事务合伙人", person_name):
+            return True
+        return False
+
+    cur = _read_val(item)
+    if cur and person_name in cur and cur not in ("请选择",):
+        return True
+
+    # 打开下拉
+    opened = False
+    try:
+        trig = item.locator(
+            ".el-select .el-input__inner, .el-select, input.el-input__inner"
+        ).first
+        if _visible(trig, timeout=500):
+            trig.click(timeout=2500)
+            page.wait_for_timeout(450)
+            opened = True
+    except Exception:
+        pass
+    if not opened:
+        try:
+            lab = item.locator(".el-form-item__label").first
+            if _visible(lab, timeout=300):
+                box = lab.bounding_box()
+                if box:
+                    page.mouse.click(
+                        box["x"] + box["width"] + 80,
+                        box["y"] + box["height"] / 2,
+                    )
+                    page.wait_for_timeout(450)
+                    opened = True
+        except Exception:
+            pass
+
+    if opened and _pick_from_open():
+        cur2 = _read_val(item)
+        if cur2 and person_name in cur2:
+            return True
+        # 有的下拉展示后 input 仍短暂为空，再读一次
+        page.wait_for_timeout(400)
+        cur3 = _read_val(item)
+        return bool(cur3 and person_name in cur3)
+
+    # 通用路径再试
+    if _select_dropdown(dialog, "执行事务合伙人", person_name):
+        return True
+    if _select_inline_option(page, dialog, "执行事务合伙人", person_name):
+        return True
+    try:
+        page.keyboard.press("Escape")
+    except Exception:
+        pass
+    return False
+
+
+def _fill_contact_mobile(dialog, mobile: str) -> dict[str, Any]:
+    """填「移动电话」（勿误填「固定电话」），写入后回读校验。"""
+    mobile = (mobile or "").strip()
+    info: dict[str, Any] = {"ok": False, "value": mobile}
+    if not mobile:
+        return info
+
+    def _mobile_item():
+        # 精确：label 文本就是移动电话（排除固定电话）
+        try:
+            items = dialog.locator(".el-form-item")
+            n = min(items.count(), 40)
+            for i in range(n):
+                it = items.nth(i)
+                try:
+                    lab = it.locator(".el-form-item__label, label").first
+                    t = re.sub(r"\s+", "", (lab.inner_text(timeout=200) or "") if _visible(lab, timeout=150) else "")
+                    if not t:
+                        t = re.sub(r"\s+", "", it.inner_text(timeout=200) or "")[:20]
+                    if "移动电话" in t or t == "手机" or t.startswith("手机号"):
+                        if "固定" in t:
+                            continue
+                        return it
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        # 回退：filter 但排除含固定
+        it = dialog.locator(".el-form-item").filter(has_text=re.compile(r"移动电话")).first
+        if _visible(it, timeout=400):
+            try:
+                t = re.sub(r"\s+", "", it.inner_text(timeout=300) or "")
+                if "固定电话" in t and "移动电话" not in t[:12]:
+                    return None
+            except Exception:
+                pass
+            return it
+        return None
+
+    item = _mobile_item()
+    if item is None:
+        # 再试联系方式类（仍避开固定电话）
+        for lab in ("联系方式一", "联系方式", "手机号码", "手机号"):
+            it = dialog.locator(".el-form-item").filter(has_text=re.compile(re.escape(lab))).first
+            if not _visible(it, timeout=300):
+                continue
+            try:
+                t = re.sub(r"\s+", "", it.inner_text(timeout=200) or "")
+                if "固定" in t:
+                    continue
+            except Exception:
+                pass
+            item = it
+            info["label"] = lab
+            break
+    else:
+        info["label"] = "移动电话"
+
+    if item is None:
+        info["error"] = "未找到移动电话表单项"
+        return info
+
+    inp = item.locator(
+        "input.el-input__inner, input:not([type='hidden']):not([type='checkbox']):not([type='radio'])"
+    ).first
+    if not _visible(inp, timeout=500):
+        info["error"] = "移动电话输入框不可见"
+        return info
+
+    try:
+        cur = (inp.input_value(timeout=400) or "").strip()
+        if cur and mobile in cur.replace(" ", ""):
+            info["ok"] = True
+            info["skipped"] = "already"
+            info["readback"] = cur
+            return info
+    except Exception:
+        pass
+
+    for attempt in range(3):
+        try:
+            inp.click(timeout=2000)
+            inp.fill("")
+            inp.fill(mobile, timeout=4000)
+            try:
+                inp.press("Tab")
+            except Exception:
+                pass
+            # JS 兜底写入（Vue 受控）
+            inp.evaluate(
+                """(el, v) => {
+                  const setter = Object.getOwnPropertyDescriptor(
+                    window.HTMLInputElement.prototype, 'value'
+                  )?.set;
+                  el.focus();
+                  if (setter) setter.call(el, v); else el.value = v;
+                  el.dispatchEvent(new InputEvent('input', { bubbles: true, data: v }));
+                  el.dispatchEvent(new Event('change', { bubbles: true }));
+                  try { el.blur(); } catch (e) {}
+                  return el.value;
+                }""",
+                mobile,
+            )
+            page_wait = getattr(dialog, "page", None)
+            if page_wait is None and hasattr(dialog, "evaluate"):
+                try:
+                    # Locator 没有 page 时用短 sleep 替代
+                    import time as _t
+
+                    _t.sleep(0.25)
+                except Exception:
+                    pass
+            else:
+                try:
+                    dialog.page.wait_for_timeout(250)  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+            got = (inp.input_value(timeout=500) or "").strip()
+            info["readback"] = got
+            info["attempt"] = attempt
+            if got and mobile in got.replace(" ", ""):
+                info["ok"] = True
+                return info
+        except Exception as e:
+            info["error"] = str(e)
+    # 最后：js 按精确 label
+    if _js_fill_near(dialog, "移动电话", mobile):
+        try:
+            got = (inp.input_value(timeout=400) or "").strip()
+            info["readback"] = got
+            info["ok"] = bool(got and mobile in got.replace(" ", ""))
+            info["via"] = "js_fill_near"
+            if info["ok"]:
+                return info
+        except Exception:
+            info["ok"] = True
+            info["soft"] = True
+            return info
+    return info
 
 
 def _fill_label_any(page: Page, labels: list[str], value: str) -> bool:
@@ -688,7 +1192,12 @@ def _dialog_still_open(page: Page, *hints: str) -> bool:
 
 def _confirm_until_closed(page: Page, hints: tuple[str, ...], *, retries: int = 5) -> bool:
     """反复点确定直到指定弹窗消失。"""
+    from apps.worker.playbooks.retry_gate import dismiss_system_busy
+
     for i in range(retries):
+        # 系统繁忙可能叠在业务弹窗上：先关掉再点业务确定
+        if dismiss_system_busy(page):
+            page.wait_for_timeout(800)
         dlg, _ = _find_dialog(page, *hints)
         if dlg is None:
             return True
@@ -697,6 +1206,8 @@ def _confirm_until_closed(page: Page, hints: tuple[str, ...], *, retries: int = 
             _wait_ocr_idle(dlg, page, timeout_ms=8000)
         hit = _click_dialog_ok(dlg, page)
         page.wait_for_timeout(1100)
+        if dismiss_system_busy(page):
+            page.wait_for_timeout(800)
         if not _dialog_still_open(page, *hints):
             return True
         if not hit or i >= 1:
@@ -715,6 +1226,8 @@ def _confirm_until_closed(page: Page, hints: tuple[str, ...], *, retries: int = 
                         box["y"] + box["height"] / 2,
                     )
                     page.wait_for_timeout(1000)
+                    if dismiss_system_busy(page):
+                        page.wait_for_timeout(600)
                     if not _dialog_still_open(page, *hints):
                         return True
             except Exception:
@@ -733,8 +1246,12 @@ def _frame_personnel(page: Page, timeout_ms: int = 45000) -> Frame | Page | None
         "添加董事",
         "监事信息",
         "不设监事",
+        "执行事务合伙人",
+        "添加执行事务合伙人",
+        "人员信息",
         "高级管理人员",
         "添加高级管理人员",
+        "财务负责人",
         "登记联络员",
         "添加联络员",
     )
@@ -832,17 +1349,25 @@ def _birth_from_id(id_no: str) -> str:
     return ""
 
 
-def _defaults(payload: dict[str, Any]) -> dict[str, Any]:
+def _defaults(payload: dict[str, Any], case_id: str = "") -> dict[str, Any]:
+    from apps.worker.playbooks.org_fill_profile import profile_for
+
     inv = (payload.get("investors") or [{}])[0]
     personnel = payload.get("personnel") or {}
     lr = personnel.get("legalRepresentative") or {}
-    directors = personnel.get("directors") or []
-    supervisors = personnel.get("supervisors") or []
+    directors = [d for d in (personnel.get("directors") or []) if isinstance(d, dict) and str(d.get("name") or "").strip()]
+    supervisors = [s for s in (personnel.get("supervisors") or []) if isinstance(s, dict) and str(s.get("name") or "").strip()]
     finance = personnel.get("financeOfficer") or {}
     liaison = personnel.get("liaisonOfficer") or {}
     bo = payload.get("beneficialOwner") or {}
     dir0 = directors[0] if directors else {}
     sup0 = supervisors[0] if supervisors else {}
+    profile = profile_for(payload)
+    is_limited_partnership = bool(profile.get("is_limited_partnership"))
+    is_general_partnership = bool(profile.get("is_general_partnership"))
+    is_partnership = bool(profile.get("is_partnership"))
+    is_sole_prop = bool(profile.get("is_sole_prop"))
+    skip_board = bool(profile.get("skip_board"))
 
     id_no = (inv.get("idNumber") or lr.get("idNumber") or "").strip()
     lr_name = (lr.get("name") or inv.get("name") or DEFAULT_NAME).strip()
@@ -855,6 +1380,18 @@ def _defaults(payload: dict[str, Any]) -> dict[str, Any]:
     email = (
         (liaison.get("email") if isinstance(liaison, dict) else None) or DEFAULT_EMAIL
     ).strip()
+
+    # 受益人经常居住地：原型「最终受益人 → 住所*」用户填写值
+    bo_name_early = str(bo.get("name") or lr_name or "").strip()
+    bo_address, bo_parts = _resolve_bo_user_address(
+        payload,
+        bo if isinstance(bo, dict) else {},
+        fallback_name=bo_name_early,
+    )
+    if not bo_address:
+        bo_address = address
+        bo_parts = _parse_cn_region_address(bo_address)
+    bo_parts["country"] = "中国"
 
     try:
         ownership_ratio = float(bo.get("ownershipRatio") or 0)
@@ -872,6 +1409,90 @@ def _defaults(payload: dict[str, Any]) -> dict[str, Any]:
     if not establish_supervisor and supervisors:
         # 有监事名单则视为设立
         establish_supervisor = any(str((s or {}).get("name") or "").strip() for s in supervisors)
+    if profile.get("is_shares"):
+        # 股份有限公司必须设立一名监事
+        establish_supervisor = True
+    if skip_board:
+        establish_supervisor = False
+    # 仅一名监事，不设监事会
+    if establish_supervisor and supervisors:
+        supervisors = supervisors[:1]
+        sup0 = supervisors[0] if supervisors else {}
+    supervisor_board = False
+    employee_supervisor_count = 0
+    # 董事与监事不能同一人（与原型校验一致）
+    dir_names = {
+        str(d.get("name") or "").strip()
+        for d in directors
+        if isinstance(d, dict) and str(d.get("name") or "").strip()
+    }
+    if (dir0.get("name") or "").strip():
+        dir_names.add(str(dir0.get("name") or "").strip())
+    if establish_supervisor and supervisors:
+        sn = str(supervisors[0].get("name") or "").strip()
+        if sn and sn in dir_names and not profile.get("is_shares"):
+            supervisors = []
+            establish_supervisor = False
+            sup0 = {}
+        elif sn and sn in dir_names and profile.get("is_shares"):
+            # 股份公司必须设监事：保留原名单，填报阶段若同名会 NEED_HUMAN
+            pass
+
+    exec_names = [
+        str(x).strip()
+        for x in (personnel.get("executivePartnerNames") or [])
+        if str(x).strip()
+    ]
+    license_names = [
+        str(x).strip()
+        for x in (personnel.get("licenseHolderNames") or [])
+        if str(x).strip()
+    ]
+    if not exec_names:
+        for item in payload.get("investors") or []:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            if not name:
+                continue
+            if is_limited_partnership and str(item.get("liabilityType") or "").strip() == "无限责任":
+                exec_names.append(name)
+            elif is_general_partnership and bool(item.get("isExecutivePartner")):
+                exec_names.append(name)
+            elif (not is_general_partnership) and bool(item.get("isExecutivePartner")):
+                exec_names.append(name)
+    if not license_names:
+        for item in payload.get("investors") or []:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            if not name:
+                continue
+            if is_limited_partnership and str(item.get("liabilityType") or "").strip() == "无限责任":
+                license_names.append(name)
+            elif bool(item.get("isLicenseHolder")):
+                license_names.append(name)
+    # 有限合伙：持照人=执行事务合伙人
+    if is_limited_partnership and exec_names and not license_names:
+        license_names = list(exec_names)
+    # 普通合伙兜底：至少一名执行事务 / 持照人（页面必填）
+    if is_general_partnership:
+        if not exec_names and lr_name:
+            exec_names = [lr_name]
+        if not license_names:
+            license_names = list(exec_names) if exec_names else ([lr_name] if lr_name else [])
+    # 去重保序
+    def _uniq(seq: list[str]) -> list[str]:
+        seen: set[str] = set()
+        out: list[str] = []
+        for x in seq:
+            if x and x not in seen:
+                seen.add(x)
+                out.append(x)
+        return out
+
+    exec_names = _uniq(exec_names)
+    license_names = _uniq(license_names)
 
     return {
         "name": lr_name,
@@ -883,6 +1504,22 @@ def _defaults(payload: dict[str, Any]) -> dict[str, Any]:
         "birth": _birth_from_id(id_no) or "2002-10-31",
         "director_name": (dir0.get("name") or lr_name).strip(),
         "director_mobile": (dir0.get("mobile") or lr_mobile).strip(),
+        "director_list": [
+            {
+                "name": str(d.get("name") or "").strip(),
+                "mobile": str(d.get("mobile") or lr_mobile).strip(),
+                "idNumber": str(d.get("idNumber") or "").strip(),
+            }
+            for d in directors
+        ] or [{"name": (dir0.get("name") or lr_name).strip(), "mobile": lr_mobile, "idNumber": ""}],
+        "supervisor_list": [
+            {
+                "name": str(s.get("name") or "").strip(),
+                "mobile": str(s.get("mobile") or "").strip(),
+                "idNumber": str(s.get("idNumber") or "").strip(),
+            }
+            for s in supervisors
+        ],
         "finance_name": (finance.get("name") or lr_name).strip() if isinstance(finance, dict) else lr_name,
         "finance_mobile": (finance.get("mobile") or lr_mobile).strip()
         if isinstance(finance, dict)
@@ -894,10 +1531,22 @@ def _defaults(payload: dict[str, Any]) -> dict[str, Any]:
         "supervisor_name": (sup0.get("name") or "").strip(),
         "supervisor_mobile": (sup0.get("mobile") or "").strip(),
         "establish_supervisor": establish_supervisor,
+        "supervisor_board": supervisor_board,
+        "supervisor_count": len(supervisors),
+        "employee_supervisor_count": employee_supervisor_count,
         "bo_name": (bo.get("name") or lr_name).strip(),
         "bo_mobile": (bo.get("mobile") or lr_mobile).strip(),
-        "bo_address": (bo.get("address") or address).strip(),
+        "bo_address": bo_address,
+        "bo_addr_parts": bo_parts,
         "ownership_ratio": ratio_str,
+        "is_partnership": is_partnership,
+        "is_limited_partnership": is_limited_partnership,
+        "is_general_partnership": is_general_partnership,
+        "is_sole_prop": is_sole_prop,
+        "is_shares": bool(profile.get("is_shares")),
+        "skip_board": skip_board,
+        "executive_partner_names": exec_names,
+        "license_holder_names": license_names,
     }
 
 
@@ -1242,10 +1891,37 @@ def _section_quota_done(frame, hint: str) -> bool:
         if "执行事务的董事" in txt or ("是否法定代表人" in txt and "修改" in txt):
             return True
         return False
+    if hint in ("执行事务", "执行事务合伙人"):
+        if re.search(r"执行事务合伙人\s*[\(（]\s*[1-9]", txt):
+            return True
+        # 表内已有姓名行（非「暂无数据」）；勿因页面其它区块的「修改」误判
+        try:
+            blocks = frame.locator("div, section, article").filter(
+                has_text=re.compile(r"执行事务合伙人")
+            )
+            n = min(blocks.count(), 8)
+            for i in range(n):
+                block = blocks.nth(i)
+                if not _visible(block, timeout=300):
+                    continue
+                box = block.bounding_box()
+                if box and box.get("height", 0) > 900:
+                    continue
+                bt = (block.inner_text(timeout=500) or "").replace(" ", "")
+                if "暂无数据" in bt:
+                    return False
+                if "修改" in bt or "查看" in bt or "删除" in bt:
+                    return True
+        except Exception:
+            pass
+        return False
     if hint == "高管":
         if "财务负责人：1" in compact or "财务负责人:1" in compact:
             return True
         if "财务负责人" in txt and "修改" in txt and "查看" in txt:
+            return True
+        # 个人独资等：内联财务负责人表单，姓名已有值即视为完成
+        if _inline_finance_name_filled(frame):
             return True
         return False
     if hint == "联络员":
@@ -1255,6 +1931,401 @@ def _section_quota_done(frame, hint: str) -> bool:
             return True
         return False
     return False
+
+
+def _has_add_manager_button(frame) -> bool:
+    try:
+        for t in ("添加高级管理人员", "+ 添加高级管理人员"):
+            if frame.get_by_text(t, exact=False).count() > 0:
+                loc = frame.get_by_text(t, exact=False).first
+                if _visible(loc, timeout=400):
+                    return True
+    except Exception:
+        pass
+    return False
+
+
+def _has_inline_finance(frame) -> bool:
+    """个人独资等：页面内嵌「财务负责人」表单（无添加高管按钮）。"""
+    try:
+        txt = _body(frame).inner_text(timeout=800) or ""
+    except Exception:
+        txt = ""
+    if "财务负责人" not in txt:
+        return False
+    if "添加高级管理人员" in txt and _has_add_manager_button(frame):
+        return False
+    return "上传证件" in txt or "复用人员信息" in txt or "请上传身份证" in txt
+
+
+def _finance_form_scope(frame):
+    """定位财务负责人表单区域，避免误填联络员区。"""
+    try:
+        cand = frame.locator("div, section, form").filter(
+            has_text=re.compile(r"财务负责人")
+        ).filter(has_text=re.compile(r"复用人员信息|上传证件|请上传身份证"))
+        n = min(cand.count(), 8)
+        best = None
+        best_len = 10**9
+        for i in range(n):
+            el = cand.nth(i)
+            if not _visible(el, timeout=250):
+                continue
+            try:
+                t = el.inner_text(timeout=400) or ""
+            except Exception:
+                continue
+            if "登记联络员" in t and t.find("财务负责人") > t.find("登记联络员"):
+                continue
+            if len(t) < best_len and len(t) > 20:
+                best = el
+                best_len = len(t)
+        if best is not None:
+            return best
+    except Exception:
+        pass
+    return frame
+
+
+def _inline_finance_name_filled(scope) -> bool:
+    try:
+        form = _finance_form_scope(scope) if scope is not None else None
+        if form is None:
+            return False
+        item = form.locator(".el-form-item").filter(has_text=re.compile(r"姓名")).first
+        if not _visible(item, timeout=400):
+            return False
+        inp = item.locator("input.el-input__inner, input:not([type='hidden'])").first
+        if not _visible(inp, timeout=300):
+            return False
+        val = (inp.input_value(timeout=500) or "").strip()
+        return bool(val)
+    except Exception:
+        return False
+
+
+def _fill_inline_finance_officer(
+    page: Page,
+    frame,
+    cfg: dict[str, Any],
+    case_id: str,
+    payload: dict | None = None,
+) -> dict[str, Any]:
+    """个人独资等：在页面内联「财务负责人」区填写（非高管弹窗）。"""
+    info: dict[str, Any] = {"via": "inline", "ok": False}
+    try:
+        loc = frame.get_by_text("财务负责人", exact=False).first
+        if _visible(loc, timeout=800):
+            loc.scroll_into_view_if_needed(timeout=2000)
+    except Exception:
+        try:
+            frame.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+        except Exception:
+            page.mouse.wheel(0, 900)
+    page.wait_for_timeout(400)
+    form = _finance_form_scope(frame)
+    info["scoped"] = form is not frame
+    person = str(cfg.get("finance_name") or cfg.get("name") or "").strip()
+    mobile = str(cfg.get("finance_mobile") or cfg.get("mobile") or DEFAULT_MOBILE).strip()
+    address = str(cfg.get("address") or "").strip()
+
+    # 1) 优先复用人员（投资人已入表时常可直接选）
+    info["reuse"] = _reuse_first_person(page, host_dialog=form, person_name=person)
+    page.wait_for_timeout(700)
+    if not _inline_finance_name_filled(form):
+        # 2) 身份证 OCR
+        info["person"] = _natural_via_id_ocr(
+            form,
+            page,
+            case_id=case_id,
+            payload=payload,
+            person_name=person,
+        )
+        page.wait_for_timeout(600)
+    else:
+        info["reuseFilled"] = True
+
+    # 3) 补必填：证件类型 / 姓名 / 电话 / 住所 / 证件号码
+    if person and not _inline_finance_name_filled(form):
+        info["name"] = _fill_by_label(form, "姓名", person)
+    info["idType"] = _select_dropdown(form, "证件类型", "中华人民共和国居民身份证")
+    if not info["idType"]:
+        info["idType"] = _select_dropdown(form, "证件类型", "身份证")
+    id_no = str(cfg.get("id_number") or cfg.get("idNumber") or "").strip()
+    if id_no:
+        info["idNo"] = _fill_by_label(form, "证件号码", id_no)
+    info["mobile"] = _fill_contact_mobile(form, mobile)
+    if not (info.get("mobile") or {}).get("ok"):
+        info["mobile2"] = _fill_by_label(form, "移动电话", mobile)
+    if address:
+        info["address"] = _fill_by_label(form, "住所", address) or _js_fill_near(
+            form, "住所", address
+        )
+    page.wait_for_timeout(300)
+    info["ok"] = _inline_finance_name_filled(form)
+    if not info["ok"]:
+        # 姓名仍空则再强填一次
+        if person:
+            info["nameRetry"] = _fill_by_label(form, "姓名", person) or _js_fill_near(
+                form, "姓名", person
+            )
+        info["ok"] = _inline_finance_name_filled(form) or bool(info.get("reuse"))
+    _shot(page, case_id, "personnel-after-manager")
+    return info
+
+
+def _click_section_add(
+    frame,
+    page: Page,
+    *,
+    section_keys: tuple[str, ...],
+    btn_texts: list[str],
+) -> bool:
+    """在指定区块内点「+ 增加 >> / 添加…」（避免点到其它区块同名按钮）。"""
+    scopes: list[Any] = [frame, page]
+    for scope in scopes:
+        for key in section_keys:
+            try:
+                blocks = scope.locator("div, section, article").filter(has_text=key)
+                n = min(blocks.count(), 12)
+            except Exception:
+                continue
+            for i in range(n):
+                block = blocks.nth(i)
+                try:
+                    if not _visible(block, timeout=300):
+                        continue
+                    # 区块过大则跳过（整页容器）
+                    box = block.bounding_box()
+                    if box and box.get("height", 0) > 900:
+                        continue
+                except Exception:
+                    continue
+                for t in btn_texts:
+                    try:
+                        btn = block.get_by_text(t, exact=False).first
+                        if not _visible(btn, timeout=400):
+                            continue
+                        btn.scroll_into_view_if_needed(timeout=2000)
+                        btn.click(timeout=3000)
+                        return True
+                    except Exception:
+                        continue
+                # 按钮可能是 el-button，文案含增加
+                try:
+                    btn2 = block.locator("button, .el-button, a").filter(
+                        has_text=re.compile(r"增加|添加")
+                    ).first
+                    if _visible(btn2, timeout=400):
+                        btn2.click(timeout=3000)
+                        return True
+                except Exception:
+                    pass
+    return _click_text(frame, btn_texts, exact=False) or _click_text_any(
+        page, btn_texts, exact=False
+    )
+
+
+def _select_page_license_holder(frame, page: Page, names: list[str]) -> bool:
+    """人员页底部必填：下拉「电子营业执照持照人」。"""
+    for name in names:
+        if not name:
+            continue
+        if _select_dropdown(frame, "电子营业执照持照人", name):
+            return True
+        if _select_dropdown(page, "电子营业执照持照人", name):
+            return True
+        # 占位符入口
+        for scope in (frame, page):
+            try:
+                ph = scope.get_by_placeholder("请选择电子营业执照持照人", exact=False).first
+                if not _visible(ph, timeout=400):
+                    continue
+                ph.click(timeout=2500)
+                page.wait_for_timeout(350)
+                for root in _all_scopes(page):
+                    opt = root.locator(
+                        ".el-select-dropdown:visible li, .el-popper:visible li"
+                    ).filter(has_text=re.compile(rf"^\s*{re.escape(name)}\s*$")).first
+                    if not _visible(opt, timeout=400):
+                        opt = root.get_by_text(name, exact=True).first
+                    if _visible(opt, timeout=400):
+                        opt.click(timeout=2500)
+                        page.wait_for_timeout(300)
+                        return True
+                page.keyboard.press("Escape")
+            except Exception:
+                continue
+    return False
+
+
+def _fill_executive_partners(
+    page: Page, frame, cfg: dict[str, Any], case_id: str, payload: dict | None = None
+) -> dict[str, Any]:
+    """合伙企业：填写执行事务合伙人（委派代表）；并选择页面持照人下拉。"""
+    info: dict[str, Any] = {"ok": False, "added": []}
+    names = [str(x).strip() for x in (cfg.get("executive_partner_names") or []) if str(x).strip()]
+    license_names = [
+        str(x).strip() for x in (cfg.get("license_holder_names") or []) if str(x).strip()
+    ]
+    if not names:
+        fallback = (cfg.get("name") or "").strip()
+        if fallback:
+            names = [fallback]
+    if not license_names:
+        license_names = list(names)
+    info["names"] = names
+    info["licenseNames"] = license_names
+    if _section_quota_done(frame, "执行事务合伙人"):
+        info["licenseSelect"] = _select_page_license_holder(frame, page, license_names)
+        info["ok"] = bool(info.get("licenseSelect"))
+        info["skipped"] = "already-filled"
+        if not info["ok"]:
+            info["error"] = "电子营业执照持照人未选择"
+        return info
+
+    add_btns = [
+        "+ 增加 >>",
+        "增加 >>",
+        "+ 增加",
+        "增加",
+        "+ 添加执行事务合伙人 >>",
+        "添加执行事务合伙人 >>",
+        "+ 添加执行事务合伙人",
+        "添加执行事务合伙人",
+        "+ 添加委派代表",
+        "添加委派代表",
+    ]
+    section_keys = (
+        "执行事务合伙人（委派代表）",
+        "执行事务合伙人(委派代表)",
+        "执行事务合伙人 (委派代表)",
+        "执行事务合伙人",
+    )
+
+    for idx, person in enumerate(names):
+        item: dict[str, Any] = {"name": person}
+        try:
+            loc = frame.get_by_text("执行事务合伙人", exact=False).first
+            if _visible(loc, timeout=600):
+                loc.scroll_into_view_if_needed(timeout=2000)
+        except Exception:
+            pass
+        page.wait_for_timeout(300)
+        clicked = _click_section_add(
+            frame,
+            page,
+            section_keys=section_keys,
+            btn_texts=add_btns,
+        )
+        item["addClick"] = clicked
+        if not clicked:
+            item["error"] = "未点到增加执行事务合伙人"
+            info["added"].append(item)
+            continue
+        page.wait_for_timeout(900)
+        dlg, _ = _find_dialog(page, "执行事务合伙人")
+        if dlg is None:
+            dlg, _ = _find_dialog(page, "委派代表")
+        if dlg is None:
+            dlg, _ = _find_dialog(page, "新增")
+        if dlg is None:
+            dlg, _ = _find_dialog(page, "增加")
+        if dlg is None:
+            item["error"] = "dialog-missing"
+            info["added"].append(item)
+            _shot(page, case_id, f"personnel-exec-dialog-missing-{idx}")
+            continue
+        # 1) 先下拉选人（选项为合伙人姓名，不是「是」）
+        item["select"] = _select_exec_partner_person(dlg, page, person)
+        page.wait_for_timeout(400)
+        # 2) 再证件 OCR
+        item["person"] = _natural_via_id_ocr(
+            dlg,
+            page,
+            case_id=case_id,
+            payload=payload,
+            person_name=person,
+        )
+        page.wait_for_timeout(600)
+        # OCR 可能冲掉下拉：再选一次人
+        item["selectAfterOcr"] = _select_exec_partner_person(dlg, page, person)
+        # 3) OCR 后填国别（中国）+ 移动电话
+        item["country"] = _select_nationality_china(dlg, page)
+        mobile = _person_mobile(payload, person, cfg)
+        item["mobile"] = _fill_contact_mobile(dlg, mobile)
+        if not (item.get("mobile") or {}).get("ok"):
+            page.wait_for_timeout(300)
+            item["mobileRetry"] = _fill_contact_mobile(dlg, mobile)
+        if person in set(license_names) or (
+            cfg.get("is_limited_partnership") and person in set(names)
+        ):
+            item["licenseHolder"] = (
+                _set_yes_no(dlg, "电子营业执照持照人", True)
+                or _set_yes_no(dlg, "持照人", True)
+                or _set_yes_no(dlg, "是否电子营业执照持照人", True)
+            )
+        # 确定前再确认选人 + 电话
+        if not item.get("country"):
+            item["country"] = _select_nationality_china(dlg, page)
+        item["selectBeforeConfirm"] = _select_exec_partner_person(dlg, page, person)
+        item["mobileBeforeConfirm"] = _fill_contact_mobile(dlg, mobile)
+        _shot(page, case_id, f"personnel-exec-partner-{idx}")
+        # 4) 点确定关窗
+        item["confirm"] = _confirm_until_closed(
+            page, ("新增", "执行事务合伙人"), retries=6
+        )
+        if not item["confirm"] and _dialog_still_open(page, "新增", "执行事务合伙人"):
+            dlg2, _ = _find_dialog(page, "新增", "执行事务合伙人")
+            if dlg2 is None:
+                dlg2, _ = _find_dialog(page, "新增")
+            if dlg2 is not None:
+                item["selectRetry"] = _select_exec_partner_person(dlg2, page, person)
+                _select_nationality_china(dlg2, page)
+                item["mobileRetry2"] = _fill_contact_mobile(dlg2, mobile)
+                page.wait_for_timeout(300)
+                _shot(page, case_id, f"personnel-exec-before-confirm-retry-{idx}")
+                item["confirm"] = _confirm_until_closed(
+                    page, ("新增", "执行事务合伙人"), retries=5
+                )
+                if not item["confirm"]:
+                    item["confirm"] = _confirm_until_closed(page, ("新增",), retries=3)
+        if not (
+            item.get("select")
+            or item.get("selectAfterOcr")
+            or item.get("selectBeforeConfirm")
+            or item.get("selectRetry")
+        ):
+            item["error"] = item.get("error") or "执行事务合伙人下拉未选中"
+        info["added"].append(item)
+        page.wait_for_timeout(500)
+
+    # 页面必填下拉：电子营业执照持照人
+    info["licenseSelect"] = _select_page_license_holder(frame, page, license_names)
+    _shot(page, case_id, "personnel-after-exec-partners")
+
+    added_ok = any(bool(x.get("confirm")) for x in info["added"])
+    already = bool(info.get("skipped"))
+    # 表内已有数据也算成功
+    table_ok = False
+    try:
+        body = _body(frame).inner_text(timeout=800) or ""
+        if "暂无数据" not in body or any(n in body for n in names):
+            if any(n in body for n in names):
+                table_ok = True
+    except Exception:
+        pass
+    info["ok"] = bool(
+        (added_ok or already or table_ok) and (info.get("licenseSelect") or already)
+    )
+    if not info["ok"]:
+        errs = []
+        if not (added_ok or already or table_ok):
+            errs.append("执行事务合伙人未添加")
+        if not info.get("licenseSelect"):
+            errs.append("电子营业执照持照人未选择")
+        info["error"] = "；".join(errs) or "执行事务合伙人未完成"
+    return info
 
 
 def _bo_prompt_open(page: Page) -> bool:
@@ -1427,7 +2498,19 @@ def _click_bo_entry(page: Page) -> dict[str, Any]:
     """图5：点「未完成，填报受益所有人信息」/「填报受益所有人信息」，等到图6「自行填报」。"""
     info: dict[str, Any] = {"clicked": False, "ready": False}
     before_pages = len(_all_pages(page))
+    # 已到办理方式：受益人环节已过
+    if _on_opening_process_page(page):
+        info["ready"] = True
+        info["alreadyOnPage"] = True
+        info["alreadyOnOpening"] = True
+        info["page"] = page
+        return info
     for _ in range(20):
+        if _on_opening_process_page(page):
+            info["ready"] = True
+            info["alreadyOnOpening"] = True
+            info["page"] = page
+            return info
         dlg, _ = _find_dialog(page, "提示")
         if dlg is None:
             dlg, _ = _find_dialog(page, "受益所有人")
@@ -2201,8 +3284,11 @@ def _js_wait_select_options(scope, n: int, *, min_opts: int = 2, timeout_ms: int
     return last
 
 
-def _fill_bo_addr_cascade(scope, page: Page, result: dict[str, Any]) -> dict[str, bool]:
-    """地址四级联：固定用页面后 4 个 select（国家/省/市/县）。"""
+def _fill_bo_addr_cascade(
+    scope, page: Page, result: dict[str, Any], parts: dict[str, str] | None = None
+) -> dict[str, bool]:
+    """地址四级联：国家/省/市/县，按实际地址 parts 选择（不再写死贵州）。"""
+    parts = parts or {}
     probe = _js_probe_selects(scope)
     total = int(probe.get("selectCount") or 0)
     # 常见布局：前 4 个是投资人/性别/国籍/证件类型，后 4 个是地址
@@ -2211,15 +3297,32 @@ def _fill_bo_addr_cascade(scope, page: Page, result: dict[str, Any]) -> dict[str
         start = 4
     result["boAddrStart"] = start
     result["boAddrProbe0"] = probe
+    result["boAddrPartsUsed"] = dict(parts)
+
+    country = (parts.get("country") or "中国").strip() or "中国"
+    province = (parts.get("province") or "").strip()
+    city = (parts.get("city") or "").strip()
+    district = (parts.get("district") or "").strip()
+    if not province:
+        # 无解析结果时不回落上海企业住所；保留空让调用方感知失败
+        result["boAddrMissingRegion"] = True
+        return {"country": False, "province": False, "city": False, "district": False}
+
     pairs = (
-        (("中国", "中华人民共和国"), "country"),
-        (("贵州省", "贵州"), "province"),
-        (("安顺市", "安顺"), "city"),
-        (("西秀区", "西秀"), "district"),
+        (_addr_option_variants(country) + ("中华人民共和国", "中国"), "country"),
+        (_addr_option_variants(province), "province"),
+        (_addr_option_variants(city) or _addr_option_variants(province), "city"),
+        (_addr_option_variants(district), "district"),
     )
     addr: dict[str, bool] = {}
     picks: dict[str, Any] = {}
+    hints = ("国家/地区", "省、自治区", "市", "县")
     for i, (opts, key) in enumerate(pairs):
+        opts = tuple(o for o in opts if o)
+        if not opts:
+            addr[key] = False
+            picks[key] = {"ok": False, "reason": "empty-option"}
+            continue
         idx = start + i
         if i > 0:
             waited = _js_wait_select_options(scope, idx, min_opts=2, timeout_ms=10000)
@@ -2230,9 +3333,8 @@ def _fill_bo_addr_cascade(scope, page: Page, result: dict[str, Any]) -> dict[str
             if info.get("ok"):
                 break
         if not info.get("ok"):
-            # 兜底：按文案 hint 再试
             for opt in opts:
-                info = _pick_bo_dropdown(scope, page, opt, hint=("国家/地区", "省", "市", "县")[i])
+                info = _pick_bo_dropdown(scope, page, opt, hint=hints[i])
                 if info.get("ok"):
                     break
         picks[key] = info
@@ -2446,16 +3548,45 @@ def _dropdown_shows(scope, label: str, expect: str) -> bool:
         return False
 
 
-def _fill_bo_form(page: Page, form_scope, cfg: dict[str, Any], result: dict[str, Any]) -> None:
-    """受益所有人表单：选投资人，再填期限/手机/地址/股权/当日。填后校验真实值。"""
+def _fill_bo_form(
+    page: Page,
+    form_scope,
+    cfg: dict[str, Any],
+    result: dict[str, Any],
+    *,
+    case_id: str = "",
+) -> None:
+    """受益所有人表单：选投资人，再填期限/手机/地址/股权/当日。填后校验真实值。
+
+    经常居住地：用户填写的最终受益人「住所*」→ 解析省/市/区，国家默认中国。
+    """
     person = (cfg.get("bo_name") or cfg.get("name") or DEFAULT_NAME).strip()
     mobile = cfg.get("bo_mobile") or cfg.get("mobile") or DEFAULT_MOBILE
-    detail = cfg.get("bo_address") or cfg.get("address") or DEFAULT_ADDRESS
+    parts = dict(cfg.get("bo_addr_parts") or {})
+    detail = (
+        (parts.get("detail") or "").strip()
+        or (cfg.get("bo_address") or "").strip()
+        or (cfg.get("address") or "").strip()
+    )
+    # 详细地址：若 parts.detail 太短则用完整 bo_address
+    full = (cfg.get("bo_address") or "").strip()
+    if full and (not detail or detail in (parts.get("district") or "")):
+        detail = full
+    if not parts.get("province") and full:
+        parts = _parse_cn_region_address(full)
+        if (parts.get("detail") or "").strip():
+            detail = parts["detail"]
+    parts["country"] = "中国"
     ratio = str(cfg.get("ownership_ratio") or "100").strip() or "100"
     pg = _page_of(form_scope)
     _dismiss_overlays(pg)
     result["boDom"] = _js_probe_selects(form_scope)
     result["ownershipRatioExpected"] = ratio
+    result["boAddressSource"] = "user-ubo-address"
+    result["boAddressExpected"] = {
+        "parts": parts,
+        "detail": detail,
+    }
 
     # 1) 投资人下拉选姓名（备案页是原生/layui select）
     pick_info = _pick_bo_dropdown(form_scope, pg, person, hint="投资人信息")
@@ -2508,13 +3639,20 @@ def _fill_bo_form(page: Page, form_scope, cfg: dict[str, Any], result: dict[str,
     except Exception:
         pass
     _dismiss_overlays(pg)
-    addr = _fill_bo_addr_cascade(form_scope, pg, result)
+    addr = _fill_bo_addr_cascade(form_scope, pg, result, parts)
     result["boAddr"] = addr
-    _js_fill_near(form_scope, "详细地址", detail) or _fill_by_label(form_scope, "详细地址", detail)
+    # 详细地址用完整实际地址（与省市区一致，不用贵州默认）
+    detail_to_fill = (cfg.get("bo_address") or detail or "").strip()
+    _js_fill_near(form_scope, "详细地址", detail_to_fill) or _fill_by_label(
+        form_scope, "详细地址", detail_to_fill
+    )
     detail_val = _field_value(form_scope, "详细地址")
     result["boDetailAddr"] = bool(detail_val) and (
-        detail[:6] in detail_val or detail_val[:6] in detail or len(detail_val) > 4
+        detail_to_fill[:6] in detail_val
+        or detail_val[:6] in detail_to_fill
+        or len(detail_val) > 4
     )
+    result["boDetailAddrValue"] = detail_val
     # 手机号再补一次（日历遮罩可能导致前一次未落库）
     if not result.get("boMobile"):
         _js_fill_near(form_scope, "联系方式一（手机号）", mobile) or _js_fill_near(
@@ -2539,8 +3677,11 @@ def _fill_bo_form(page: Page, form_scope, cfg: dict[str, Any], result: dict[str,
               const labels = [...document.querySelectorAll('label')].filter(vis);
               const isBad = (t) => t.includes('虽未满足') || t.includes('收益权') || t.includes('表决权') || t.includes('实际控制');
               const isGood = (t) =>
-                (t.includes('直接或间接拥有') && (t.includes('股权') || t.includes('股份')) && t.includes('25'))
-                || (t.includes('超过25%') && t.includes('股权'));
+                (t.includes('直接或间接拥有') && t.includes('25') && (
+                  t.includes('股权') || t.includes('股份') || t.includes('出资')
+                  || t.includes('合伙权益') || t.includes('合伙企业')
+                ))
+                || (t.includes('超过25%') && (t.includes('股权') || t.includes('出资') || t.includes('合伙权益')));
               // 先取消错误项
               for (const lab of labels) {
                 const t = (lab.innerText || '').replace(/\\s/g, '');
@@ -2571,11 +3712,14 @@ def _fill_bo_form(page: Page, form_scope, cfg: dict[str, Any], result: dict[str,
         own_info = {"error": str(e)}
         own_ok = False
     if not own_ok:
-        # 兜底：精确文案
+        # 兜底：精确文案（含合伙企业「合伙权益」）
         for needle in (
+            "直接或间接拥有合伙企业25%以上合伙权益",
+            "直接或间接拥有合伙企业25%以上",
             "直接或间接拥有公司25%以上股权、股份",
             "直接或间接拥有公司25%以上股权",
             "直接或间接拥有超过25%的公司股权",
+            "合伙企业25%以上合伙权益",
         ):
             try:
                 cb = form_scope.get_by_text(needle, exact=False).first
@@ -2594,9 +3738,18 @@ def _fill_bo_form(page: Page, form_scope, cfg: dict[str, Any], result: dict[str,
     result["ownershipTypeInfo"] = own_info
     pg.wait_for_timeout(600)
 
-    # 6) 持股比例（前端最终受益人 #uboPct → beneficialOwner.ownershipRatio）
+    # 6) 持股/合伙权益比例（有限公司=股权股份；合伙=合伙权益）
     def _fill_equity_ratio(target: str) -> tuple[bool, str]:
-        for lab in ("持有股权、股份的比例", "持有股权、股份的比例（%）", "股权、股份的比例"):
+        ratio_labels = (
+            "持有合伙权益的比例",
+            "持有合伙权益的比例 (%)",
+            "持有合伙权益的比例（%）",
+            "持有股权、股份的比例",
+            "持有股权、股份的比例（%）",
+            "股权、股份的比例",
+            "合伙权益的比例",
+        )
+        for lab in ratio_labels:
             if _js_fill_near(form_scope, lab, target) or _fill_by_label(form_scope, lab, target):
                 v = _field_value(form_scope, lab) or target
                 if target in v:
@@ -2605,7 +3758,10 @@ def _fill_bo_form(page: Page, form_scope, cfg: dict[str, Any], result: dict[str,
             ok = bool(
                 form_scope.evaluate(
                     """(target) => {
-                      const needles = ['持有股权', '股份的比例', '股权、股份'];
+                      const needles = [
+                        '持有合伙权益的比例', '合伙权益的比例', '持有合伙权益',
+                        '持有股权', '股份的比例', '股权、股份'
+                      ];
                       const vis = (el) => {
                         const r = el.getBoundingClientRect();
                         return r.width > 0 && r.height > 0;
@@ -2613,20 +3769,22 @@ def _fill_bo_form(page: Page, form_scope, cfg: dict[str, Any], result: dict[str,
                       for (const el of document.querySelectorAll('label, span, td, div')) {
                         if (!vis(el)) continue;
                         const t = (el.innerText || '').replace(/\\s/g, '');
-                        if (!needles.some(n => t.includes(n))) continue;
+                        if (!needles.some(n => t.includes(n.replace(/\\s/g, '')))) continue;
                         if (t.includes('收益权') || t.includes('表决权')) continue;
-                        if (t.length > 40) continue;
+                        if (t.length > 48) continue;
                         const box = el.closest('tr, .el-form-item, .layui-form-item, div') || el.parentElement;
                         const inp = box && [...box.querySelectorAll('input')].find(i =>
                           i.type !== 'checkbox' && i.type !== 'hidden' && i.type !== 'radio' && vis(i)
                         );
                         if (!inp) continue;
                         inp.focus();
+                        inp.select && inp.select();
                         const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
                         if (desc && desc.set) desc.set.call(inp, target); else inp.value = target;
                         inp.dispatchEvent(new Event('input', { bubbles: true }));
                         inp.dispatchEvent(new Event('change', { bubbles: true }));
-                        return inp.value === target;
+                        inp.dispatchEvent(new Event('blur', { bubbles: true }));
+                        return String(inp.value || '').includes(target);
                       }
                       return false;
                     }""",
@@ -2637,6 +3795,32 @@ def _fill_bo_form(page: Page, form_scope, cfg: dict[str, Any], result: dict[str,
                 return True, target
         except Exception:
             pass
+        # Playwright：按可见 label 找旁边 input
+        for lab_text in ("持有合伙权益的比例", "持有股权、股份的比例", "合伙权益的比例"):
+            try:
+                lab = form_scope.get_by_text(lab_text, exact=False).first
+                if not _visible(lab, timeout=300):
+                    continue
+                item = lab.locator("xpath=ancestor::div[contains(@class,'el-form-item') or contains(@class,'layui-form-item')][1]")
+                inp = item.locator("input:not([type='checkbox']):not([type='radio']):not([type='hidden'])").first
+                if not _visible(inp, timeout=300):
+                    inp = lab.locator(
+                        "xpath=following::input[not(@type='hidden') and not(@type='checkbox') and not(@type='radio')][1]"
+                    )
+                if not _visible(inp, timeout=300):
+                    continue
+                inp.click(timeout=2000)
+                inp.fill("")
+                inp.fill(target, timeout=4000)
+                try:
+                    inp.press("Tab")
+                except Exception:
+                    pass
+                v = (inp.input_value(timeout=400) or "").strip()
+                if target in v:
+                    return True, v
+            except Exception:
+                continue
         return False, ""
 
     ratio_ok, ratio_val = _fill_equity_ratio(ratio)
@@ -2702,10 +3886,136 @@ def _mark_personnel_done(result: dict[str, Any]) -> None:
         result[k] = True
 
 
+def _on_opening_process_page(page: Page) -> bool:
+    """已离开人员/受益人，到达企业开办「后续办理方式」页。"""
+    if _page_has_text(page, "后续办理方式"):
+        return True
+    return _page_has_text(page, "全程网办") and _page_has_text(page, "文书产生方式")
+
+
+def _handoff_personnel_to_opening(
+    case_id: str, page: Page, result: dict[str, Any], *, reason: str
+) -> dict[str, Any]:
+    """人员阶段已越过，把结果标成成功，交给 opening 流程。"""
+    _mark_personnel_done(result)
+    result["selfReport"] = True
+    result["doneNext"] = True
+    result["ok"] = True
+    result["missing"] = []
+    result["error"] = None
+    result["skippedToOpening"] = reason
+    result["pageOk"] = True
+    try:
+        result["handoffUrl"] = page.url
+    except Exception:
+        pass
+    _shot(page, case_id, "personnel-handoff-opening")
+    _dump(case_id, "fill-personnel-result.json", result)
+    return result
+
+
+def _force_select_self_report(page: Page) -> bool:
+    """受益所有人入口：强制选「自行填报」，绝不点「承诺免报」。
+
+    普通合伙等会出现「承诺免报」选项；业务要求与有限公司一样走自行填报。
+    """
+    # 已选自行填报？
+    for scope in _all_scopes(page):
+        try:
+            lab = scope.locator("label.el-radio, label").filter(
+                has_text=re.compile(r"自行填报")
+            ).first
+            if not _visible(lab, timeout=300):
+                continue
+            cls = lab.get_attribute("class") or ""
+            if "is-checked" in cls:
+                return True
+            inp = lab.locator("input[type=radio]").first
+            if _visible(inp, timeout=200) and inp.is_checked():
+                return True
+        except Exception:
+            continue
+
+    for scope in _all_scopes(page):
+        try:
+            # 精确点「自行填报」radio，避开承诺免报文案
+            lab = scope.locator("label.el-radio, label").filter(
+                has_text=re.compile(r"^\s*自行填报")
+            ).first
+            if not _visible(lab, timeout=400):
+                lab = scope.get_by_text("自行填报", exact=True).first
+            if not _visible(lab, timeout=400):
+                continue
+            # 若点到的节点嵌在承诺免报里则跳过
+            try:
+                wrap = (lab.inner_text(timeout=300) or "").replace(" ", "")
+                if "承诺免报" in wrap and "自行填报" not in wrap[:8]:
+                    continue
+            except Exception:
+                pass
+            lab.click(force=True, timeout=3000)
+            page.wait_for_timeout(350)
+            return True
+        except Exception:
+            continue
+
+    if _mouse_click_text(page, ["自行填报"], exact=True):
+        page.wait_for_timeout(350)
+        return True
+    # 最后回退：短文案 radio
+    for scope in _all_scopes(page):
+        if _click_radio(scope, "自行填报"):
+            page.wait_for_timeout(350)
+            return True
+    return False
+
+
+def _click_bo_next(page: Page) -> bool:
+    """受益人页底部「下一步」（避开承诺书区内误点）。"""
+    for scope in _all_scopes(page):
+        try:
+            btns = scope.locator("button, .el-button, a.el-button").filter(
+                has_text=re.compile(r"^\s*下一步\s*$")
+            )
+            n = min(btns.count(), 8)
+            for i in range(n - 1, -1, -1):
+                btn = btns.nth(i)
+                if not _visible(btn, timeout=300):
+                    continue
+                try:
+                    btn.scroll_into_view_if_needed(timeout=1500)
+                except Exception:
+                    pass
+                try:
+                    box = btn.bounding_box()
+                    if box and box.get("width", 0) > 20:
+                        page.mouse.click(
+                            box["x"] + box["width"] / 2,
+                            box["y"] + box["height"] / 2,
+                        )
+                        return True
+                except Exception:
+                    pass
+                btn.click(timeout=3000)
+                return True
+        except Exception:
+            continue
+    return _mouse_click_text(page, ["下一步"], exact=True) or _click_text_any(
+        page, ["下一步"], exact=True
+    )
+
+
 def _complete_beneficial(
     case_id: str, page: Page, cfg: dict[str, Any], result: dict[str, Any]
 ) -> dict[str, Any]:
-    """图6–9：自行填报 → 自然人条件 → 表单 → 已完成进入下一步。"""
+    """图6–9：自行填报 → 自然人条件 → 表单 → 已完成进入下一步。
+
+    合伙企业即使有「承诺免报」，也一律自行填报（与有限公司相同路径）。
+    """
+    if _on_opening_process_page(page):
+        return _handoff_personnel_to_opening(
+            case_id, page, result, reason="beneficial-entry-already-opening"
+        )
     already_form = _page_has_text(page, "受益所有人基本信息") or _page_has_text(
         page, "受益所有权信息"
     )
@@ -2717,22 +4027,48 @@ def _complete_beneficial(
         result["selfReport"] = True
         result["selfReportSkipped"] = "already-past"
     else:
-        self_ok = False
-        for scope in _all_scopes(page):
-            if _click_radio(scope, "自行填报"):
-                self_ok = True
+        # 合伙页会出现「承诺免报」：强制自行填报
+        self_ok = _force_select_self_report(page)
+        result["selfReport"] = self_ok
+        result["selfReportForced"] = True
+        # 确认未误选承诺免报
+        try:
+            for scope in _all_scopes(page):
+                bad = scope.locator("label.el-radio, label").filter(
+                    has_text=re.compile(r"承诺免报")
+                ).first
+                if not _visible(bad, timeout=200):
+                    continue
+                cls = bad.get_attribute("class") or ""
+                checked = "is-checked" in cls
+                if not checked:
+                    try:
+                        inp = bad.locator("input[type=radio]").first
+                        checked = _visible(inp, timeout=150) and bool(inp.is_checked())
+                    except Exception:
+                        pass
+                if checked:
+                    self_ok = _force_select_self_report(page)
+                    result["selfReport"] = self_ok
+                    result["switchedFromExempt"] = True
                 break
-        if not self_ok:
-            self_ok = _mouse_click_text(page, ["自行填报"], exact=True) or _mouse_click_text(
-                page, ["自行填报"], exact=False
-            )
-        result["selfReport"] = self_ok or _page_has_text(page, "自行填报")
+        except Exception:
+            pass
         page.wait_for_timeout(400)
-        next2 = _mouse_click_text(page, ["下一步"], exact=True) or _click_text_any(
-            page, ["下一步"], exact=True
-        )
+        next2 = _click_bo_next(page)
         result["beneficialNext1"] = next2
         page.wait_for_timeout(1500)
+        # 若仍停在承诺书页，再点一次自行填报+下一步
+        still_entry = _page_has_text(page, "承诺免报") and not (
+            _page_has_text(page, "存在符合下列条件之一的自然人")
+            or _page_has_text(page, "受益所有人基本信息")
+        )
+        if still_entry:
+            _force_select_self_report(page)
+            page.wait_for_timeout(300)
+            next2b = _click_bo_next(page)
+            result["beneficialNext1Retry"] = next2b
+            page.wait_for_timeout(1500)
         result["afterSelfReady"] = (
             _page_has_text(page, "存在符合下列条件之一的自然人")
             or _page_has_text(page, "受益所有人基本信息")
@@ -2742,6 +4078,8 @@ def _complete_beneficial(
                 timeout_ms=15000,
             )
         )
+        if not result.get("selfReport"):
+            result["selfReport"] = bool(result.get("afterSelfReady"))
     _shot(page, case_id, "personnel-after-self-report")
 
     # 7) 图7：存在符合下列条件之一的自然人 → 下一步（若已在表单页则跳过）
@@ -2768,9 +4106,7 @@ def _complete_beneficial(
             if not nat_ok:
                 nat_ok = _mouse_click_text(page, ["存在符合下列条件之一的自然人"], exact=False)
             page.wait_for_timeout(400)
-            next3 = _mouse_click_text(page, ["下一步"], exact=True) or _click_text_any(
-                page, ["下一步"], exact=True
-            )
+            next3 = _click_bo_next(page)
             result["beneficialNext2"] = next3
             page.wait_for_timeout(1500)
     except Exception as e:
@@ -2804,26 +4140,53 @@ def _complete_beneficial(
         form_scope = page
     page = work_page
 
-    _fill_bo_form(page, form_scope, cfg, result)
+    _fill_bo_form(page, form_scope, cfg, result, case_id=case_id)
     _shot(page, case_id, "personnel-beneficial-filled")
 
     addr = result.get("boAddr") or {}
     # 点下一步前再补一次股权比例（避免勾错类型导致比例框未出现）
     if not result.get("ownershipRatio"):
         try:
-            needle = "直接或间接拥有公司25%以上股权、股份"
-            cb = form_scope.get_by_text(needle, exact=False).first
-            if _visible(cb, timeout=400):
+            for needle in (
+                "直接或间接拥有合伙企业25%以上合伙权益",
+                "直接或间接拥有公司25%以上股权、股份",
+                "直接或间接拥有",
+                "25%以上",
+            ):
+                cb = form_scope.get_by_text(needle, exact=False).first
+                if not _visible(cb, timeout=300):
+                    continue
+                t = (cb.inner_text(timeout=200) or "")
+                if "虽未满足" in t or "收益权" in t:
+                    continue
                 lab = cb.locator("xpath=ancestor::label[1]").first
                 (lab if _visible(lab, timeout=200) else cb).click(timeout=2500)
                 _safe_wait(page, 400)
+                break
             ratio_retry = str(cfg.get("ownership_ratio") or "100").strip() or "100"
-            _js_fill_near(form_scope, "持有股权、股份的比例", ratio_retry) or _fill_by_label(
-                form_scope, "持有股权、股份的比例", ratio_retry
-            )
-            rv = _field_value(form_scope, "持有股权、股份的比例") or ""
-            result["ownershipRatio"] = ratio_retry in rv
-            result["ownershipRatioValue"] = rv
+            filled = False
+            for lab in (
+                "持有合伙权益的比例",
+                "持有股权、股份的比例",
+                "合伙权益的比例",
+            ):
+                if _js_fill_near(form_scope, lab, ratio_retry) or _fill_by_label(
+                    form_scope, lab, ratio_retry
+                ):
+                    rv = _field_value(form_scope, lab) or ""
+                    if ratio_retry in rv:
+                        result["ownershipRatio"] = True
+                        result["ownershipRatioValue"] = rv
+                        filled = True
+                        break
+            if not filled:
+                rv = (
+                    _field_value(form_scope, "持有合伙权益的比例")
+                    or _field_value(form_scope, "持有股权、股份的比例")
+                    or ""
+                )
+                result["ownershipRatio"] = ratio_retry in rv
+                result["ownershipRatioValue"] = rv
             result["ownershipRatioRetry"] = True
             result["ownershipRatioExpected"] = ratio_retry
         except Exception as e:
@@ -2958,16 +4321,34 @@ def _complete_beneficial(
     else:
         result["skipDoneReason"] = "form-incomplete-or-no-confirm"
     result["doneNext"] = done
+    # 已点完成或页面已到办理方式 → 人员阶段结束
+    if not done and _on_opening_process_page(page):
+        result["doneNext"] = True
+        result["doneNextVia"] = "already-on-opening"
     try:
         _shot(page if _page_alive(page) else reg_page, case_id, "personnel-done")
     except Exception:
         pass
 
+    if _on_opening_process_page(page):
+        return _handoff_personnel_to_opening(
+            case_id, page, result, reason="beneficial-landed-opening"
+        )
+
     missing = []
-    if not result.get("addDirectorClick") or not result.get("directorConfirm"):
-        missing.append("董事")
+    if not cfg.get("skip_board"):
+        if not result.get("addDirectorClick") or not result.get("directorConfirm"):
+            missing.append("董事")
+    if cfg.get("is_partnership"):
+        ep = result.get("executivePartners") or {}
+        if not ep.get("ok"):
+            missing.append("执行事务合伙人")
+            if not ep.get("licenseSelect"):
+                missing.append("电子营业执照持照人")
     if not result.get("addManagerClick") or not result.get("managerConfirm"):
-        missing.append("高级管理人员")
+        missing.append(
+            "财务负责人" if cfg.get("is_sole_prop") or result.get("managerVia") else "高级管理人员"
+        )
     if not result.get("addLiaisonClick") or not result.get("liaisonConfirm"):
         missing.append("联络员")
     if not result.get("fillBeneficialClick"):
@@ -2985,17 +4366,28 @@ def _complete_beneficial(
 
 
 def run_personnel_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dict[str, Any]:
+    from apps.worker.playbooks.retry_gate import dismiss_system_busy
+
     store.set_status(
         case_id,
         statuses.FILLING_ESTABLISHMENT,
         customer_message="正在填写人员信息…",
     )
-    cfg = _defaults(payload)
+    if dismiss_system_busy(page):
+        page.wait_for_timeout(1200)
+    cfg = _defaults(payload, case_id=case_id)
     result: dict[str, Any] = {"ok": False, "cfg": cfg}
 
     page = _prefer_work_page(page)
     result["closedPortal"] = _close_stray_portal_tabs(page)
     result["entryUrl"] = page.url
+
+    # 已到办理方式页：人员/受益人已过，直接交接给 opening
+    if _on_opening_process_page(page):
+        result["resumedAt"] = "opening-process"
+        return _handoff_personnel_to_opening(
+            case_id, page, result, reason="already-on-opening-at-start"
+        )
 
     # 中断后续跑：图5 提示已弹出，人员三项已齐，直接填报受益所有人
     if _bo_prompt_open(page):
@@ -3010,6 +4402,10 @@ def run_personnel_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dic
             page = bo_entry["page"]
         result["closedPortalAfterBo"] = _close_stray_portal_tabs(page)
         _shot(page, case_id, "personnel-beneficial-entry")
+        if _on_opening_process_page(page):
+            return _handoff_personnel_to_opening(
+                case_id, page, result, reason="bo-prompt-to-opening"
+            )
         if not result["boEntryReady"]:
             result["error"] = "未进入受益所有人填报页"
             result["missing"] = ["填报受益所有人入口"]
@@ -3032,10 +4428,23 @@ def run_personnel_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dic
     # 等待进入人员信息（出资情况下一步之后；URL 常含 chief-executive-officer）
     frame = _frame_personnel(page)
     if frame is None:
+        if _on_opening_process_page(page):
+            result["resumedAt"] = "opening-process-no-personnel-frame"
+            return _handoff_personnel_to_opening(
+                case_id, page, result, reason="opening-without-personnel-frame"
+            )
         _click_text_any(page, ["下一步"], exact=True)
         page.wait_for_timeout(2000)
+        if _on_opening_process_page(page):
+            return _handoff_personnel_to_opening(
+                case_id, page, result, reason="next-landed-opening"
+            )
         frame = _frame_personnel(page, timeout_ms=30000)
     if frame is None:
+        if _on_opening_process_page(page):
+            return _handoff_personnel_to_opening(
+                case_id, page, result, reason="opening-after-wait"
+            )
         result["error"] = "未进入人员信息页"
         result["entryUrlAfter"] = page.url
         _shot(page, case_id, "personnel-page-missing")
@@ -3063,7 +4472,7 @@ def run_personnel_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dic
             page.mouse.wheel(0, -5000)
         except Exception:
             pass
-    for tip in ("设一名董事", "董事信息", "人员信息"):
+    for tip in ("设一名董事", "董事信息", "执行事务合伙人", "人员信息"):
         try:
             loc = frame.get_by_text(tip, exact=False).first
             if _visible(loc, timeout=600):
@@ -3074,78 +4483,355 @@ def run_personnel_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dic
     page.wait_for_timeout(500)
     _shot(page, case_id, "personnel-page")
 
-    # 1) 董事/监事选项
-    result["oneDirector"] = _click_radio(frame, "设一名董事")
-    page.wait_for_timeout(300)
-    if cfg.get("establish_supervisor"):
-        # 设立监事：尽量点「设监事/设一名监事」；失败则不强行「不设监事」
-        result["noSupervisor"] = False
-        result["establishSupervisor"] = (
-            _click_radio(frame, "设监事")
-            or _click_radio(frame, "设一名监事")
-            or _click_radio(frame, "设监事会")
-        )
-    else:
+    # 合伙企业 / 个人独资：无董事/监事，跳过
+    if cfg.get("skip_board"):
+        result["oneDirector"] = False
+        result["noSupervisor"] = True
         result["establishSupervisor"] = False
-        result["noSupervisor"] = _click_radio(
-            frame, "属规模较小或者股东人数较少的有限责任公司，全体股东一致同意不设监事"
-        )
-        if not result["noSupervisor"]:
-            result["noSupervisor"] = _click_radio(frame, "不设监事")
-        if not result["noSupervisor"]:
-            result["noSupervisor"] = _click_radio(frame, "规模较小")
-    page.wait_for_timeout(400)
-    _shot(page, case_id, "personnel-after-radios")
-
-    # 2) 添加董事（已有 1/1 则跳过，方便中断后续跑）
-    if _section_quota_done(frame, "董事"):
         result["addDirectorClick"] = True
         result["directorConfirm"] = True
-        result["directorSkipped"] = "already-filled"
+        result["directorSkipped"] = (
+            "sole-prop-no-director" if cfg.get("is_sole_prop") else "partnership-no-director"
+        )
+        result["executivePartnerNames"] = list(cfg.get("executive_partner_names") or [])
+        result["licenseHolderNames"] = list(cfg.get("license_holder_names") or [])
+        _shot(page, case_id, "personnel-skip-director")
+        if cfg.get("is_partnership"):
+            result["executivePartners"] = _fill_executive_partners(
+                page, frame, cfg, case_id, payload
+            )
+            frame = _frame_personnel(page) or frame
+            if not (result.get("executivePartners") or {}).get("ok"):
+                result["ok"] = False
+                result["error"] = (result["executivePartners"] or {}).get("error") or (
+                    "执行事务合伙人或电子营业执照持照人未完成"
+                )
+                result["missing"] = ["执行事务合伙人", "电子营业执照持照人"]
+                _shot(page, case_id, "personnel-exec-need-human")
+                _dump(case_id, "fill-personnel-result.json", result)
+                return result
     else:
-        add_dir = (
-            _click_text(frame, ["+ 添加董事 >>", "添加董事 >>", "+ 添加董事", "添加董事"], exact=False)
-            or _click_text_any(page, ["添加董事"], exact=False)
-        )
-        result["addDirectorClick"] = add_dir
-        page.wait_for_timeout(900)
-        dlg, _ = _find_dialog(page, "新增董事")
-        if dlg is None:
-            dlg, _ = _find_dialog(page, "新增董事", "董事")
-        if dlg is None:
-            result["error"] = "未打开新增董事弹窗"
-            _shot(page, case_id, "personnel-director-dialog-missing")
-            _dump(case_id, "fill-personnel-result.json", result)
-            return result
-        dir_name = cfg.get("director_name") or cfg.get("name") or ""
-        result["directorReuse"] = _reuse_first_person(page, host_dialog=dlg, person_name=dir_name)
-        page.wait_for_timeout(1200)
-        result["directorOcrAfterReuse"] = _wait_ocr_idle(dlg, page, timeout_ms=15000)
-        result["directorIsLegalRep"] = _set_yes_no(dlg, "法定代表人", True) or _set_yes_no(
-            dlg, "是否由董事担任", True
-        )
+        # 1) 董事/监事选项
+        result["oneDirector"] = _click_radio(frame, "设一名董事")
         page.wait_for_timeout(300)
-        _shot(page, case_id, "personnel-director-before-confirm")
-        result["directorConfirm"] = _confirm_until_closed(page, ("新增董事",), retries=5)
-        page.wait_for_timeout(600)
-        _shot(page, case_id, "personnel-after-director")
-        if _dialog_still_open(page, "新增董事"):
-            try:
-                d3, _ = _find_dialog(page, "新增董事")
-                if d3 is not None:
-                    result["directorDialogText"] = (d3.inner_text(timeout=800) or "")[:500]
-            except Exception:
-                pass
-            result["error"] = "董事弹窗未关闭（确定未命中）"
-            result["missing"] = ["董事"]
-            _dump(case_id, "fill-personnel-result.json", result)
-            return result
+        # 仅一名监事（不设监事会）
+        sup_list = list(cfg.get("supervisor_list") or [])[:1]
+        if not sup_list and cfg.get("establish_supervisor"):
+            name0 = (cfg.get("supervisor_name") or "").strip()
+            if name0:
+                sup_list = [
+                    {
+                        "name": name0,
+                        "mobile": str(cfg.get("supervisor_mobile") or "").strip(),
+                    }
+                ]
+        if cfg.get("establish_supervisor") or cfg.get("is_shares"):
+            result["noSupervisor"] = False
+            result["supervisorMode"] = "one"
+            result["establishSupervisor"] = (
+                _click_radio(frame, "设一名监事")
+                or _click_radio(frame, "设监事")
+            )
+            if not result["establishSupervisor"]:
+                # 页面若只剩监事会选项则仍尝试点一次（再只填一人）
+                result["establishSupervisor"] = _click_radio(frame, "设监事会")
+                if result["establishSupervisor"]:
+                    result["supervisorBoardCount"] = _fill_by_label(
+                        frame, "监事会人数", "1"
+                    ) or _js_fill_near(frame, "监事会人数", "1")
+                    result["employeeSupervisorCount"] = _fill_by_label(
+                        frame, "职工监事", "0"
+                    ) or _js_fill_near(frame, "职工监事", "0")
+        else:
+            result["establishSupervisor"] = False
+            result["noSupervisor"] = _click_radio(
+                frame, "属规模较小或者股东人数较少的有限责任公司，全体股东一致同意不设监事"
+            )
+            if not result["noSupervisor"]:
+                result["noSupervisor"] = _click_radio(frame, "不设监事")
+            if not result["noSupervisor"]:
+                result["noSupervisor"] = _click_radio(frame, "规模较小")
+        page.wait_for_timeout(400)
+        _shot(page, case_id, "personnel-after-radios")
 
-    # 3) 添加高级管理人员
+        # 2) 按 payload.personnel.directors 逐个添加董事
+        director_list = list(cfg.get("director_list") or [])
+        if not director_list:
+            director_list = [{"name": cfg.get("director_name") or cfg.get("name") or ""}]
+        result["directorsPlanned"] = [d.get("name") for d in director_list]
+        result["directorsAdded"] = []
+        if _section_quota_done(frame, "董事") and len(director_list) <= 1:
+            result["addDirectorClick"] = True
+            result["directorConfirm"] = True
+            result["directorSkipped"] = "already-filled"
+        else:
+            lr_name = (cfg.get("name") or "").strip()
+            all_dir_ok = True
+            for d_idx, d_person in enumerate(director_list):
+                dir_name = str(d_person.get("name") or "").strip()
+                item: dict[str, Any] = {"index": d_idx, "name": dir_name}
+                # 已在页上则跳过
+                try:
+                    page_txt = frame.inner_text(timeout=800) or ""
+                except Exception:
+                    page_txt = ""
+                if dir_name and dir_name in page_txt and "董事" in page_txt:
+                    # 粗略：姓名已出现在人员页，可能已添加
+                    pass
+                add_dir = (
+                    _click_text(
+                        frame,
+                        ["+ 添加董事 >>", "添加董事 >>", "+ 添加董事", "添加董事"],
+                        exact=False,
+                    )
+                    or _click_text_any(page, ["添加董事"], exact=False)
+                )
+                item["addClick"] = add_dir
+                if not add_dir:
+                    # 配额已满时可能点不了
+                    if _section_quota_done(frame, "董事"):
+                        item["skipped"] = "quota-done"
+                        item["ok"] = True
+                        result["directorsAdded"].append(item)
+                        break
+                    item["ok"] = False
+                    item["error"] = "未点到添加董事"
+                    result["directorsAdded"].append(item)
+                    all_dir_ok = False
+                    break
+                page.wait_for_timeout(900)
+                dlg, _ = _find_dialog(page, "新增董事")
+                if dlg is None:
+                    dlg, _ = _find_dialog(page, "新增董事", "董事")
+                if dlg is None:
+                    item["ok"] = False
+                    item["error"] = "未打开新增董事弹窗"
+                    result["directorsAdded"].append(item)
+                    result["error"] = item["error"]
+                    _shot(page, case_id, f"personnel-director-dialog-missing-{d_idx}")
+                    _dump(case_id, "fill-personnel-result.json", result)
+                    return result
+                item["person"] = _natural_via_id_ocr(
+                    dlg,
+                    page,
+                    case_id=case_id,
+                    payload=payload,
+                    person_name=dir_name,
+                )
+                page.wait_for_timeout(600)
+                # 联系方式（移动电话）— OCR 不会带出，必须手填
+                dir_mobile = (
+                    str(d_person.get("mobile") or "").strip()
+                    or str(cfg.get("director_mobile") or cfg.get("mobile") or DEFAULT_MOBILE).strip()
+                )
+                item["mobile"] = _fill_contact_mobile(dlg, dir_mobile)
+                page.wait_for_timeout(200)
+                # 法定代表人：与法人同名的董事设为是
+                is_lr = True
+                if dir_name and lr_name and dir_name != lr_name:
+                    is_lr = False
+                item["isLegalRep"] = _set_yes_no(dlg, "法定代表人", is_lr) or _set_yes_no(
+                    dlg, "是否由董事担任", is_lr
+                )
+                page.wait_for_timeout(300)
+                # 确定前再写一次电话，避免被其它控件冲掉
+                if not (item.get("mobile") or {}).get("ok"):
+                    item["mobileRetry"] = _fill_contact_mobile(dlg, dir_mobile)
+                else:
+                    _fill_contact_mobile(dlg, dir_mobile)
+                _shot(page, case_id, f"personnel-director-before-confirm-{d_idx}")
+                item["confirm"] = _confirm_until_closed(page, ("新增董事",), retries=5)
+                page.wait_for_timeout(600)
+                if _dialog_still_open(page, "新增董事"):
+                    item["ok"] = False
+                    item["error"] = "董事弹窗未关闭"
+                    result["directorsAdded"].append(item)
+                    result["error"] = item["error"]
+                    result["missing"] = ["董事"]
+                    _dump(case_id, "fill-personnel-result.json", result)
+                    return result
+                item["ok"] = True
+                result["directorsAdded"].append(item)
+                frame = _frame_personnel(page) or frame
+            result["addDirectorClick"] = any(x.get("addClick") for x in result["directorsAdded"])
+            result["directorConfirm"] = all_dir_ok and all(
+                x.get("ok") or x.get("skipped") for x in result["directorsAdded"]
+            )
+            result["directorPerson"] = (result["directorsAdded"][0].get("person") if result["directorsAdded"] else None)
+            _shot(page, case_id, "personnel-after-director")
+
+        # 2b) 按 payload 添加一名监事（不设监事会）
+        if cfg.get("establish_supervisor") or cfg.get("is_shares"):
+            if not sup_list:
+                name0 = (cfg.get("supervisor_name") or "").strip()
+                if name0:
+                    sup_list = [
+                        {
+                            "name": name0,
+                            "mobile": str(cfg.get("supervisor_mobile") or "").strip(),
+                        }
+                    ]
+            sup_list = (sup_list or [])[:1]
+            # 董事与监事不能同一人
+            dir_names_rt = {
+                str(x.get("name") or "").strip()
+                for x in (cfg.get("director_list") or [])
+                if str((x or {}).get("name") or "").strip()
+            }
+            dn = str(cfg.get("director_name") or "").strip()
+            if dn:
+                dir_names_rt.add(dn)
+            if sup_list:
+                sn0 = str(sup_list[0].get("name") or "").strip()
+                if sn0 and sn0 in dir_names_rt:
+                    result["supervisorDirectorConflict"] = True
+                    result["error"] = "董事与监事不能为同一人"
+                    result["missing"] = ["监事"]
+                    _shot(page, case_id, "personnel-supervisor-director-conflict")
+                    store.set_status(
+                        case_id,
+                        statuses.NEED_HUMAN,
+                        reason=f"董事与监事不能为同一人（{sn0}）",
+                    )
+                    _dump(case_id, "fill-personnel-result.json", result)
+                    return result
+            result["supervisorsPlanned"] = [s.get("name") for s in sup_list]
+            result["supervisorsAdded"] = []
+            if not sup_list:
+                result["supervisorSkipped"] = "no-supervisor-payload"
+            elif _section_quota_done(frame, "监事") and len(sup_list) <= 1:
+                result["addSupervisorClick"] = True
+                result["supervisorConfirm"] = True
+                result["supervisorSkipped"] = "already-filled"
+            else:
+                all_sup_ok = True
+                for s_idx, s_person in enumerate(sup_list):
+                    sup_name = str(s_person.get("name") or "").strip()
+                    item: dict[str, Any] = {"index": s_idx, "name": sup_name}
+                    add_sup = (
+                        _click_text(
+                            frame,
+                            ["+ 添加监事 >>", "添加监事 >>", "+ 添加监事", "添加监事"],
+                            exact=False,
+                        )
+                        or _click_text_any(page, ["添加监事"], exact=False)
+                    )
+                    item["addClick"] = add_sup
+                    if not add_sup:
+                        if _section_quota_done(frame, "监事"):
+                            item["skipped"] = "quota-done"
+                            item["ok"] = True
+                            result["supervisorsAdded"].append(item)
+                            break
+                        item["ok"] = False
+                        item["error"] = "未点到添加监事"
+                        result["supervisorsAdded"].append(item)
+                        all_sup_ok = False
+                        break
+                    page.wait_for_timeout(900)
+                    dlg, _ = _find_dialog(page, "新增监事")
+                    if dlg is None:
+                        dlg, _ = _find_dialog(page, "监事")
+                    if dlg is None:
+                        item["ok"] = False
+                        item["error"] = "未打开新增监事弹窗"
+                        result["supervisorsAdded"].append(item)
+                        result["error"] = item["error"]
+                        _shot(page, case_id, f"personnel-supervisor-dialog-missing-{s_idx}")
+                        _dump(case_id, "fill-personnel-result.json", result)
+                        return result
+                    item["person"] = _natural_via_id_ocr(
+                        dlg,
+                        page,
+                        case_id=case_id,
+                        payload=payload,
+                        person_name=sup_name,
+                    )
+                    page.wait_for_timeout(600)
+                    # 职务默认「监事」
+                    item["title"] = _select_dropdown(dlg, "职务", "监事")
+                    if not item["title"]:
+                        try:
+                            tit = dlg.locator(".el-form-item").filter(
+                                has_text=re.compile(r"职务")
+                            ).first
+                            trig = tit.locator(
+                                ".el-select .el-input__inner, .el-select"
+                            ).first
+                            if _visible(trig, timeout=500):
+                                trig.click(timeout=2500)
+                                page.wait_for_timeout(350)
+                                for root in _all_scopes(page):
+                                    opt = root.locator(
+                                        ".el-select-dropdown:visible li"
+                                    ).filter(has_text=re.compile(r"^监事$")).first
+                                    if not _visible(opt, timeout=300):
+                                        opt = root.get_by_text("监事", exact=True).first
+                                    if _visible(opt, timeout=400):
+                                        opt.click(timeout=2500)
+                                        item["title"] = True
+                                        break
+                        except Exception:
+                            pass
+                    if not item.get("title"):
+                        try:
+                            # 已默认选中也算成功
+                            item["title"] = _dropdown_shows(dlg, "职务", "监事")
+                        except Exception:
+                            pass
+                    page.wait_for_timeout(300)
+                    sup_mobile = (
+                        str(s_person.get("mobile") or "").strip()
+                        or str(cfg.get("supervisor_mobile") or cfg.get("mobile") or DEFAULT_MOBILE).strip()
+                    )
+                    item["mobile"] = _fill_contact_mobile(dlg, sup_mobile)
+                    if not (item.get("mobile") or {}).get("ok"):
+                        item["mobileRetry"] = _fill_contact_mobile(dlg, sup_mobile)
+                    _shot(page, case_id, f"personnel-supervisor-before-confirm-{s_idx}")
+                    item["confirm"] = _confirm_until_closed(
+                        page, ("新增监事", "监事"), retries=5
+                    )
+                    page.wait_for_timeout(600)
+                    if _dialog_still_open(page, "新增监事") or _dialog_still_open(page, "监事"):
+                        # 仅标题含「监事」且仍开着时再判失败
+                        still = _dialog_still_open(page, "新增监事")
+                        if still:
+                            item["ok"] = False
+                            item["error"] = "监事弹窗未关闭"
+                            result["supervisorsAdded"].append(item)
+                            result["error"] = item["error"]
+                            result["missing"] = ["监事"]
+                            _dump(case_id, "fill-personnel-result.json", result)
+                            return result
+                    item["ok"] = True
+                    result["supervisorsAdded"].append(item)
+                    frame = _frame_personnel(page) or frame
+                result["addSupervisorClick"] = any(
+                    x.get("addClick") for x in result["supervisorsAdded"]
+                )
+                result["supervisorConfirm"] = all_sup_ok and all(
+                    x.get("ok") or x.get("skipped") for x in result["supervisorsAdded"]
+                )
+                _shot(page, case_id, "personnel-after-supervisor")
+
+    # 3) 财务负责人：有限公司「添加高级管理人员」；个人独资等为页面内联表单
     if _section_quota_done(frame, "高管"):
         result["addManagerClick"] = True
         result["managerConfirm"] = True
         result["managerSkipped"] = "already-filled"
+    elif cfg.get("is_sole_prop") or (
+        _has_inline_finance(frame) and not _has_add_manager_button(frame)
+    ):
+        inline = _fill_inline_finance_officer(page, frame, cfg, case_id, payload)
+        result["managerInline"] = inline
+        result["addManagerClick"] = True
+        result["managerConfirm"] = bool(inline.get("ok"))
+        result["managerVia"] = "inline-finance"
+        if not result["managerConfirm"]:
+            result["error"] = "财务负责人内联填写未生效"
+            result["missing"] = ["财务负责人"]
+            _dump(case_id, "fill-personnel-result.json", result)
+            return result
     else:
         try:
             loc = frame.get_by_text("高级管理人员", exact=False).first
@@ -3171,80 +4857,111 @@ def run_personnel_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dic
         if dlg is None:
             dlg, _ = _find_dialog(page, "新增高级")
         if dlg is None:
-            result["error"] = "未打开高级管理人员弹窗"
-            _shot(page, case_id, "personnel-manager-dialog-missing")
-            _dump(case_id, "fill-personnel-result.json", result)
-            return result
-        try:
-            title = (dlg.locator(".el-dialog__title").inner_text(timeout=500) or "")
-            result["managerDialogTitle"] = title
-            if "董事" in title and "高级" not in title:
-                result["error"] = "打开的仍是董事弹窗，非高级管理人员"
-                _shot(page, case_id, "personnel-manager-wrong-dialog")
+            # 无弹窗时回退内联财务负责人（部分组织形式）
+            if _has_inline_finance(frame):
+                inline = _fill_inline_finance_officer(page, frame, cfg, case_id, payload)
+                result["managerInline"] = inline
+                result["addManagerClick"] = True
+                result["managerConfirm"] = bool(inline.get("ok"))
+                result["managerVia"] = "inline-finance-fallback"
+                if not result["managerConfirm"]:
+                    result["error"] = "财务负责人填写未生效"
+                    result["missing"] = ["财务负责人"]
+                    _dump(case_id, "fill-personnel-result.json", result)
+                    return result
+            else:
+                result["error"] = "未打开高级管理人员弹窗"
+                _shot(page, case_id, "personnel-manager-dialog-missing")
                 _dump(case_id, "fill-personnel-result.json", result)
                 return result
-        except Exception:
-            pass
-        result["managerReuse"] = _reuse_first_person(
-            page, host_dialog=dlg, person_name=cfg.get("finance_name") or cfg.get("name") or ""
-        )
-        page.wait_for_timeout(1200)
-        result["managerOcr"] = _wait_ocr_idle(dlg, page, timeout_ms=15000)
-        result["managerTitle"] = _select_dropdown(dlg, "职务", "财务负责人")
-        if not result["managerTitle"]:
+        if dlg is not None and not result.get("managerConfirm"):
             try:
-                item = dlg.locator(".el-form-item").filter(has_text=re.compile(r"职务")).first
-                trig = item.locator(".el-select .el-input__inner, .el-select").first
-                if _visible(trig, timeout=500):
-                    trig.click(timeout=2500)
-                    page.wait_for_timeout(400)
-                    for root in _all_scopes(page):
-                        opt = root.locator(".el-select-dropdown:visible li").filter(
-                            has_text=re.compile(r"财务负责人")
-                        ).first
-                        if _visible(opt, timeout=400):
-                            opt.click(timeout=2500)
-                            result["managerTitle"] = True
-                            break
+                title = (dlg.locator(".el-dialog__title").inner_text(timeout=500) or "")
+                result["managerDialogTitle"] = title
+                if "董事" in title and "高级" not in title:
+                    result["error"] = "打开的仍是董事弹窗，非高级管理人员"
+                    _shot(page, case_id, "personnel-manager-wrong-dialog")
+                    _dump(case_id, "fill-personnel-result.json", result)
+                    return result
             except Exception:
                 pass
-        page.wait_for_timeout(700)
-        for _ in range(10):
-            try:
-                txt = dlg.inner_text(timeout=500) or ""
-            except Exception:
-                txt = ""
-            if "产生方式" in txt:
-                break
+            result["managerPerson"] = _natural_via_id_ocr(
+                dlg,
+                page,
+                case_id=case_id,
+                payload=payload,
+                person_name=cfg.get("finance_name") or cfg.get("name") or "",
+            )
+            page.wait_for_timeout(600)
+            mgr_mobile = str(cfg.get("finance_mobile") or cfg.get("mobile") or DEFAULT_MOBILE).strip()
+            result["managerTitle"] = _select_dropdown(dlg, "职务", "财务负责人")
+            if not result["managerTitle"]:
+                try:
+                    item = dlg.locator(".el-form-item").filter(has_text=re.compile(r"职务")).first
+                    trig = item.locator(".el-select .el-input__inner, .el-select").first
+                    if _visible(trig, timeout=500):
+                        trig.click(timeout=2500)
+                        page.wait_for_timeout(400)
+                        for root in _all_scopes(page):
+                            opt = root.locator(".el-select-dropdown:visible li").filter(
+                                has_text=re.compile(r"财务负责人")
+                            ).first
+                            if _visible(opt, timeout=400):
+                                opt.click(timeout=2500)
+                                result["managerTitle"] = True
+                                break
+                except Exception:
+                    pass
+            page.wait_for_timeout(700)
+            for _ in range(10):
+                try:
+                    txt = dlg.inner_text(timeout=500) or ""
+                except Exception:
+                    txt = ""
+                if "产生方式" in txt:
+                    break
+                page.wait_for_timeout(300)
+            result["appointMethod"] = _select_dropdown(dlg, "产生方式", "董事聘任")
+            if not result["appointMethod"]:
+                try:
+                    item = dlg.locator(".el-form-item").filter(has_text=re.compile(r"产生方式")).first
+                    trig = item.locator(".el-select .el-input__inner, .el-select").first
+                    if _visible(trig, timeout=500):
+                        trig.click(timeout=2500)
+                        page.wait_for_timeout(350)
+                        for root in _all_scopes(page):
+                            opt = root.get_by_text("董事聘任", exact=False).first
+                            if _visible(opt, timeout=400):
+                                opt.click(timeout=2500)
+                                result["appointMethod"] = True
+                                break
+                except Exception:
+                    pass
+            # 职务/产生方式选完后再填移动电话（避免误写固定电话或被冲掉）
             page.wait_for_timeout(300)
-        result["appointMethod"] = _select_dropdown(dlg, "产生方式", "董事聘任")
-        if not result["appointMethod"]:
-            try:
-                item = dlg.locator(".el-form-item").filter(has_text=re.compile(r"产生方式")).first
-                trig = item.locator(".el-select .el-input__inner, .el-select").first
-                if _visible(trig, timeout=500):
-                    trig.click(timeout=2500)
-                    page.wait_for_timeout(350)
-                    for root in _all_scopes(page):
-                        opt = root.get_by_text("董事聘任", exact=False).first
-                        if _visible(opt, timeout=400):
-                            opt.click(timeout=2500)
-                            result["appointMethod"] = True
-                            break
-            except Exception:
-                pass
-        page.wait_for_timeout(300)
-        _shot(page, case_id, "personnel-manager-before-confirm")
-        result["managerConfirm"] = _confirm_until_closed(page, ("高级管理人员",))
-        if not result["managerConfirm"]:
-            result["managerConfirm"] = _confirm_until_closed(page, ("新增", "高级"))
-        page.wait_for_timeout(600)
-        _shot(page, case_id, "personnel-after-manager")
-        if _dialog_still_open(page, "高级管理人员") or _dialog_still_open(page, "新增董事"):
-            result["error"] = "高级管理人员弹窗未关闭"
-            result["missing"] = ["高级管理人员"]
-            _dump(case_id, "fill-personnel-result.json", result)
-            return result
+            result["managerMobile"] = _fill_contact_mobile(dlg, mgr_mobile)
+            if not (result.get("managerMobile") or {}).get("ok"):
+                result["managerMobile2"] = _fill_contact_mobile(dlg, mgr_mobile)
+            _shot(page, case_id, "personnel-manager-before-confirm")
+            result["managerConfirm"] = _confirm_until_closed(page, ("高级管理人员",))
+            if not result["managerConfirm"]:
+                result["managerConfirm"] = _confirm_until_closed(page, ("新增", "高级"))
+            page.wait_for_timeout(600)
+            if _dialog_still_open(page, "高级管理人员"):
+                dlg2, _ = _find_dialog(page, "高级管理人员")
+                if dlg2 is None:
+                    dlg2, _ = _find_dialog(page, "新增高级")
+                if dlg2 is not None:
+                    result["managerMobileRetry"] = _fill_contact_mobile(dlg2, mgr_mobile)
+                    page.wait_for_timeout(200)
+                    result["managerConfirm"] = _confirm_until_closed(page, ("高级管理人员", "新增"))
+                    page.wait_for_timeout(600)
+            _shot(page, case_id, "personnel-after-manager")
+            if _dialog_still_open(page, "高级管理人员") or _dialog_still_open(page, "新增董事"):
+                result["error"] = "高级管理人员弹窗未关闭"
+                result["missing"] = ["高级管理人员"]
+                _dump(case_id, "fill-personnel-result.json", result)
+                return result
 
     # 4) 添加联络员
     if _section_quota_done(frame, "联络员"):
@@ -3286,23 +5003,43 @@ def run_personnel_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dic
                 return result
         except Exception:
             pass
-        result["liaisonReuse"] = _reuse_first_person(
-            page, host_dialog=dlg, person_name=cfg.get("liaison_name") or cfg.get("name") or ""
+        result["liaisonPerson"] = _natural_via_id_ocr(
+            dlg,
+            page,
+            case_id=case_id,
+            payload=payload,
+            person_name=cfg.get("liaison_name") or cfg.get("name") or "",
         )
-        page.wait_for_timeout(900)
+        page.wait_for_timeout(600)
         result["liaisonPublicSys"] = _set_yes_no(dlg, "代表登录|公示系统", True)
         if not result["liaisonPublicSys"]:
             result["liaisonPublicSys"] = _set_yes_no(dlg, "公示系统", True)
+        liaison_mobile = str(
+            cfg.get("liaison_mobile") or cfg.get("mobile") or DEFAULT_MOBILE
+        ).strip()
+        result["liaisonMobile"] = _fill_contact_mobile(dlg, liaison_mobile)
         result["liaisonEmail"] = _fill_by_label(dlg, "电子邮箱", cfg["email"]) or _fill_by_label(
             dlg, "邮箱", cfg["email"]
         )
         result["liaisonAddress"] = _fill_by_label(dlg, "住所", cfg["address"]) or _fill_by_label(
             dlg, "地址", cfg["address"]
         )
+        # 确定前再写一次电话（避免被其它字段冲掉）
+        result["liaisonMobile2"] = _fill_contact_mobile(dlg, liaison_mobile)
         page.wait_for_timeout(300)
         _shot(page, case_id, "personnel-liaison-before-confirm")
         result["liaisonConfirm"] = _confirm_until_closed(page, ("联络员",))
         page.wait_for_timeout(600)
+        # 若因手机号校验弹窗未关，再填一次后确定
+        if not result["liaisonConfirm"] or _dialog_still_open(page, "联络员"):
+            dlg2, _ = _find_dialog(page, "联络员")
+            if dlg2 is None:
+                dlg2, _ = _find_dialog(page, "登记联络员")
+            if dlg2 is not None:
+                result["liaisonMobileRetry"] = _fill_contact_mobile(dlg2, liaison_mobile)
+                page.wait_for_timeout(200)
+                result["liaisonConfirm"] = _confirm_until_closed(page, ("联络员", "登记联络员"))
+                page.wait_for_timeout(600)
         _shot(page, case_id, "personnel-after-liaison")
         if not result["liaisonConfirm"]:
             result["error"] = "联络员弹窗未关闭"
@@ -3316,9 +5053,17 @@ def run_personnel_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dic
     except Exception:
         pass
     page.wait_for_timeout(300)
+    if _on_opening_process_page(page):
+        return _handoff_personnel_to_opening(
+            case_id, page, result, reason="already-opening-before-personnel-next"
+        )
     next1 = _click_text(frame, ["下一步"], exact=True) or _click_text_any(page, ["下一步"], exact=True)
     result["personnelNext"] = next1
     page.wait_for_timeout(800)
+    if _on_opening_process_page(page):
+        return _handoff_personnel_to_opening(
+            case_id, page, result, reason="personnel-next-to-opening"
+        )
     bo_entry = _click_bo_entry(page)
     result["fillBeneficialClick"] = bool(bo_entry.get("clicked") or bo_entry.get("alreadyOnPage"))
     result["boEntry"] = {k: v for k, v in bo_entry.items() if k != "page"}
@@ -3327,7 +5072,17 @@ def run_personnel_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dic
         page = bo_entry["page"]
     result["closedPortalAfterBo"] = _close_stray_portal_tabs(page)
     _shot(page, case_id, "personnel-beneficial-entry")
+    if _on_opening_process_page(page):
+        return _handoff_personnel_to_opening(
+            case_id, page, result, reason="after-bo-entry-on-opening"
+        )
     if not result["boEntryReady"]:
+        # 无受益人弹窗且已离开人员页时，勿死卡在人员阶段
+        if _on_opening_process_page(page) or not _frame_personnel(page, timeout_ms=2000):
+            if _on_opening_process_page(page):
+                return _handoff_personnel_to_opening(
+                    case_id, page, result, reason="no-bo-entry-on-opening"
+                )
         result["error"] = "未进入受益所有人填报页"
         result["missing"] = ["填报受益所有人入口"]
         _dump(case_id, "fill-personnel-result.json", result)

@@ -50,6 +50,8 @@ class CompanyBlock(BaseModel):
     businessTermYears: Optional[int] = None
     businessScope: str = ""
     businessScopeCodes: list[str] = Field(default_factory=list)
+    # 用户勾选的经营范围条目名称（填报时按名称在政务网搜索添加）
+    businessScopeNames: list[str] = Field(default_factory=list)
 
 
 class Investor(BaseModel):
@@ -63,6 +65,16 @@ class Investor(BaseModel):
     investmentMethod: str = "货币"
     address: str = ""
     ethnicity: str = ""
+    # 个人独资企业自然人扩展字段
+    postalCode: str = ""
+    politicalStatus: str = ""
+    education: str = ""
+    priorOccupation: str = ""
+    # 合伙企业合伙人扩展字段
+    isExecutivePartner: bool = False
+    isLicenseHolder: bool = False
+    # 有限合伙：有限责任 / 无限责任
+    liabilityType: str = ""
 
 
 class PersonBrief(BaseModel):
@@ -98,6 +110,9 @@ class PersonnelBlock(BaseModel):
     manager: Optional[PersonBrief] = None
     financeOfficer: Optional[PersonBrief] = None
     liaisonOfficer: Optional[LiaisonOfficer] = None
+    # 合伙企业填报默认：执行事务合伙人 / 电子营业执照持照人姓名列表
+    executivePartnerNames: list[str] = Field(default_factory=list)
+    licenseHolderNames: list[str] = Field(default_factory=list)
 
 
 class SealsBlock(BaseModel):
