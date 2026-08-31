@@ -14,7 +14,7 @@ import uuid
 from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, Form, UploadFile
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
+from fastapi.responses import JSONResponse, FileResponse
 
 from .sessions import SessionManager
 from .rpa.browser import Listener
@@ -51,70 +51,9 @@ app.mount("/static", StaticFiles(directory=str(_STATIC_ASSETS)), name="static")
 # 9 屏原型（同源托管，屏 6 内嵌 /qrlogin 同域，避免 iframe cross-origin）
 PROTOTYPE_HTML = BACKEND_DIR / "static_prototype.html"
 
-LANDING_HTML = """<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>伽马注册 RPA 演示</title>
-<style>
-  *{box-sizing:border-box} body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
-  margin:0; background:#F5F7FA; color:#0B2E66; padding:40px 20px;}
-  .wrap{max-width:820px; margin:0 auto;}
-  h1{font-size:24px; margin:0 0 6px}
-  .sub{color:#5A6B85; margin:0 0 28px; line-height:1.6}
-  .cards{display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px}
-  @media (max-width:680px){.cards{grid-template-columns:1fr}}
-  .card{background:#fff; border:1px solid #E5E7EB; border-radius:14px; padding:22px; text-decoration:none; color:inherit; display:block; transition:.15s}
-  .card:hover{border-color:#1E5FD9; box-shadow:0 6px 20px rgba(30,95,217,.12)}
-  .card .tag{display:inline-block; font-size:12px; font-weight:700; color:#1E5FD9; background:#E8F0FE; padding:3px 10px; border-radius:99px; margin-bottom:12px}
-  .card.b .tag{color:#2BB673; background:#F0FDF4}
-  .card.p .tag{color:#7C3AED; background:#F5F3FF}
-  .card h2{font-size:18px; margin:0 0 8px}
-  .card p{font-size:13px; color:#5A6B85; line-height:1.6; margin:0}
-  .note{margin-top:28px; font-size:13px; color:#5A6B85; line-height:1.7; background:#fff; border:1px solid #E5E7EB; border-radius:14px; padding:18px}
-  .note code{background:#1e293b; color:#86efac; padding:2px 8px; border-radius:6px; font-size:12px}
-  .note b{color:#0B2E66}
-</style></head>
-<body><div class="wrap">
-  <h1>伽马注册 · RPA 扫码登录演示</h1>
-  <p class="sub">演示「手机 H5 提交 → Web RPA 自动抓取一网通办登录二维码 → 手机扫码 → RPA 自动跳转」。<br>
-  请在同一台机器上打开下面页面，<b>用页面上的互跳按钮保证 sid 一致</b>。</p>
-  <div class="cards">
-    <a class="card p" href="/prototype">
-      <span class="tag">9 屏原型</span>
-      <h2>完整产品原型</h2>
-      <p>屏 1-9 全流程。填完前 5 屏后，屏 6 内嵌 B 页（/qrlogin）自动启动 RPA 并展示真实二维码，扫码成功自动进屏 7。</p>
-    </a>
-    <a class="card a" href="/acquire">
-      <span class="tag">A 页 · 操作端</span>
-      <h2>二维码获取页（RPA 端）</h2>
-      <p>桌面端。启动 RPA 浏览器，按「门户 → 关弹窗 → 开办 → 企业 → 扫码登录」自动操作，实时显示截图流与二维码捕获。</p>
-    </a>
-    <a class="card b" href="/qrlogin">
-      <span class="tag">B 页 · 用户端</span>
-      <h2>扫码登录页（H5）</h2>
-      <p>手机 H5 风格。展示 RPA 同步过来的真实二维码，用「随申办」APP 扫码；扫码成功自动跳转。</p>
-    </a>
-  </div>
-  <div class="note">
-    <b>演示顺序（9 屏原型整合）：</b><br>
-    1. 打开 <b>9 屏原型</b>（/prototype）→ 走完屏 1-5<br>
-    2. 进入屏 6 时，内部 B 页 iframe 自动绑定 sid 并<b>触发 RPA</b>，实时显示真实二维码<br>
-    3. 用「随申办」APP 扫码 → 屏 6 自动跳转屏 7（进度跟踪）<br>
-    4. 可选：屏 6 点「↗ 打开 A 页（监控）」看 RPA 实时截图（同 sid，不重启 RPA）<br><br>
-    <b>真实政务网（默认）：</b> 直接打开 <code>/prototype</code> 或 <code>/prototype?real=1</code> 即驱动上海企业登记在线真实站点；<b>离线测试：</b> 原型或 A/B 页 URL 加 <code>?mock=1</code><br>
-    <b>健康检查：</b> <code>curl http://localhost:8766/health</code>
-  </div>
-</div></body></html>"""
 
-
-@app.get("/", include_in_schema=False)
-async def index():
-    """演示落地页：列出 9 屏原型 / A / B 两页入口。"""
-    return HTMLResponse(LANDING_HTML)
-
-
-@app.get("/prototype", include_in_schema=False)
-async def prototype():
-    """9 屏原型（同源托管，屏 6 内嵌 /qrlogin）。"""
+def _serve_prototype():
+    """首页与 /prototype 均返回 9 屏原型。"""
     if not PROTOTYPE_HTML.exists():
         return JSONResponse({"error": "prototype not found (expected backend/static_prototype.html)"}, status_code=404)
     return FileResponse(
@@ -122,6 +61,18 @@ async def prototype():
         media_type="text/html",
         headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
     )
+
+
+@app.get("/", include_in_schema=False)
+async def index():
+    """首页：直接进入 9 屏产品原型。"""
+    return _serve_prototype()
+
+
+@app.get("/prototype", include_in_schema=False)
+async def prototype():
+    """兼容旧入口 /prototype。"""
+    return _serve_prototype()
 
 
 @app.get("/acquire", include_in_schema=False)

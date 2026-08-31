@@ -1072,10 +1072,7 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
         </div>
       </div>
 
-      <p class="field-tip" style="margin-top:10px;text-align:center;">
-        表单会自动保存在本机；重启后端后刷新即可继续。
-        <button type="button" class="edit" id="clearDraftBtn" style="margin-left:8px;">清除草稿</button>
-      </p>
+      <!-- 表单不再本机持久化；刷新后从空白开始 -->
     </section>
 
     <!-- ===================== 屏 6：扫码登录 ===================== -->
@@ -3761,202 +3758,29 @@ document.getElementById('scope').addEventListener('input', ()=>{
   document.getElementById('scope').dataset.manual = '1';
 });
 
-/* ============ 草稿持久化（localStorage，重启后端刷新后可继续） ============ */
+/* ============ 草稿持久化已关闭（不再写入 / 恢复 localStorage） ============ */
 const DRAFT_KEY = 'gamaz_proto_draft_v1';
 let _draftTimer = null;
 let _restoringDraft = false;
 
 function stableDraftStep(step){
   const n = Number(step) || 0;
-  // 扫码/进度/完成会话重启后已失效，落回确认页
   if(n >= 5) return 4;
   return Math.max(0, Math.min(4, n));
 }
 
-function collectDraftFields(){
-  const fields = {};
-  document.querySelectorAll('main.scroll input[id], main.scroll select[id], main.scroll textarea[id]').forEach(el=>{
-    if(el.type === 'file') return;
-    if(el.type === 'checkbox' || el.type === 'radio') fields[el.id] = !!el.checked;
-    else fields[el.id] = el.value;
-  });
-  return fields;
-}
+function saveDraft(){ /* persistence disabled */ }
 
-function applyDraftFields(fields){
-  if(!fields || typeof fields !== 'object') return;
-  Object.keys(fields).forEach(id=>{
-    const el = document.getElementById(id);
-    if(!el) return;
-    if(el.type === 'checkbox' || el.type === 'radio') el.checked = !!fields[id];
-    else el.value = fields[id] == null ? '' : String(fields[id]);
-  });
-}
-
-function slimIdUploads(map){
-  const out = {};
-  Object.keys(map || {}).forEach(k=>{
-    const u = map[k] || {};
-    out[k] = {
-      personKey: u.personKey || k,
-      personName: u.personName || '',
-      roles: Array.isArray(u.roles) ? u.roles.slice() : [],
-      frontFileId: u.frontFileId || '',
-      backFileId: u.backFileId || '',
-      frontName: u.frontName || '',
-      backName: u.backName || '',
-      // 预览图可能很大，不写 localStorage；有 fileId 即可在确认页显示状态
-    };
-  });
-  return out;
-}
-
-function saveDraft(){
-  if(_restoringDraft) return;
-  try{
-    const draft = {
-      v: 1,
-      savedAt: Date.now(),
-      step: stableDraftStep(STATE.step),
-      fields: collectDraftFields(),
-      npCards: [...document.querySelectorAll('#npList .np-card')].map(collectNpCardData),
-      nameChips: [...document.querySelectorAll('#nameChips .chip.zi')].map(c=>({
-        zi: c.dataset.zi || '',
-        on: c.classList.contains('on'),
-        status: c.dataset.status || '',
-      })).filter(c=>c.zi),
-      ziSelectOrder: selectedZiOrdered(),
-      selectedScopes: (STATE.selectedScopes || []).map(s=>({
-        scope_id: s.scope_id || '',
-        scope_code: s.scope_code || '',
-        name: s.name || '',
-        permit_type: s.permit_type || '',
-        permit_text: s.permit_text || '',
-      })),
-      scopePermitType: STATE.scopePermitType || '',
-      nameDistrict: STATE.nameDistrict || '上海',
-      refillTimes: STATE.refillTimes,
-      idUploads: slimIdUploads(STATE.idUploads),
-      checkCache: STATE.checkCache || {},
-      scopeManual: !!(document.getElementById('scope')?.dataset?.manual),
-      supOn: isSupervisorOn(),
-    };
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-  }catch(e){
-    console.warn('saveDraft failed', e);
-  }
-}
-
-function scheduleSaveDraft(){
-  if(_restoringDraft) return;
-  clearTimeout(_draftTimer);
-  _draftTimer = setTimeout(saveDraft, 400);
-}
+function scheduleSaveDraft(){ /* persistence disabled */ }
 
 function clearDraft(){
   try{ localStorage.removeItem(DRAFT_KEY); }catch(e){}
 }
 
 function restoreDraft(){
-  let raw;
-  try{ raw = localStorage.getItem(DRAFT_KEY); }catch(e){ return null; }
-  if(!raw) return null;
-  let draft;
-  try{ draft = JSON.parse(raw); }catch(e){ return null; }
-  if(!draft || typeof draft !== 'object') return null;
-
-  _restoringDraft = true;
-  try{
-    applyDraftFields(draft.fields || {});
-
-    if(typeof draft.supOn === 'boolean'){
-      const on = isSharesCompany() ? true : draft.supOn;
-      setSup(on ? 1 : 0);
-      // 兼容旧草稿多人监事：只取第一人
-      if(Array.isArray(draft.supCards) && draft.supCards.length){
-        const s0 = draft.supCards[0] || {};
-        const nameEl = document.getElementById('supName');
-        const mobEl = document.getElementById('supMobile');
-        if(nameEl && !(nameEl.value || '').trim() && s0.name) nameEl.value = s0.name;
-        if(mobEl && !(mobEl.value || '').trim() && (s0.mobile || s0.phone)){
-          mobEl.value = s0.mobile || s0.phone || '';
-        }
-      }
-    }
-
-    const npList = document.getElementById('npList');
-    if(npList){
-      npList.innerHTML = '';
-      const cards = Array.isArray(draft.npCards) && draft.npCards.length ? draft.npCards : [null];
-      cards.forEach(d => addNaturalPerson(d || undefined));
-    }
-
-    const chipsWrap = document.getElementById('nameChips');
-    if(chipsWrap && Array.isArray(draft.nameChips)){
-      chipsWrap.innerHTML = '';
-      STATE.ziSelectOrder = [];
-      // 先全部建 chip（不选中），再按草稿顺序选中以恢复优先级
-      draft.nameChips.forEach(c=>{
-        if(!c || !c.zi) return;
-        addZiChip(c.zi, false, { status: c.status || '' });
-      });
-      const order = Array.isArray(draft.ziSelectOrder) && draft.ziSelectOrder.length
-        ? draft.ziSelectOrder.slice()
-        : draft.nameChips.filter(c => c && c.on).map(c => c.zi);
-      order.forEach(zi=>{
-        const chip = [...document.querySelectorAll('#nameChips .chip.zi')].find(c => c.dataset.zi === zi);
-        if(chip) setZiChipOn(chip, true);
-      });
-      // 草稿里 on 但未进 order 的补选（排在后面）
-      draft.nameChips.forEach(c=>{
-        if(!c || !c.zi || !c.on) return;
-        if((STATE.ziSelectOrder || []).includes(c.zi)) return;
-        const chip = [...document.querySelectorAll('#nameChips .chip.zi')].find(el => el.dataset.zi === c.zi);
-        if(chip) setZiChipOn(chip, true);
-      });
-    }
-
-    STATE.selectedScopes = Array.isArray(draft.selectedScopes) ? draft.selectedScopes.slice() : [];
-    STATE.scopePermitType = draft.scopePermitType || '';
-    STATE.nameDistrict = draft.nameDistrict || '上海';
-    if(typeof draft.refillTimes === 'number') STATE.refillTimes = draft.refillTimes;
-    STATE.idUploads = draft.idUploads || {};
-    STATE.checkCache = draft.checkCache || {};
-    const scopeEl = document.getElementById('scope');
-    if(scopeEl && draft.scopeManual) scopeEl.dataset.manual = '1';
-    const selCount = document.getElementById('scopeSelCount');
-    if(selCount) selCount.textContent = String(STATE.selectedScopes.length);
-
-    // 复选框「同法人」联动锁定态
-    ['dir','fin'].forEach(p=>{
-      const same = document.getElementById(p + 'Same');
-      if(same && same.checked) toggleSameLegal(p);
-    });
-
-    syncPersonnelByOrgForm();
-    try{ refreshName(); }catch(e){}
-    try{ updateZiCount(); }catch(e){}
-
-    return stableDraftStep(draft.step);
-  }catch(e){
-    console.warn('restoreDraft failed', e);
-    return null;
-  }finally{
-    _restoringDraft = false;
-  }
+  clearDraft();
+  return null;
 }
-
-document.addEventListener('input', (e)=>{
-  if(!e.target || !e.target.closest) return;
-  if(!e.target.closest('main.scroll')) return;
-  scheduleSaveDraft();
-}, true);
-document.addEventListener('change', (e)=>{
-  if(!e.target || !e.target.closest) return;
-  if(!e.target.closest('main.scroll')) return;
-  scheduleSaveDraft();
-}, true);
-window.addEventListener('beforeunload', ()=>{ try{ saveDraft(); }catch(e){} });
 
 /* ============ 屏 5：确认单同步屏1动态值 ============ */
 function syncConfirm(){
@@ -4013,24 +3837,15 @@ function syncConfirm(){
 
 /* ============ 初始化 ============ */
 (function initPrototype(){
-  const clearBtn = document.getElementById('clearDraftBtn');
-  if(clearBtn){
-    clearBtn.addEventListener('click', ()=>{
-      if(!confirm('确定清除本机已保存的表单草稿？')) return;
-      clearDraft();
-      alert('草稿已清除。刷新页面后将从空白表单开始。');
-    });
-  }
-  // 先建一张默认自然人卡，restore 时会重建列表
+  clearDraft();
   addNaturalPerson();
   syncPersonnelByOrgForm();
   bindGlobalMobileValidation();
   bindIdCardUploads();
-  const restoredStep = restoreDraft();
   ensureNameScopeApis().then(()=>{
     if(!(document.querySelectorAll('#nameChips .chip.zi').length)) genZiCandidates();
   });
-  go(restoredStep == null ? 0 : restoredStep);
+  go(0);
 })();
 </script>
 </body>

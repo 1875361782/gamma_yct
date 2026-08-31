@@ -1,4 +1,0 @@
-selenium>=4.15.0
-ddddocr>=1.4.11
-Pillow>=10.0.0
-PyYAML>=6.0.1

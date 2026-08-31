@@ -17,8 +17,6 @@ bash run.sh
 
 > 首次运行会联网自建 `.venv` + 安装 Playwright Chromium（约 150MB）；装好之后反复启动很快，
 > 且 `?mock=1` 离线模式完全不需要政务网。
->
-> 表单会自动保存在浏览器 localStorage；**重启后端后刷新页面即可继续填写**，无需重填。
 
 ---
 
