@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Node / frontend
+node_modules/
+dist/
+.DS_Store
+
+# macOS junk from zip
+__MACOSX/
+._*
+
+# Env & secrets
+.env
+.env.*
+*.pem
+
+# Logs / temp
+*.log
+*.tmp
+.playwright/
+test-results/
+
+# Runtime case data (keep .gitkeep only)
+gamma-yct/data/cases/*/
+gamma-yct/data/cases/_*.json
+gamma-yct/data/cases/_*.txt
+gamma-yct/paths.txt
+
+# Local experiments (not product)
+短信验证/
+
+# Demo local venv
+伽马注册_RPA演示包/.venv/

@@ -198,6 +198,29 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
   position:absolute; right:12px; font-size:13px; color:var(--color-text-sub);
   pointer-events:none;
 }
+/* 一网通办风格住所填报 */
+.addr-yct{display:flex; flex-direction:column; gap:8px;}
+.addr-row{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; align-items:stretch;}
+.addr-cell{min-width:0; position:relative;}
+.addr-cell select, .addr-cell input{
+  width:100%; min-height:40px; font-size:13px; padding:8px 10px;
+}
+.addr-unit{position:relative;}
+.addr-unit input{padding-right:28px;}
+.addr-unit .u-sfx{
+  position:absolute; right:8px; top:50%; transform:translateY(-50%);
+  font-size:12px; color:var(--color-text-sub); pointer-events:none;
+}
+.addr-num-range{display:flex; align-items:center; gap:4px; min-width:0;}
+.addr-num-range .addr-unit{flex:1; min-width:0;}
+.addr-num-range .dash{flex:0 0 auto; color:var(--color-text-sub); font-size:13px;}
+/* display:flex 会盖掉原生 hidden，必须显式隐藏 */
+#addrNumberSingle[hidden],
+#addrNumberRange[hidden],
+.addr-num-range[hidden]{display:none !important;}
+@media (max-width:520px){
+  .addr-row{grid-template-columns:1fr 1fr;}
+}
 .suffix-btn{
   position:absolute; right:6px;
   height:34px; padding:0 12px; border:none; border-radius:8px;
@@ -868,9 +891,71 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
         </div>
 
         <div class="field">
-          <label for="regAddress">注册地址<span class="req">*</span></label>
-          <input id="regAddress" type="text" placeholder="街道/路/号/室" />
+          <label>注册地址（住所）<span class="req">*</span></label>
+          <p class="field-tip">区县、街道、路名必填；弄 / 号 / 幢 / 室选填（填了就带入一网通办，没填则留空）</p>
+          <div class="addr-yct" id="addrYct">
+            <div class="addr-row">
+              <div class="addr-cell">
+                <select id="addrDistrict" aria-label="区县">
+                  <option value="" selected disabled>请选择区县</option>
+                </select>
+              </div>
+              <div class="addr-cell">
+                <select id="addrStreet" aria-label="街道/乡镇" disabled>
+                  <option value="" selected disabled>请选择街道/乡镇</option>
+                </select>
+              </div>
+              <div class="addr-cell">
+                <input id="addrRoad" type="text" placeholder="请输入汉字路名/村名" autocomplete="off" />
+              </div>
+              <div class="addr-cell">
+                <div class="addr-unit">
+                  <input id="addrLane" type="text" inputmode="numeric" placeholder="" autocomplete="off" />
+                  <span class="u-sfx">弄</span>
+                </div>
+              </div>
+            </div>
+            <div class="addr-row">
+              <div class="addr-cell" id="addrNumberCell">
+                <div class="addr-unit" id="addrNumberSingle">
+                  <input id="addrNumber" type="text" inputmode="numeric" placeholder="" autocomplete="off" />
+                  <span class="u-sfx">号</span>
+                </div>
+                <div class="addr-num-range" id="addrNumberRange" hidden>
+                  <div class="addr-unit">
+                    <input id="addrNumberStart" type="text" inputmode="numeric" placeholder="" autocomplete="off" />
+                    <span class="u-sfx">号</span>
+                  </div>
+                  <span class="dash">-</span>
+                  <div class="addr-unit">
+                    <input id="addrNumberEnd" type="text" inputmode="numeric" placeholder="" autocomplete="off" />
+                    <span class="u-sfx">号</span>
+                  </div>
+                </div>
+              </div>
+              <div class="addr-cell">
+                <select id="addrOddEven" aria-label="连号">
+                  <option value="不连号" selected>不连号</option>
+                  <option value="单号连号">单号连号</option>
+                  <option value="双号连号">双号连号</option>
+                  <option value="单双号">单双号</option>
+                </select>
+              </div>
+              <div class="addr-cell">
+                <div class="addr-unit">
+                  <input id="addrBuilding" type="text" placeholder="" autocomplete="off" />
+                  <span class="u-sfx">幢</span>
+                </div>
+              </div>
+              <div class="addr-cell">
+                <div class="addr-unit">
+                  <input id="addrRoom" type="text" placeholder="" autocomplete="off" />
+                  <span class="u-sfx">室</span>
+                </div>
+              </div>
+            </div>
           </div>
+        </div>
 
         <div class="field">
           <label for="postalCode">邮编<span class="req">*</span></label>
@@ -1072,7 +1157,6 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
         </div>
       </div>
 
-      <!-- 表单不再本机持久化；刷新后从空白开始 -->
     </section>
 
     <!-- ===================== 屏 6：扫码登录 ===================== -->
@@ -1222,6 +1306,8 @@ const STATE = {
   lastQrData: null,
   qrReceivedAt: 0,
   qrRetrying: false,
+  apiToken: '',
+  apiTokenExpiresAt: 0,
   // 核名 / 经营范围 API
   nameDistrict: '上海',
   nameDisclaimer: '查重结果仅供参考，最终以登记机关申报系统的计算机比对及人工审核为准。',
@@ -1327,7 +1413,7 @@ function next(){
     if(!document.getElementById('industry').value.trim()){ alert('请填写行业表述'); return; }
     if(!document.getElementById('orgForm').value){ alert('请选择组织形式'); return; }
     if(!document.getElementById('capital').value || !(parseFloat(document.getElementById('capital').value) > 0)){ alert('请填写注册资本'); return; }
-    if(!document.getElementById('regAddress').value.trim()){ alert('请填写注册地址'); return; }
+    if(!validateRegAddress()) return;
     if(!document.getElementById('postalCode').value.trim()){ alert('请填写邮编'); return; }
     if(!(STATE.selectedScopes || []).length && !document.getElementById('scope').value.trim()){
       alert('请至少勾选 1 条经营范围，或填写经营范围文案'); return;
@@ -1366,6 +1452,152 @@ function back(){
 }
 
 /* ============ 屏 5 → 6：进入阶段 B ============ */
+/* ============ 一网通办住所：区县→街道级联 ============ */
+const SH_STREET_MAP = {
+  '黄浦区': ['南京东路街道','外滩街道','半淞园街道','小东门街道','豫园街道','老西门街道','五里桥街道','打浦桥街道','淮海中路街道','瑞金二路街道'],
+  '徐汇区': ['湖南路街道','斜士路街道','枫林路街道','长桥街道','田林新村街道','虹梅路街道','康建新村街道','徐家汇街道','凌云街道','龙华街道','漕河泾镇'],
+  '长宁区': ['华阳路街道','江苏路街道','新华路街道','周家桥街道','天山路街道','仙霞新村街道','虹桥路街道','程家桥街道','北新泾街道','新泾镇'],
+  '静安区': ['江宁路街道','石门二路街道','南京西路街道','静安寺街道','曹家渡街道','临汾路街道','芷江西路街道','彭浦镇人民政府','天目西路街道','大宁路街道','彭浦新村街道','北站街道','宝山路街道','共和新路街道'],
+  '普陀区': ['曹杨新村街道','宜川路街道','长风新村街道','长寿路街道','甘泉路街道','石泉路街道','万里街道','真如镇街道','长征镇','桃浦镇'],
+  '虹口区': ['欧阳路街道','曲阳路街道','广中路街道','嘉兴路街道','凉城新村街道','四川北路街道','北外滩街道','江湾镇'],
+  '杨浦区': ['定海街道','平凉路街道','江浦街道','四平街道','控江街道','长白街道','延吉新村街道','殷行街道','大桥街道','五角场街道','长海街道','江湾新城街道'],
+  '闵行区': ['江川路街道','新虹街道','古美街道','莘庄镇','七宝镇','颛桥镇','华漕镇','虹桥镇','梅陇镇','马桥镇','浦江镇','吴泾镇','浦锦街道','莘庄工业区'],
+  '宝山区': ['吴淞街道','友谊街道','张庙街道','罗店镇','大场镇','杨行镇','月浦镇','罗泾镇','顾村镇','高境镇','庙行镇','淞南镇','其他'],
+  '嘉定区': ['真新街道','嘉定镇街道','南翔镇','安亭镇','娄塘镇','封浜镇','马陆镇','戬浜镇','嘉西镇','徐行镇','曹王镇','华亭镇','唐行镇','朱家桥镇','外冈镇','望新镇','方泰镇','黄渡镇','江桥镇','新成路街道','菊园新区','嘉定工业区'],
+  '浦东新区': ['潍坊新村街道','陆家嘴街道','周家渡街道','塘桥街道','上钢新村街道','南码头路街道','沪东新村街道','金杨新村街道','浦兴路街道','洋泾街道','星火开发区','子公司在外区(县)','川沙新镇','高桥镇','北蔡镇','合庆镇','唐镇','曹路镇','金桥镇','高行镇','高东镇','张江镇','花木镇','三林镇','东明路街道','南汇新城镇','外高桥保税区','金桥出口加工区','南汇工业园区','惠南镇','周浦镇','新场镇','大团镇','康桥镇','航头镇','祝桥镇','泥城镇','宣桥镇','书院镇','万祥镇','老港镇','滨海旅游度假区','洋山保税港区','浦东机场综合保税区','上海国际旅游度假区'],
+  '金山区': ['枫泾商城','万安市场','临时市场','望康路市场','旧货市场','朱泾镇','枫泾镇','张堰镇','亭林镇','吕巷镇','干巷镇','廊下镇','钱圩镇','金山卫镇','兴塔镇','朱行镇','漕泾镇','山阳镇','松隐镇','新农镇','朱泾乡','新农乡','石化街道','金山工业区'],
+  '松江区': ['泗泾镇','佘山镇','车墩镇','新桥镇','洞泾镇','九亭镇','小昆山镇','泖港镇','永丰街道','石湖荡镇','新浜镇','叶榭镇','岳阳街道','方松街道','中山街道','广富林街道','九里亭街道','松江工业区'],
+  '青浦区': ['夏阳街道','夏阳街道（重固所）','夏阳街道（工业园区所）','夏阳街道（盈浦所）','朱家角镇','练塘镇','金泽镇','赵巷镇','徐泾镇','徐泾镇（西虹桥所）','华新镇','凤溪镇','重固镇','白鹤镇','赵屯镇','大盈镇','香花镇','沈巷镇','小蒸镇','蒸淀镇','金泽镇（莲盛）','金泽镇（西岑）','金泽镇（商榻）','环城镇','青浦工业园区','盈浦街道','盈浦街道（夏阳所）','香花桥街道','香花桥街道（青浦所）','香花桥街道（园区所）','香花桥街道（赵巷所）','香花桥街道（重固所）'],
+  '奉贤区': ['南桥镇南桥','南桥镇西渡','西渡街道','奉城镇','庄行镇','金汇镇','金海街道','四团镇','青村镇','海湾旅游区','柘林镇','海湾镇','海港开发区','头桥地区','奉浦街道','奉浦工业区','化学工业区奉贤分区','现代农业园区','闵行出口加工区','临海社区'],
+  '崇明区': ['城桥镇','堡镇镇','新河镇','庙镇镇','竖新镇','向化镇','三星镇','港沿镇','陈家镇','绿华镇','港西镇','建设镇','新海镇','东平镇','新村乡','长兴镇','横沙乡','中兴镇','前哨农场','森林公园'],
+};
+
+function initAddrDistrictOptions(){
+  const sel = document.getElementById('addrDistrict');
+  if(!sel || sel.dataset.ready === '1') return;
+  Object.keys(SH_STREET_MAP).forEach(d=>{
+    const opt = document.createElement('option');
+    opt.value = d; opt.textContent = d;
+    sel.appendChild(opt);
+  });
+  sel.dataset.ready = '1';
+}
+
+function fillAddrStreetOptions(district, keepStreet){
+  const streetSel = document.getElementById('addrStreet');
+  if(!streetSel) return;
+  const list = SH_STREET_MAP[district] || [];
+  const prev = keepStreet || streetSel.value || '';
+  streetSel.innerHTML = '';
+  const ph = document.createElement('option');
+  ph.value = ''; ph.disabled = true; ph.selected = true;
+  ph.textContent = list.length ? '请选择街道/乡镇' : '请先选择区县';
+  streetSel.appendChild(ph);
+  list.forEach(s=>{
+    const opt = document.createElement('option');
+    opt.value = s; opt.textContent = s;
+    streetSel.appendChild(opt);
+  });
+  streetSel.disabled = !list.length;
+  if(prev && list.includes(prev)){
+    streetSel.value = prev;
+    ph.selected = false;
+  }
+}
+
+function isAddrRangeMode(mode){
+  // 不连号：单框；单号连号 / 双号连号 / 单双号：起止双框
+  return !!(mode && mode !== '不连号');
+}
+
+function syncAddrNumberMode(){
+  const mode = (document.getElementById('addrOddEven')?.value || '不连号');
+  const single = document.getElementById('addrNumberSingle');
+  const range = document.getElementById('addrNumberRange');
+  if(!single || !range) return;
+  const ranged = isAddrRangeMode(mode);
+  single.hidden = ranged;
+  range.hidden = !ranged;
+  // 同步 style，避免被 .addr-num-range{display:flex} 盖掉
+  single.style.display = ranged ? 'none' : '';
+  range.style.display = ranged ? 'flex' : 'none';
+  const n = document.getElementById('addrNumber');
+  const s = document.getElementById('addrNumberStart');
+  if(ranged){
+    // 切到双框：把单框号带入起号
+    if(n && s && !(s.value || '').trim() && (n.value || '').trim()){
+      s.value = n.value;
+    }
+  }else{
+    // 切回单框：优先用起号回填
+    if(n && s && !(n.value || '').trim() && (s.value || '').trim()){
+      n.value = s.value;
+    }
+  }
+}
+
+function collectRegAddress(){
+  const district = (document.getElementById('addrDistrict')?.value || '').trim();
+  const street = (document.getElementById('addrStreet')?.value || '').trim();
+  const road = (document.getElementById('addrRoad')?.value || '').trim();
+  const lane = (document.getElementById('addrLane')?.value || '').trim();
+  const mode = (document.getElementById('addrOddEven')?.value || '不连号').trim() || '不连号';
+  const ranged = isAddrRangeMode(mode);
+  const number = ranged
+    ? (document.getElementById('addrNumberStart')?.value || '').trim()
+    : (document.getElementById('addrNumber')?.value || '').trim();
+  const numberEnd = ranged
+    ? (document.getElementById('addrNumberEnd')?.value || '').trim()
+    : '';
+  const building = (document.getElementById('addrBuilding')?.value || '').trim();
+  const room = (document.getElementById('addrRoom')?.value || '').trim();
+  let detail = '';
+  if(district || street || road || number || room){
+    detail = '上海市'
+      + district
+      + street
+      + road
+      + (lane ? lane + '弄' : '')
+      + (number ? number + '号' : '')
+      + (numberEnd ? '-' + numberEnd + '号' : '')
+      + (building ? building + '幢' : '')
+      + (room ? room + (room.endsWith('室') || /楼$/.test(room) ? '' : '室') : '');
+  }
+  return { district, street, road, lane, number, numberEnd, oddEvenMode: mode, building, room, detail };
+}
+
+function validateRegAddress(){
+  const a = collectRegAddress();
+  if(!a.district){ alert('请选择区县'); return false; }
+  if(!a.street){ alert('请选择街道/乡镇'); return false; }
+  if(!a.road){ alert('请填写路名/村名'); return false; }
+  // 弄/号/幢/室选填：填了才带入；连号时若填了起号则止号必填
+  if(isAddrRangeMode(a.oddEvenMode) && a.number && !a.numberEnd){
+    alert('连号请填写起止门牌号'); return false;
+  }
+  if(isAddrRangeMode(a.oddEvenMode) && a.numberEnd && !a.number){
+    alert('连号请填写起号'); return false;
+  }
+  return true;
+}
+
+function bindAddrYctUi(){
+  initAddrDistrictOptions();
+  const dist = document.getElementById('addrDistrict');
+  const odd = document.getElementById('addrOddEven');
+  if(dist && !dist.dataset.bound){
+    dist.addEventListener('change', ()=>{
+      fillAddrStreetOptions(dist.value);
+    });
+    dist.dataset.bound = '1';
+  }
+  if(odd && !odd.dataset.bound){
+    odd.addEventListener('change', syncAddrNumberMode);
+    odd.dataset.bound = '1';
+  }
+  syncAddrNumberMode();
+}
+
 function parseDistrictFromAddress(addr){
   const t = String(addr || '').replace(/\s+/g, '');
   const m = t.match(/([\u4e00-\u9fff]{1,6}区)/);
@@ -1385,9 +1617,10 @@ function buildCasePayload(){
   const industry = (document.getElementById('industry').value || '').trim();
   const orgForm = (document.getElementById('orgForm').value || '').trim();
   const capital = parseFloat(document.getElementById('capital').value) || 0;
-  const detail = (document.getElementById('regAddress').value || '').trim();
+  const addrParts = collectRegAddress();
+  const detail = addrParts.detail;
   const postalCode = (document.getElementById('postalCode').value || '').trim();
-  const district = parseDistrictFromAddress(detail);
+  const district = addrParts.district || parseDistrictFromAddress(detail);
   const scope = (document.getElementById('scope').value || '').trim() || industry;
   const scopeNames = (STATE.selectedScopes || []).map(s => (s.name || '').trim()).filter(Boolean);
   const scopeCodes = (STATE.selectedScopes || [])
@@ -1495,6 +1728,14 @@ function buildCasePayload(){
         province: '上海市',
         city: '上海市',
         district,
+        street: addrParts.street,
+        road: addrParts.road,
+        lane: addrParts.lane,
+        number: addrParts.number,
+        numberEnd: addrParts.numberEnd,
+        oddEvenMode: addrParts.oddEvenMode,
+        building: addrParts.building,
+        room: addrParts.room,
         detail,
         propertyCertNo: '',
         postalCode,
@@ -1580,16 +1821,27 @@ function buildCasePayload(){
 }
 
 async function syncCasePayloadToGamma(){
+  if(!validateRegAddress()){
+    throw new Error('注册地址未填完整，请返回企业信息页按区县/街道/路/号/室填写');
+  }
+  if(!document.getElementById('postalCode').value.trim()){
+    throw new Error('请填写邮编');
+  }
   const payload = buildCasePayload();
+  const addr = (payload.registration && payload.registration.address) || {};
+  if(!(addr.district && addr.street && addr.road && (addr.detail || '').trim())){
+    throw new Error('住所结构化字段未写入（区县/街道/路名），请刷新页面后重新选择地址再提交');
+  }
   const origin = backendOriginForPrototype();
+  const headers = await authHeaders();
   const res = await fetch(origin + '/api/case-payload', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ caseId: 'GM202608062231EF', payload }),
+    headers,
+    body: JSON.stringify({ caseId: 'GM202608062231EF', payload, token: STATE.apiToken }),
   });
   const data = await res.json().catch(() => ({}));
   if(!res.ok || !data.ok){
-    throw new Error((data && data.error) || ('同步案件失败 HTTP ' + res.status));
+    throw new Error((data && (data.message || data.error)) || ('同步案件失败 HTTP ' + res.status));
   }
   return data;
 }
@@ -1607,27 +1859,28 @@ async function enterPhaseB(){
   }catch(err){
     console.warn('[enterPhaseB] sync case failed', err);
     alert('写入 gamma-yct 案件失败：' + (err && err.message ? err.message : err));
-    STATE.syncedCaseId = STATE.syncedCaseId || 'GM202608062231EF';
+    return; // 住所等关键字段未写入则禁止进入扫码/RPA
   }
   try{
     const origin = backendOriginForPrototype();
+    const headers = await authHeaders();
     const res = await fetch(origin + '/api/start-automation', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         caseId: STATE.syncedCaseId || 'GM202608062231EF',
         sid: STATE.sid,
-        headless: false,
+        token: STATE.apiToken,
       }),
     });
     const data = await res.json().catch(() => ({}));
     if(!res.ok || !data.ok){
-      throw new Error((data && data.error) || ('启动自动化失败 HTTP ' + res.status));
+      throw new Error((data && (data.message || data.error)) || ('启动自动化失败 HTTP ' + res.status));
     }
     console.log('[enterPhaseB] automation started', data);
   }catch(err){
     console.warn('[enterPhaseB] start automation failed', err);
-    alert('启动后台填报失败：' + (err && err.message ? err.message : err) + '\n请确认已启动演示后端（:8766），然后重试「确认并建立」。');
+    alert('启动后台填报失败：' + (err && err.message ? err.message : err) + '\n请确认已启动演示后端，然后重试「确认并建立」。');
     return; // 未启动自动化则不进扫码页，避免空等
   }
   go(5);
@@ -1639,11 +1892,34 @@ function makeSid(){
 }
 
 function backendOriginForPrototype(){
-  // 若原型由后端同源托管（http/https），用相对 origin；否则指向 localhost:8766
-  if (location.protocol === 'http:' || location.protocol === 'https:'){
+  // 同源托管（含 Cloudflare Tunnel 公网域名）：一律用当前 origin，禁止回落 localhost
+  const proto = location.protocol || '';
+  if (proto === 'http:' || proto === 'https:') {
     return location.origin;
   }
-  return 'http://localhost:8766';
+  // 仅 file:// 本地打开 HTML 时才指向本机后端
+  return 'http://127.0.0.1:8766';
+}
+
+async function ensureApiToken(force){
+  const now = Date.now() / 1000;
+  if (!force && STATE.apiToken && STATE.apiTokenExpiresAt > now + 60) {
+    return STATE.apiToken;
+  }
+  const origin = backendOriginForPrototype();
+  const res = await fetch(origin + '/api/bootstrap', { method: 'GET', cache: 'no-store' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok || !data.token) {
+    throw new Error((data && (data.error || data.message)) || ('领取访问令牌失败 HTTP ' + res.status));
+  }
+  STATE.apiToken = data.token;
+  STATE.apiTokenExpiresAt = Number(data.expiresAt) || (now + 3600);
+  return STATE.apiToken;
+}
+
+async function authHeaders(extra){
+  const token = await ensureApiToken(false);
+  return Object.assign({ 'Content-Type': 'application/json', 'X-Gamma-Token': token }, extra || {});
 }
 
 function showLiveQr(dataUrl){
@@ -1748,8 +2024,12 @@ function mountBPageFrame(){
     frame.src = bUrl;
     frame.setAttribute('data-sid', STATE.sid);
   }
+  // 产品面不暴露 A 页监控链接
   const openA = document.getElementById('openAPageBtn');
-  if (openA) openA.href = origin + '/acquire?sid=' + encodeURIComponent(STATE.sid) + (useMock ? '&mock=true' : '');
+  if (openA) {
+    openA.removeAttribute('href');
+    openA.style.display = 'none';
+  }
   STATE.lastQrData = null;
   STATE.qrReceivedAt = 0;
   showLiveQr('');
@@ -1760,21 +2040,40 @@ function notifyCancelAutomation(sid, caseId){
   const origin = backendOriginForPrototype();
   const cid = (caseId || STATE.syncedCaseId || STATE.caseId || 'GM202608062231EF').trim();
   // keepalive：离开页面/点取消后仍要发出；不要短超时打断关窗
-  const opts = {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    keepalive: true,
+  const send = (url, payload) => {
+    const body = JSON.stringify(Object.assign({ token: STATE.apiToken || '' }, payload || {}));
+    const headers = { 'Content-Type': 'application/json' };
+    if (STATE.apiToken) headers['X-Gamma-Token'] = STATE.apiToken;
+    fetch(url, { method: 'POST', headers, body, keepalive: true }).catch(() => {});
   };
   if(sid){
-    fetch(origin + '/api/automation/' + encodeURIComponent(sid) + '/cancel', {
-      ...opts,
-      body: '{}',
-    }).catch(() => {});
+    send(origin + '/api/automation/' + encodeURIComponent(sid) + '/cancel', {});
   }
-  fetch(origin + '/api/automation/cancel-case', {
-    ...opts,
-    body: JSON.stringify({ caseId: cid }),
-  }).catch(() => {});
+  send(origin + '/api/automation/cancel-case', { caseId: cid });
+}
+
+/** 重试前等待取消完成，避免新会话被上一轮 cancel 误杀 / 写成「用户取消」 */
+async function awaitCancelAutomation(sid, caseId){
+  const origin = backendOriginForPrototype();
+  const cid = (caseId || STATE.syncedCaseId || STATE.caseId || 'GM202608062231EF').trim();
+  let headers = { 'Content-Type': 'application/json' };
+  try{ headers = await authHeaders(); }catch(e){}
+  const token = STATE.apiToken || '';
+  const tasks = [];
+  if(sid){
+    tasks.push(fetch(origin + '/api/automation/' + encodeURIComponent(sid) + '/cancel', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ token }),
+    }).catch(() => {}));
+  }
+  tasks.push(fetch(origin + '/api/automation/cancel-case', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ token, caseId: cid }),
+  }).catch(() => {}));
+  await Promise.all(tasks);
+  await new Promise(r => setTimeout(r, 1000));
 }
 
 function cancelQrLogin(){
@@ -1806,26 +2105,26 @@ async function retryQrLogin(){
   showLiveQr('');
   const oldSid = STATE.sid;
   const caseId = STATE.syncedCaseId || STATE.caseId || 'GM202608062231EF';
-  // 先取消旧会话（只关本 case），再开新 sid，避免旧 finally/kill 误关新窗
-  if(oldSid) notifyCancelAutomation(oldSid, caseId);
-  await new Promise(r => setTimeout(r, 600));
+  // 先等旧会话真正取消，再开新 sid，避免旧 cancel 误关新窗
+  await awaitCancelAutomation(oldSid, caseId);
   STATE.sid = makeSid();
   STATE.lastQrData = null;
   STATE.qrReceivedAt = 0;
   try{
     const origin = backendOriginForPrototype();
+    const headers = await authHeaders();
     const res = await fetch(origin + '/api/start-automation', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         caseId,
         sid: STATE.sid,
-        headless: false,
+        token: STATE.apiToken,
       }),
     });
     const data = await res.json().catch(() => ({}));
     if(!res.ok || !data.ok){
-      throw new Error((data && data.error) || ('重试失败 HTTP ' + res.status));
+      throw new Error((data && (data.message || data.error)) || ('重试失败 HTTP ' + res.status));
     }
     mountBPageFrame();
   }catch(err){
@@ -2130,7 +2429,8 @@ async function retryFillFromProgress(){
   }
   stopFillProgressPolling();
   const oldSid = STATE.sid;
-  notifyCancelAutomation(oldSid, STATE.syncedCaseId || STATE.caseId || '');
+  const caseId = STATE.syncedCaseId || STATE.caseId || '';
+  await awaitCancelAutomation(oldSid, caseId);
   const frame = document.getElementById('bPageFrame');
   if(frame) frame.src = 'about:blank';
   showLiveQr('');
@@ -2145,18 +2445,19 @@ async function retryFillFromProgress(){
   try{
     try{ await syncCasePayloadToGamma(); }catch(e){ console.warn('[retryFill] sync', e); }
     const origin = backendOriginForPrototype();
+    const headers = await authHeaders();
     const res = await fetch(origin + '/api/start-automation', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         caseId: STATE.syncedCaseId || STATE.caseId || 'GM202608062231EF',
         sid: STATE.sid,
-        headless: false,
+        token: STATE.apiToken,
       }),
     });
     const data = await res.json().catch(() => ({}));
     if(!res.ok || !data.ok){
-      throw new Error((data && data.error) || ('启动自动化失败 HTTP ' + res.status));
+      throw new Error((data && (data.message || data.error)) || ('启动自动化失败 HTTP ' + res.status));
     }
     go(5);
   }catch(err){
@@ -2235,6 +2536,47 @@ function bindGlobalMobileValidation(){
     npList.dataset.mobileObs = '1';
     new MutationObserver(() => {
       npList.querySelectorAll('input.np-phone, input[type=tel]').forEach(mark);
+    }).observe(npList, { childList: true, subtree: true });
+  }
+}
+
+/** 持股比例单字段上限 100（HTML max 拦不住手输更大值） */
+function clampOwnershipPctInput(el){
+  if(!el) return;
+  let raw = String(el.value || '').trim();
+  if(raw === '') return;
+  // 只保留数字与一个小数点
+  raw = raw.replace(/[^\d.]/g, '');
+  const parts = raw.split('.');
+  if(parts.length > 2) raw = parts[0] + '.' + parts.slice(1).join('');
+  let n = parseFloat(raw);
+  if(isNaN(n)){ el.value = ''; return; }
+  if(n < 0) n = 0;
+  if(n > 100) n = 100;
+  // 保持整数输入框观感（step=1）
+  const out = Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
+  if(el.value !== out) el.value = out;
+}
+
+function bindOwnershipPctInputs(){
+  const bindOne = (el) => {
+    if(!el || el.dataset.pctBound === '1') return;
+    el.dataset.pctBound = '1';
+    el.setAttribute('min', '0');
+    el.setAttribute('max', '100');
+    el.setAttribute('step', '1');
+    el.addEventListener('input', () => clampOwnershipPctInput(el));
+    el.addEventListener('change', () => clampOwnershipPctInput(el));
+    el.addEventListener('blur', () => clampOwnershipPctInput(el));
+  };
+  const ubo = document.getElementById('uboPct');
+  if(ubo) bindOne(ubo);
+  document.querySelectorAll('input.np-pct').forEach(bindOne);
+  const npList = document.getElementById('npList');
+  if(npList && !npList.dataset.pctObs){
+    npList.dataset.pctObs = '1';
+    new MutationObserver(() => {
+      npList.querySelectorAll('input.np-pct').forEach(bindOne);
     }).observe(npList, { childList: true, subtree: true });
   }
 }
@@ -2435,10 +2777,16 @@ async function onPersonIdSelected(personKey, side, input){
     fd.append('roles', JSON.stringify(person.roles));
     const origin = backendOriginForPrototype();
     const caseId = STATE.caseId || STATE.syncedCaseId || 'GM202608062231EF';
-    const res = await fetch(origin + '/api/cases/' + encodeURIComponent(caseId) + '/id-card', {
-      method: 'POST',
-      body: fd,
-    });
+    const url = origin + '/api/cases/' + encodeURIComponent(caseId) + '/id-card';
+    let res;
+    try{
+      res = await fetch(url, { method: 'POST', body: fd });
+    }catch(netErr){
+      throw new Error(
+        '网络请求失败（' + (netErr && netErr.message ? netErr.message : 'Failed to fetch') +
+        '）。请确认本机 8766 服务与 Cloudflare 隧道仍在运行后重试。'
+      );
+    }
     const data = await res.json().catch(() => ({}));
     if(!res.ok || !data.ok){
       throw new Error((data && (data.error || data.detail)) || ('上传失败 HTTP ' + res.status));
@@ -2571,6 +2919,23 @@ const NP_OCCUPATION_OPTS = [
   '农民','待业人员','下岗人员','辞退职人员','个体工商户经营者','停薪留职人员','闲散人员',
   '离休人员','退休人员','国家法律,法规允许的其他人员','在职人员'
 ];
+/* 中华人民共和国 56 个民族（法定称谓） */
+const NP_ETHNICITY_OPTS = [
+  '汉族','蒙古族','回族','藏族','维吾尔族','苗族','彝族','壮族','布依族','朝鲜族',
+  '满族','侗族','瑶族','白族','土家族','哈尼族','哈萨克族','傣族','黎族','傈僳族',
+  '佤族','畲族','高山族','拉祜族','水族','东乡族','纳西族','景颇族','柯尔克孜族','土族',
+  '达斡尔族','仫佬族','羌族','布朗族','撒拉族','毛南族','仡佬族','锡伯族','阿昌族','普米族',
+  '塔吉克族','怒族','乌孜别克族','俄罗斯族','鄂温克族','德昂族','保安族','裕固族','京族','塔塔尔族',
+  '独龙族','鄂伦春族','赫哲族','门巴族','珞巴族','基诺族'
+];
+const NP_ETHNICITY_SET = new Set(NP_ETHNICITY_OPTS);
+function normalizeEthnicity(v){
+  const s = String(v || '').trim().replace(/\s+/g, '');
+  if(!s) return '';
+  if(NP_ETHNICITY_SET.has(s)) return s;
+  if(NP_ETHNICITY_SET.has(s + '族')) return s + '族';
+  return '';
+}
 function npCardHtml(idx, data){
   const d = data || {name:'', ethnicity:'', phone:'', pct:'', postalCode:'', politicalStatus:'', education:'', priorOccupation:'', isExecutivePartner:false, isLicenseHolder:false, liabilityType:''};
   const sole = isSoleProprietorship();
@@ -2861,7 +3226,7 @@ function syncPersonnelByOrgForm(){
 function collectNpCardData(c){
   return {
     name: (c.querySelector('.np-name')?.value || '').trim(),
-    ethnicity: (c.querySelector('.np-ethnicity')?.value || '').trim(),
+    ethnicity: normalizeEthnicity(c.querySelector('.np-ethnicity')?.value),
     phone: (c.querySelector('.np-phone')?.value || '').trim(),
     pct: (c.querySelector('.np-pct')?.value || '').trim(),
     postalCode: (c.querySelector('.np-postal')?.value || '').trim(),
@@ -2945,10 +3310,19 @@ function validatePersonnel(){
   let legalPartnerUnlimited = false;
   for(const c of cards){
     if(!c.querySelector('.np-name').value.trim()){ alert('有' + roleLabel + '未填写姓名'); return false; }
-    if(!c.querySelector('.np-ethnicity').value.trim()){ alert('有' + roleLabel + '未填写民族'); return false; }
+    const eth = normalizeEthnicity(c.querySelector('.np-ethnicity')?.value);
+    if(!eth){
+      const raw = (c.querySelector('.np-ethnicity')?.value || '').trim();
+      alert(raw
+        ? ('有' + roleLabel + '民族「' + raw + '」不在法定民族列表中，请按规范称谓填写（如：汉族、回族）')
+        : ('有' + roleLabel + '未填写民族'));
+      return false;
+    }
+    c.querySelector('.np-ethnicity').value = eth;
     if(!requireMobile(c.querySelector('.np-phone').value, roleLabel + '电话')) return false;
     const pct = parseFloat(c.querySelector('.np-pct').value);
     if(isNaN(pct) || pct <= 0){ alert('有' + roleLabel + '未填写有效持股比例（须 > 0）'); return false; }
+    if(pct > 100){ alert('持股比例最高为 100%'); return false; }
     npSum += pct;
     if(sole){
       const postal = (c.querySelector('.np-postal')?.value || '').trim();
@@ -3034,6 +3408,7 @@ function validatePersonnel(){
   if(!document.getElementById('uboAddress').value.trim()){ alert('请填写最终受益人住所'); return false; }
   const uboPct = parseFloat(document.getElementById('uboPct').value);
   if(isNaN(uboPct) || uboPct <= 0){ alert('请填写最终受益人有效持股比例（须 > 0）'); return false; }
+  if(uboPct > 100){ alert('最终受益人持股比例最高为 100%'); return false; }
   return true;
 }
 
@@ -3089,41 +3464,69 @@ document.getElementById('getCode').addEventListener('click', e=>{
   tick();
 });
 
-/* ============ 屏 1：核名 / 经营范围（api.gamaz.cn 代理） ============ */
+/* ============ 屏 1：核名 / 经营范围（api.gamaz.cn） ============ */
 const HIGH = ['启','创','云','智','数','澜','芮','骁','璟','翊','宥','桓','昭','屿'];
+const GAMAZ_PUBLIC_API = 'https://api.gamaz.cn';
 
-function gamazOrigin(){ return backendOriginForPrototype(); }
+function isLocalHostName(h){
+  const x = (h || '').toLowerCase();
+  return !x || x === 'localhost' || x === '127.0.0.1' || x === '::1';
+}
 
-async function gamazFetch(path, { method='GET', body=null, query=null } = {}){
-  try{
-    let url = gamazOrigin() + path;
-    if(query){
-      const qs = new URLSearchParams();
-      Object.entries(query).forEach(([k,v])=>{
-        if(v !== undefined && v !== null && v !== '') qs.set(k, v);
-      });
-      const s = qs.toString();
-      if(s) url += (url.includes('?') ? '&' : '?') + s;
-    }
-    const opts = { method, headers: { 'Accept': 'application/json' } };
-    if(body != null){
-      opts.headers['Content-Type'] = 'application/json';
-      opts.body = JSON.stringify(body);
-    }
-    const res = await fetch(url, opts);
-    const data = await res.json().catch(() => null);
-    if(!data) return { code: 0, msg: res.ok ? '响应解析失败' : ('HTTP ' + res.status), data: null };
-    if(typeof data.code === 'undefined'){
-      const detail = data.detail;
-      const msg = Array.isArray(detail)
-        ? (detail[0]?.msg || '请求失败')
-        : (typeof detail === 'string' ? detail : ('HTTP ' + res.status));
-      return { code: 0, msg, data: null };
-    }
-    return data;
-  }catch(err){
-    return { code: 0, msg: (err && err.message) || '网络错误', data: null };
+function gamazOriginCandidates(){
+  // 公网隧道：手机直连 api.gamaz.cn（CORS=*），不依赖本机能否访问上游
+  // 本机调试：优先走 8766 代理（可本地降级 / LLM），失败再直连
+  const local = backendOriginForPrototype();
+  if(isLocalHostName(location.hostname)){
+    return [local, GAMAZ_PUBLIC_API];
   }
+  return [GAMAZ_PUBLIC_API, local];
+}
+
+function gamazOrigin(){ return gamazOriginCandidates()[0]; }
+
+async function gamazFetchOnce(origin, path, { method='GET', body=null, query=null } = {}){
+  let url = origin.replace(/\/$/, '') + path;
+  if(query){
+    const qs = new URLSearchParams();
+    Object.entries(query).forEach(([k,v])=>{
+      if(v !== undefined && v !== null && v !== '') qs.set(k, v);
+    });
+    const s = qs.toString();
+    if(s) url += (url.includes('?') ? '&' : '?') + s;
+  }
+  const opts = { method, headers: { 'Accept': 'application/json' }, mode: 'cors' };
+  if(body != null){
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch(url, opts);
+  const data = await res.json().catch(() => null);
+  if(!data) return { code: 0, msg: res.ok ? '响应解析失败' : ('HTTP ' + res.status), data: null };
+  if(typeof data.code === 'undefined'){
+    const detail = data.detail;
+    const msg = Array.isArray(detail)
+      ? (detail[0]?.msg || '请求失败')
+      : (typeof detail === 'string' ? detail : ('HTTP ' + res.status));
+    return { code: 0, msg, data: null };
+  }
+  return data;
+}
+
+async function gamazFetch(path, opts = {}){
+  const origins = gamazOriginCandidates();
+  let last = { code: 0, msg: '网络错误', data: null };
+  for(const origin of origins){
+    try{
+      const data = await gamazFetchOnce(origin, path, opts);
+      if(data && data.code === 1) return data;
+      last = data || last;
+      // 上游业务失败（code=0）时仍可试下一源；网络异常也试下一源
+    }catch(err){
+      last = { code: 0, msg: (err && err.message) || '网络错误', data: null };
+    }
+  }
+  return last;
 }
 
 async function ensureNameScopeApis(){
@@ -3758,29 +4161,237 @@ document.getElementById('scope').addEventListener('input', ()=>{
   document.getElementById('scope').dataset.manual = '1';
 });
 
-/* ============ 草稿持久化已关闭（不再写入 / 恢复 localStorage） ============ */
+/* ============ 草稿持久化（已关闭：刷新后表单清空） ============ */
 const DRAFT_KEY = 'gamaz_proto_draft_v1';
+const DRAFT_PERSIST = false; // true 时才写入/恢复 localStorage
 let _draftTimer = null;
 let _restoringDraft = false;
 
 function stableDraftStep(step){
   const n = Number(step) || 0;
+  // 扫码/进度/完成会话重启后已失效，落回确认页
   if(n >= 5) return 4;
   return Math.max(0, Math.min(4, n));
 }
 
-function saveDraft(){ /* persistence disabled */ }
+function collectDraftFields(){
+  const fields = {};
+  document.querySelectorAll('main.scroll input[id], main.scroll select[id], main.scroll textarea[id]').forEach(el=>{
+    if(el.type === 'file') return;
+    if(el.type === 'checkbox' || el.type === 'radio') fields[el.id] = !!el.checked;
+    else fields[el.id] = el.value;
+  });
+  return fields;
+}
 
-function scheduleSaveDraft(){ /* persistence disabled */ }
+function applyDraftFields(fields){
+  if(!fields || typeof fields !== 'object') return;
+  Object.keys(fields).forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    if(el.type === 'checkbox' || el.type === 'radio') el.checked = !!fields[id];
+    else el.value = fields[id] == null ? '' : String(fields[id]);
+  });
+}
+
+function slimIdUploads(map){
+  const out = {};
+  Object.keys(map || {}).forEach(k=>{
+    const u = map[k] || {};
+    out[k] = {
+      personKey: u.personKey || k,
+      personName: u.personName || '',
+      roles: Array.isArray(u.roles) ? u.roles.slice() : [],
+      frontFileId: u.frontFileId || '',
+      backFileId: u.backFileId || '',
+      frontName: u.frontName || '',
+      backName: u.backName || '',
+      // 预览图可能很大，不写 localStorage；有 fileId 即可在确认页显示状态
+    };
+  });
+  return out;
+}
+
+function saveDraft(){
+  if(!DRAFT_PERSIST || _restoringDraft) return;
+  try{
+    const draft = {
+      v: 1,
+      savedAt: Date.now(),
+      step: stableDraftStep(STATE.step),
+      fields: collectDraftFields(),
+      npCards: [...document.querySelectorAll('#npList .np-card')].map(collectNpCardData),
+      nameChips: [...document.querySelectorAll('#nameChips .chip.zi')].map(c=>({
+        zi: c.dataset.zi || '',
+        on: c.classList.contains('on'),
+        status: c.dataset.status || '',
+      })).filter(c=>c.zi),
+      ziSelectOrder: selectedZiOrdered(),
+      selectedScopes: (STATE.selectedScopes || []).map(s=>({
+        scope_id: s.scope_id || '',
+        scope_code: s.scope_code || '',
+        name: s.name || '',
+        permit_type: s.permit_type || '',
+        permit_text: s.permit_text || '',
+      })),
+      scopePermitType: STATE.scopePermitType || '',
+      nameDistrict: STATE.nameDistrict || '上海',
+      refillTimes: STATE.refillTimes,
+      idUploads: slimIdUploads(STATE.idUploads),
+      checkCache: STATE.checkCache || {},
+      scopeManual: !!(document.getElementById('scope')?.dataset?.manual),
+      supOn: isSupervisorOn(),
+    };
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  }catch(e){
+    console.warn('saveDraft failed', e);
+  }
+}
+
+function scheduleSaveDraft(){
+  if(!DRAFT_PERSIST || _restoringDraft) return;
+  clearTimeout(_draftTimer);
+  _draftTimer = setTimeout(saveDraft, 400);
+}
 
 function clearDraft(){
   try{ localStorage.removeItem(DRAFT_KEY); }catch(e){}
 }
 
 function restoreDraft(){
-  clearDraft();
-  return null;
+  if(!DRAFT_PERSIST){
+    clearDraft();
+    return null;
+  }
+  let raw;
+  try{ raw = localStorage.getItem(DRAFT_KEY); }catch(e){ return null; }
+  if(!raw) return null;
+  let draft;
+  try{ draft = JSON.parse(raw); }catch(e){ return null; }
+  if(!draft || typeof draft !== 'object') return null;
+
+  _restoringDraft = true;
+  try{
+    const fields = draft.fields || {};
+    applyDraftFields(fields);
+    const distVal = (fields.addrDistrict || document.getElementById('addrDistrict')?.value || '').trim();
+    const streetKeep = (fields.addrStreet || '').trim();
+    if(distVal) fillAddrStreetOptions(distVal, streetKeep);
+    if(fields.addrOddEven){
+      const odd = document.getElementById('addrOddEven');
+      if(odd) odd.value = fields.addrOddEven;
+    }
+    syncAddrNumberMode();
+    // 按模式回填单框或起止双框
+    if(isAddrRangeMode(fields.addrOddEven || '不连号')){
+      const s = document.getElementById('addrNumberStart');
+      const e = document.getElementById('addrNumberEnd');
+      const startVal = fields.addrNumberStart != null && String(fields.addrNumberStart).trim() !== ''
+        ? fields.addrNumberStart
+        : fields.addrNumber;
+      if(s && startVal != null && String(startVal).trim() !== '') s.value = String(startVal);
+      if(e && fields.addrNumberEnd != null) e.value = String(fields.addrNumberEnd);
+    }else{
+      const n = document.getElementById('addrNumber');
+      if(n){
+        const v = fields.addrNumber != null && String(fields.addrNumber).trim() !== ''
+          ? fields.addrNumber
+          : (fields.addrNumberStart != null ? fields.addrNumberStart : '');
+        if(v !== '' && v != null) n.value = String(v);
+      }
+    }
+
+    if(typeof draft.supOn === 'boolean'){
+      const on = isSharesCompany() ? true : draft.supOn;
+      setSup(on ? 1 : 0);
+      // 兼容旧草稿多人监事：只取第一人
+      if(Array.isArray(draft.supCards) && draft.supCards.length){
+        const s0 = draft.supCards[0] || {};
+        const nameEl = document.getElementById('supName');
+        const mobEl = document.getElementById('supMobile');
+        if(nameEl && !(nameEl.value || '').trim() && s0.name) nameEl.value = s0.name;
+        if(mobEl && !(mobEl.value || '').trim() && (s0.mobile || s0.phone)){
+          mobEl.value = s0.mobile || s0.phone || '';
+        }
+      }
+    }
+
+    const npList = document.getElementById('npList');
+    if(npList){
+      npList.innerHTML = '';
+      const cards = Array.isArray(draft.npCards) && draft.npCards.length ? draft.npCards : [null];
+      cards.forEach(d => addNaturalPerson(d || undefined));
+    }
+
+    const chipsWrap = document.getElementById('nameChips');
+    if(chipsWrap && Array.isArray(draft.nameChips)){
+      chipsWrap.innerHTML = '';
+      STATE.ziSelectOrder = [];
+      // 先全部建 chip（不选中），再按草稿顺序选中以恢复优先级
+      draft.nameChips.forEach(c=>{
+        if(!c || !c.zi) return;
+        addZiChip(c.zi, false, { status: c.status || '' });
+      });
+      const order = Array.isArray(draft.ziSelectOrder) && draft.ziSelectOrder.length
+        ? draft.ziSelectOrder.slice()
+        : draft.nameChips.filter(c => c && c.on).map(c => c.zi);
+      order.forEach(zi=>{
+        const chip = [...document.querySelectorAll('#nameChips .chip.zi')].find(c => c.dataset.zi === zi);
+        if(chip) setZiChipOn(chip, true);
+      });
+      // 草稿里 on 但未进 order 的补选（排在后面）
+      draft.nameChips.forEach(c=>{
+        if(!c || !c.zi || !c.on) return;
+        if((STATE.ziSelectOrder || []).includes(c.zi)) return;
+        const chip = [...document.querySelectorAll('#nameChips .chip.zi')].find(el => el.dataset.zi === c.zi);
+        if(chip) setZiChipOn(chip, true);
+      });
+    }
+
+    STATE.selectedScopes = Array.isArray(draft.selectedScopes) ? draft.selectedScopes.slice() : [];
+    STATE.scopePermitType = draft.scopePermitType || '';
+    STATE.nameDistrict = draft.nameDistrict || '上海';
+    if(typeof draft.refillTimes === 'number') STATE.refillTimes = draft.refillTimes;
+    STATE.idUploads = draft.idUploads || {};
+    STATE.checkCache = draft.checkCache || {};
+    const scopeEl = document.getElementById('scope');
+    if(scopeEl && draft.scopeManual) scopeEl.dataset.manual = '1';
+    const selCount = document.getElementById('scopeSelCount');
+    if(selCount) selCount.textContent = String(STATE.selectedScopes.length);
+
+    // 复选框「同法人」联动锁定态
+    ['dir','fin'].forEach(p=>{
+      const same = document.getElementById(p + 'Same');
+      if(same && same.checked) toggleSameLegal(p);
+    });
+
+    syncPersonnelByOrgForm();
+    try{ refreshName(); }catch(e){}
+    try{ updateZiCount(); }catch(e){}
+
+    return stableDraftStep(draft.step);
+  }catch(e){
+    console.warn('restoreDraft failed', e);
+    return null;
+  }finally{
+    _restoringDraft = false;
+  }
 }
+
+document.addEventListener('input', (e)=>{
+  if(!e.target || !e.target.closest) return;
+  if(!e.target.closest('main.scroll')) return;
+  scheduleSaveDraft();
+}, true);
+document.addEventListener('change', (e)=>{
+  if(!e.target || !e.target.closest) return;
+  if(!e.target.closest('main.scroll')) return;
+  scheduleSaveDraft();
+}, true);
+window.addEventListener('beforeunload', ()=>{
+  if(!DRAFT_PERSIST){ try{ clearDraft(); }catch(e){} return; }
+  try{ saveDraft(); }catch(e){}
+});
 
 /* ============ 屏 5：确认单同步屏1动态值 ============ */
 function syncConfirm(){
@@ -3788,7 +4399,8 @@ function syncConfirm(){
   const ind  = document.getElementById('industry').value.trim() || '—';
   const org  = currentOrgForm() || '—';
   const cap  = document.getElementById('capital').value;
-  const addr = document.getElementById('regAddress').value.trim() || '—';
+  const addrObj = collectRegAddress();
+  const addr = addrObj.detail || '—';
   const post = document.getElementById('postalCode').value.trim() || '—';
   const scope = document.getElementById('scope').value || '（未填写）';
   document.getElementById('sumName').textContent = name || '—';
@@ -3797,6 +4409,15 @@ function syncConfirm(){
   document.getElementById('sumCapital').textContent = cap ? (cap + ' 万人民币') : '—';
   document.getElementById('sumRegAddress').textContent = addr;
   document.getElementById('sumPostalCode').textContent = post;
+  const sumAddrEl = document.getElementById('sumRegAddress');
+  if(sumAddrEl){
+    if(!addrObj.district || !addrObj.street || !addrObj.road){
+      sumAddrEl.textContent = '（未填完整，请返回企业信息页补全区县/街道/路名）';
+      sumAddrEl.style.color = '#c0392b';
+    }else{
+      sumAddrEl.style.color = '';
+    }
+  }
   document.getElementById('sumScope').textContent = scope;
   document.getElementById('sumLegal').textContent = document.getElementById('legalName').value.trim() || '—';
   const npParts = [...document.querySelectorAll('#npList .np-card')].map(c=>{
@@ -3837,15 +4458,20 @@ function syncConfirm(){
 
 /* ============ 初始化 ============ */
 (function initPrototype(){
-  clearDraft();
+  bindAddrYctUi();
+  // 先建一张默认自然人卡，restore 时会重建列表
   addNaturalPerson();
   syncPersonnelByOrgForm();
   bindGlobalMobileValidation();
+  bindOwnershipPctInputs();
   bindIdCardUploads();
+  clearDraft(); // 刷新即清空，不恢复旧草稿
+  const restoredStep = restoreDraft();
+  ensureApiToken(true).catch(err => console.warn('[bootstrap]', err));
   ensureNameScopeApis().then(()=>{
     if(!(document.querySelectorAll('#nameChips .chip.zi').length)) genZiCandidates();
   });
-  go(0);
+  go(restoredStep == null ? 0 : restoredStep);
 })();
 </script>
 </body>

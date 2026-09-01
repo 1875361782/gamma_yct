@@ -121,19 +121,29 @@ def looks_logged_in(page: Page) -> bool:
 
     注意：登录前「告知书」也可能含「我已知晓」文案，不能单凭该句判定已登录，
     否则会跳过扫码、演示页一直等不到二维码。
+    门户顶栏常有隐藏的「退出」副本，`.first` 可能不可见，需遍历可见节点。
     """
     url = (page.url or "").lower()
     if any(k in url for k in ("login.jsp", "/uc/login", "zwdtuser", "ssoLogin", "login?")):
         return False
     try:
-        if page.get_by_text("退出", exact=False).first.is_visible(timeout=800):
-            return True
+        loc = page.get_by_text("退出", exact=False)
+        n = min(int(loc.count() or 0), 8)
+        for i in range(n):
+            try:
+                if loc.nth(i).is_visible(timeout=400):
+                    return True
+            except Exception:
+                continue
     except Exception:
         pass
     try:
         body = page.locator("body").inner_text(timeout=1000) or ""
     except Exception:
         body = ""
+    # 门户首页已登录：顶栏「**x | 退出」+ 开办入口（扫码页不会同时出现）
+    if "退出" in body and ("开办" in body or "企业登记在线" in body or "上海企业登记" in body):
+        return True
     # 登录后须知/设立入口：须同时具备设立相关文案，避免把告知书当成已登录
     if "不涉及前置审批" in body and (
         "企业设立登记" in body or "我已知晓上述内容" in body
@@ -363,8 +373,20 @@ def wait_qr_login(
         customer_message="请使用随申办扫描演示页中的二维码登录一网通办",
     )
 
+    def _pick_logged_in_page(seed: Page) -> Optional[Page]:
+        for p in _active_pages(seed):
+            if looks_logged_in(p):
+                return p
+        return None
+
     # 已真实登录（有退出/设立入口）才跳过扫码
-    if looks_logged_in(page):
+    logged = _pick_logged_in_page(page)
+    if logged is not None:
+        page = logged
+        try:
+            page.bring_to_front()
+        except Exception:
+            pass
         _shot(page, case_id, "already-logged-in-before-qr")
         store.set_status(
             case_id,
@@ -392,7 +414,13 @@ def wait_qr_login(
             if clicked:
                 break
     if not clicked:
-        if looks_logged_in(page):
+        logged = _pick_logged_in_page(page)
+        if logged is not None:
+            page = logged
+            try:
+                page.bring_to_front()
+            except Exception:
+                pass
             _shot(page, case_id, "already-logged-in-after-enterprise")
             store.set_status(
                 case_id,

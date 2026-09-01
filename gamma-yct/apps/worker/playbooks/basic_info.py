@@ -1286,9 +1286,9 @@ def _authority_candidates(payload: dict[str, Any]) -> list[str]:
     return out
 
 
-def _pick_odd_even_mode(dialog, page: Page) -> str | None:
-    """住所填报：单双号选「不连号」（勿点到区县下拉）。"""
-    # 已是不连号则跳过
+def _pick_odd_even_mode(dialog, page: Page, want: str = "不连号") -> str | None:
+    """住所填报：选择连号模式（不连号/单号连号/双号连号/单双号）。"""
+    want = (want or "不连号").strip() or "不连号"
     try:
         sels = dialog.locator(".el-select")
         for i in range(min(sels.count(), 8)):
@@ -1297,12 +1297,12 @@ def _pick_odd_even_mode(dialog, page: Page) -> str | None:
             if not _visible(inp, timeout=200):
                 continue
             val = (inp.input_value(timeout=300) or "").strip()
-            if "不连号" in val:
-                return "不连号"
+            if want in val or val == want:
+                return want
     except Exception:
         pass
 
-    for text in ("不连号",):
+    for text in (want,):
         try:
             lab = dialog.locator("label.el-radio, .el-radio").filter(has_text=text).first
             if _visible(lab):
@@ -1310,14 +1310,12 @@ def _pick_odd_even_mode(dialog, page: Page) -> str | None:
                 return text
         except Exception:
             pass
-    # 打开选项含「不连号」的那个 select（通常在号/幢之间）
     try:
         sels = dialog.locator(".el-select")
         for i in range(min(sels.count(), 8) - 1, -1, -1):
             sel = sels.nth(i)
             if not _visible(sel, timeout=200):
                 continue
-            # 跳过区/街道/路（已选区名）
             try:
                 val = (sel.locator("input").first.input_value(timeout=200) or "").strip()
                 if val.endswith("区") or "街道" in val or val.endswith("路"):
@@ -1330,15 +1328,17 @@ def _pick_odd_even_mode(dialog, page: Page) -> str | None:
             page.wait_for_timeout(300)
             opts = _wait_select_options(page, dialog, min_count=1, timeout_ms=2000)
             texts = [t for _, t in opts]
-            if any("不连号" in t for t in texts):
-                if _click_matched_option(page, dialog, "不连号"):
-                    _close_open_select_dropdowns(page, dialog)
-                    return "不连号"
+            matched = _match_option_text(want, texts)
+            if not matched and any(want in t for t in texts):
+                matched = next(t for t in texts if want in t)
+            if matched and _click_matched_option(page, dialog, matched):
+                page.wait_for_timeout(250)
+                _close_open_select_dropdowns(page, dialog)
+                return want
             _close_open_select_dropdowns(page, dialog)
     except Exception:
         pass
     return None
-
 
 def _parse_shanghai_address(detail: str) -> dict[str, str]:
     """从详细地址拆出区/街道/路/弄/号/幢/室。
@@ -1380,7 +1380,8 @@ def _parse_shanghai_address(detail: str) -> dict[str, str]:
     if m_num:
         out["number"] = m_num.group(1)
         text = text[m_num.end() :]
-    m_bld = re.match(r"(\d+)幢", text)
+    # 幢/栋/座：支持 C幢、1幢、甲座 等（不仅数字）
+    m_bld = re.match(r"([A-Za-z0-9\u4e00-\u9fff]+)(?:幢|栋|座)", text)
     if m_bld:
         out["building"] = m_bld.group(1)
         text = text[m_bld.end() :]
@@ -1389,6 +1390,73 @@ def _parse_shanghai_address(detail: str) -> dict[str, str]:
         room = room[:-1]
     out["room"] = room
     return out
+
+
+def _road_stem(road: str) -> str:
+    r = re.sub(r"\s+", "", (road or "").strip())
+    return re.sub(r"(路|街|道|巷)$", "", r)
+
+
+def _street_candidates(district: str, street: str, road: str) -> list[str]:
+    """无显式街道时，从路名推导候选（金桥路→金桥镇/街道）；不设区县演示默认值。"""
+    out: list[str] = []
+    if (street or "").strip():
+        out.append(street.strip())
+    stem = _road_stem(road)
+    stems = [stem] if stem else []
+    if stem.startswith("新") and len(stem) > 2:
+        stems.append(stem[1:])
+    for s in stems:
+        for suf in ("街道", "镇", "乡"):
+            out.append(f"{s}{suf}")
+    seen: set[str] = set()
+    res: list[str] = []
+    for x in out:
+        if x and x not in seen:
+            seen.add(x)
+            res.append(x)
+    return res
+
+
+def _pick_street_by_road(
+    dialog, page: Page, *, road: str, index: int = 1
+) -> str | None:
+    """打开街道下拉，按路名词干模糊选最佳项（如 金桥路 → 金桥镇）。"""
+    stem = _road_stem(road)
+    if not stem:
+        return None
+    stems = [stem]
+    if stem.startswith("新") and len(stem) > 2:
+        stems.append(stem[1:])
+    if not _open_select_nth(dialog, page, index):
+        return None
+    opts = _wait_select_options(page, dialog, min_count=1, timeout_ms=5000)
+    if not opts:
+        _close_open_select_dropdowns(page, dialog)
+        return None
+    best: str | None = None
+    best_score = 0
+    for _, t in opts:
+        c = re.sub(r"\s+", "", t or "")
+        if not c or any(k in c for k in ("请选择", "不连号", "单号", "双号")):
+            continue
+        score = 0
+        for s in stems:
+            if not s:
+                continue
+            if c == f"{s}街道" or c == f"{s}镇" or c == f"{s}乡":
+                score = max(score, 200 + len(s))
+            elif s in c:
+                score = max(score, 100 + len(s))
+        if score > best_score:
+            best_score = score
+            best = t
+    if best and best_score > 0 and _click_matched_option(page, dialog, best):
+        page.wait_for_timeout(350)
+        _close_open_select_dropdowns(page, dialog)
+        return best
+    _close_open_select_dropdowns(page, dialog)
+    return None
 
 
 def _dialog_pick_select(
@@ -1892,28 +1960,92 @@ def _fill_road_field(dialog, page: Page, frame: Frame, road: str) -> bool:
         w = re.sub(r"\s+", "", road)
         return bool(v) and (w in v or v in w or v.rstrip("路村街") == w.rstrip("路村街"))
 
-    def _pick_suggestion() -> bool:
-        # 联想可能挂在 iframe body
-        candidates = [road, road.rstrip("路"), f"{road}路" if not road.endswith("路") else road]
+    def _list_suggestions() -> list[tuple[Any, str]]:
+        """收集可见联想项：(locator, text)。"""
+        items: list[tuple[Any, str]] = []
+        seen: set[str] = set()
+        sel = (
+            ".el-autocomplete-suggestion:visible li, "
+            ".el-autocomplete-suggestion__list:visible li, "
+            ".el-popper:visible li.el-autocomplete-suggestion__item, "
+            ".el-popper:visible .el-autocomplete-suggestion li, "
+            ".el-select-dropdown:visible .el-select-dropdown__item:not(.is-disabled)"
+        )
         for scope in _all_scopes(page):
-            for kw in candidates:
-                if not kw:
-                    continue
+            try:
+                opts = scope.locator(sel)
+                n = min(opts.count(), 40)
+                for i in range(n):
+                    try:
+                        loc = opts.nth(i)
+                        if not loc.is_visible(timeout=200):
+                            continue
+                        t = re.sub(r"\s+", "", (loc.inner_text(timeout=300) or "").strip())
+                        if not t or t in seen:
+                            continue
+                        seen.add(t)
+                        items.append((loc, t))
+                    except Exception:
+                        continue
+                if items:
+                    break
+            except Exception:
+                continue
+        return items
+
+    def _score_road(want: str, option: str) -> int:
+        """用户路名与选项匹配分；越高越优先。无匹配返回 0。"""
+        w = re.sub(r"\s+", "", (want or "").strip())
+        o = re.sub(r"\s+", "", (option or "").strip())
+        if not w or not o:
+            return 0
+        if o == w:
+            return 300
+        w2 = w.rstrip("路村街巷道")
+        o2 = o.rstrip("路村街巷道")
+        if w2 and o2 and o2 == w2:
+            return 280
+        if w in o:
+            return 200 + len(w)
+        if o in w:
+            return 180 + len(o)
+        if w2 and o2 and (w2 in o2 or o2 in w2):
+            return 150 + min(len(w2), len(o2))
+        return 0
+
+    def _pick_suggestion() -> bool:
+        """优先点选与用户路名匹配的联想项；列表无匹配时再选第一项。"""
+        page.wait_for_timeout(200)
+        items = _list_suggestions()
+        # 等联想弹出
+        if not items:
+            for _ in range(8):
+                page.wait_for_timeout(150)
+                items = _list_suggestions()
+                if items:
+                    break
+        if items:
+            best_loc = None
+            best_score = 0
+            for loc, t in items:
+                sc = _score_road(road, t)
+                if sc > best_score:
+                    best_score = sc
+                    best_loc = loc
+            # 有匹配 → 点用户路名；无匹配 → 点第一项
+            target = best_loc if best_score > 0 else items[0][0]
+            try:
+                target.click(timeout=3000)
+                page.wait_for_timeout(250)
+                return True
+            except Exception:
                 try:
-                    sug = scope.locator(
-                        ".el-autocomplete-suggestion:visible li, "
-                        ".el-autocomplete-suggestion__list:visible li, "
-                        ".el-popper:visible li.el-autocomplete-suggestion__item, "
-                        ".el-popper:visible .el-autocomplete-suggestion li, "
-                        ".el-select-dropdown:visible .el-select-dropdown__item"
-                    ).filter(has_text=re.compile(re.escape(kw))).first
-                    if _visible(sug, timeout=600):
-                        sug.click(timeout=3000)
-                        page.wait_for_timeout(250)
-                        return True
+                    target.click(timeout=3000, force=True)
+                    page.wait_for_timeout(250)
+                    return True
                 except Exception:
-                    continue
-        # 键盘选第一项
+                    pass
+        # 最后键盘回落：仅当上面都失败
         try:
             page.keyboard.press("ArrowDown")
             page.wait_for_timeout(120)
@@ -2043,22 +2175,33 @@ def _fill_road_field(dialog, page: Page, frame: Frame, road: str) -> bool:
 
 
 def _fill_address_units(
-    dialog, *, lane: str, number: str, building: str, room: str
+    dialog,
+    *,
+    lane: str,
+    number: str,
+    building: str,
+    room: str,
+    number_end: str = "",
 ) -> dict[str, Any]:
-    """按后缀「弄/号/幢/室」定位各自输入框；地址里没有的字段只清空、不乱填。
+    """按后缀「弄/号/幢/室」定位；选填——有值才写入，无值则清空（含表单默认 0）。
 
-    典型 DOM（Element UI）：
-      <div class="el-input el-input-group el-input-group--append">
-        <input /> <div class="el-input-group__append">号</div>
-      </div>
+    连号时「号」有两个输入框：起号 / 止号。
     """
     lane = (lane or "").strip()
     number = (number or "").strip()
+    number_end = (number_end or "").strip()
     building = (building or "").strip()
     room = (room or "").strip()
-    # 有值才写入；无弄/幢则写空串清空，避免残留错值
-    fields = {"弄": lane, "号": number, "幢": building, "室": room}
+    fields = {
+        "弄": [lane],
+        "号": [number, number_end] if number_end else [number],
+        "幢": [building],
+        "室": [room],
+    }
     info: dict[str, Any] = {"ok": False, "values": {}, "bySuffix": {}}
+
+    def _emptyish(v: str) -> bool:
+        return (v or "").strip() in ("", "0")
 
     try:
         js_res = dialog.evaluate(
@@ -2085,54 +2228,48 @@ def _fill_address_units(
                 if (v !== '') write(String(v));
                 inp.blur();
               };
-              const findInput = (suffix) => {
-                // 1) Element 后缀/前缀（限弹窗内）
+              const findInputs = (suffix) => {
+                const seen = new Set();
+                const list = [];
+                const push = (inp) => {
+                  if (!inp || bad(inp) || seen.has(inp)) return;
+                  seen.add(inp);
+                  list.push(inp);
+                };
+                // Element UI 后缀/前缀
                 for (const a of root.querySelectorAll(
-                  '.el-input-group__append, .el-input-group__prepend'
+                  '.el-input-group__append, .el-input-group__prepend, .el-input__suffix-inner, span'
                 )) {
-                  if ((a.textContent || '').replace(/\\s+/g, '') !== suffix) continue;
+                  const txt = (a.textContent || '').replace(/\\s+/g, '');
+                  if (txt !== suffix) continue;
                   const wrap =
                     a.closest('.el-input') ||
                     a.closest('.el-input-group') ||
                     a.parentElement;
-                  const inp = wrap && wrap.querySelector('input');
-                  if (inp && !bad(inp)) return inp;
-                }
-                // 2) 纯文本「弄/号/幢/室」
-                const walker = document.createTreeWalker(
-                  root, NodeFilter.SHOW_TEXT
-                );
-                let n;
-                while ((n = walker.nextNode())) {
-                  if ((n.textContent || '').trim() !== suffix) continue;
-                  const lab = n.parentElement;
-                  if (!lab) continue;
-                  if ((lab.textContent || '').replace(/\\s+/g, '') !== suffix) continue;
-                  const wrap =
-                    lab.closest('.el-input') ||
-                    lab.closest('.el-input-group') ||
-                    lab.parentElement;
-                  if (wrap) {
-                    const inp = wrap.querySelector('input');
-                    if (inp && !bad(inp)) return inp;
-                  }
-                  for (const el of [lab.previousElementSibling, lab.nextElementSibling]) {
-                    if (!el) continue;
-                    const inp = el.tagName === 'INPUT' ? el : el.querySelector?.('input');
-                    if (inp && !bad(inp)) return inp;
+                  push(wrap && wrap.querySelector('input'));
+                  // 兄弟 input
+                  const prev = a.previousElementSibling;
+                  if (prev) {
+                    push(prev.tagName === 'INPUT' ? prev : prev.querySelector && prev.querySelector('input'));
                   }
                 }
-                return null;
+                return list;
               };
               const out = {};
-              for (const [suffix, val] of Object.entries(fields || {})) {
-                const inp = findInput(suffix);
-                if (!inp) {
-                  out[suffix] = { found: false, value: '' };
+              for (const [suffix, raw] of Object.entries(fields || {})) {
+                const vals = Array.isArray(raw) ? raw : [raw];
+                const inps = findInputs(suffix);
+                if (!inps.length) {
+                  out[suffix] = { found: false, value: '', values: [] };
                   continue;
                 }
-                setVal(inp, val == null ? '' : String(val));
-                out[suffix] = { found: true, value: inp.value || '' };
+                const written = [];
+                for (let i = 0; i < inps.length; i++) {
+                  const v = i < vals.length ? (vals[i] == null ? '' : String(vals[i])) : '';
+                  setVal(inps[i], v);
+                  written.push(inps[i].value || '');
+                }
+                out[suffix] = { found: true, value: written[0] || '', values: written };
               }
               return out;
             }""",
@@ -2140,9 +2277,12 @@ def _fill_address_units(
         )
         if isinstance(js_res, dict):
             info["bySuffix"] = js_res
+            num_vals = (js_res.get("号") or {}).get("values") or []
             info["values"] = {
                 "lane": (js_res.get("弄") or {}).get("value") or "",
-                "number": (js_res.get("号") or {}).get("value") or "",
+                "number": (num_vals[0] if num_vals else (js_res.get("号") or {}).get("value"))
+                or "",
+                "numberEnd": (num_vals[1] if len(num_vals) > 1 else "") or "",
                 "building": (js_res.get("幢") or {}).get("value") or "",
                 "room": (js_res.get("室") or {}).get("value") or "",
             }
@@ -2158,79 +2298,141 @@ def _fill_address_units(
     except Exception as e:
         info["error"] = str(e)
 
-    # Playwright 回落：号未写入时按 append 文案补填
-    if not (info.get("found") or {}).get("number") or info.get("error"):
-        try:
-            for suffix, val in (("弄", lane), ("号", number), ("幢", building), ("室", room)):
-                lab = dialog.locator(
-                    ".el-input-group__append, .el-input-group__prepend"
-                ).filter(has_text=re.compile(rf"^\s*{re.escape(suffix)}\s*$")).first
-                if not _visible(lab, timeout=300):
-                    continue
-                wrap = lab.locator(
+    # Playwright 回落：逐项补填（无论 JS 是否部分成功）
+    try:
+        want_map = {"弄": lane, "幢": building, "室": room}
+        for suffix, val in want_map.items():
+            got_now = _read_address_unit(dialog, suffix)
+            need = (val or "").strip()
+            if need:
+                if got_now != need and got_now != f"{need}{suffix}":
+                    _fill_address_unit_input(dialog, suffix, need)
+            elif not _emptyish(got_now):
+                _fill_address_unit_input(dialog, suffix, "")
+        nums = [number, number_end] if number_end else [number]
+        labs = dialog.locator(
+            ".el-input-group__append, .el-input-group__prepend"
+        ).filter(has_text=re.compile(r"^\s*号\s*$"))
+        n_lab = labs.count()
+        for i, val in enumerate(nums):
+            if i >= n_lab:
+                # 无 append 时试相邻文本
+                if val:
+                    _fill_address_unit_input(dialog, "号", val)
+                break
+            lab = labs.nth(i)
+            if not _visible(lab, timeout=300):
+                continue
+            wrap = lab.locator("xpath=ancestor::*[contains(@class,'el-input')][1]")
+            inp = wrap.locator("input").first
+            if not _visible(inp, timeout=300):
+                continue
+            cur = ""
+            try:
+                cur = (inp.input_value(timeout=300) or "").strip()
+            except Exception:
+                pass
+            if (val or "") == cur or (not val and _emptyish(cur)):
+                continue
+            inp.click(timeout=1500)
+            inp.fill("")
+            if val:
+                inp.fill(val)
+        info["values"] = {
+            "lane": _read_address_unit(dialog, "弄"),
+            "number": _read_address_unit(dialog, "号") or number,
+            "numberEnd": number_end,
+            "building": _read_address_unit(dialog, "幢"),
+            "room": _read_address_unit(dialog, "室"),
+        }
+        # 连号止号：第二个「号」
+        if number_end and n_lab >= 2:
+            try:
+                wrap2 = labs.nth(1).locator(
                     "xpath=ancestor::*[contains(@class,'el-input')][1]"
                 )
-                inp = wrap.locator("input").first
-                if not _visible(inp, timeout=300):
-                    continue
-                inp.click(timeout=1500)
-                inp.fill("")
-                if val:
-                    inp.fill(val)
-                    try:
-                        inp.press("Tab")
-                    except Exception:
-                        pass
-            read2 = dialog.evaluate(
-                """(root) => {
-                  const grab = (suffix) => {
-                    for (const a of root.querySelectorAll(
-                      '.el-input-group__append, .el-input-group__prepend'
-                    )) {
-                      if ((a.textContent || '').replace(/\\s+/g,'') !== suffix) continue;
-                      const wrap = a.closest('.el-input') || a.parentElement;
-                      const inp = wrap && wrap.querySelector('input');
-                      if (inp) return inp.value || '';
-                    }
-                    return '';
-                  };
-                  return {
-                    lane: grab('弄'), number: grab('号'),
-                    building: grab('幢'), room: grab('室'),
-                  };
-                }"""
-            )
-            if isinstance(read2, dict):
-                info["values"] = read2
-                info["via"] = "playwright-append"
-                info["found"] = {
-                    "lane": True,
-                    "number": True,
-                    "building": True,
-                    "room": True,
-                }
-        except Exception as e:
-            info["fallbackError"] = str(e)
+                info["values"]["numberEnd"] = (
+                    wrap2.locator("input").first.input_value(timeout=400) or ""
+                ).strip()
+            except Exception:
+                pass
+        # JS 已写入但 Playwright 回读为空时，保留 bySuffix 值（幢/室常见）
+        by = info.get("bySuffix") or {}
+        vals = info["values"]
+        for key, suf in (
+            ("lane", "弄"),
+            ("number", "号"),
+            ("building", "幢"),
+            ("room", "室"),
+        ):
+            js_v = str((by.get(suf) or {}).get("value") or "").strip()
+            if js_v and not str(vals.get(key) or "").strip():
+                vals[key] = js_v
+            if key == "number":
+                js_nums = (by.get("号") or {}).get("values") or []
+                if js_nums and not str(vals.get("number") or "").strip():
+                    vals["number"] = str(js_nums[0] or "").strip()
+                if len(js_nums) > 1 and number_end and not str(vals.get("numberEnd") or "").strip():
+                    vals["numberEnd"] = str(js_nums[1] or "").strip()
+        info["found"] = {
+            "lane": True,
+            "number": True,
+            "building": True,
+            "room": True,
+        }
+        info["via"] = (info.get("via") or "") + "+playwright"
+    except Exception as e:
+        info["fallbackError"] = str(e)
 
     got = info.get("values") or {}
+    # 再兜一层：回读空则用 bySuffix
+    by = info.get("bySuffix") or {}
+    for key, suf in (
+        ("lane", "弄"),
+        ("building", "幢"),
+        ("room", "室"),
+    ):
+        if not str(got.get(key) or "").strip():
+            js_v = str((by.get(suf) or {}).get("value") or "").strip()
+            if js_v:
+                got[key] = js_v
+    if not str(got.get("number") or "").strip():
+        js_nums = (by.get("号") or {}).get("values") or []
+        if js_nums:
+            got["number"] = str(js_nums[0] or "").strip()
+    info["values"] = got
+
     got_num = str(got.get("number") or "").strip()
     got_room = str(got.get("room") or "").strip()
     got_lane = str(got.get("lane") or "").strip()
     got_bld = str(got.get("building") or "").strip()
-    info["numberOk"] = got_num == number if number else got_num == ""
+    got_num_end = str(got.get("numberEnd") or "").strip()
+
+    # 选填：用户未填时接受空或表单默认「0」
+    info["numberOk"] = (
+        (got_num == number)
+        if number
+        else _emptyish(got_num)
+    )
+    info["numberEndOk"] = (
+        True if not number_end else got_num_end == number_end
+    )
     info["roomOk"] = (
-        (not room and got_room == "")
+        (_emptyish(got_room) if not room else False)
         or got_room == room
         or got_room == f"{room}室"
         or (bool(room) and room in got_room)
     )
-    # 无弄/幢时必须保持空，防止再出现「号进弄、室进幢」
-    info["laneOk"] = got_lane == lane
-    info["buildingOk"] = got_bld == building
+    info["laneOk"] = (got_lane == lane) if lane else _emptyish(got_lane)
+    info["buildingOk"] = (
+        (got_bld == building or building in got_bld)
+        if building
+        else _emptyish(got_bld)
+    )
+    # 仅当「用户填写了却没写上」才算失败；未填字段不阻塞
     info["ok"] = bool(
-        number
-        and info["numberOk"]
-        and room
+        info["numberOk"]
+        and info["numberEndOk"]
         and info["roomOk"]
         and info["laneOk"]
         and info["buildingOk"]
@@ -2301,23 +2503,69 @@ def _fill_address_dialog(
 
     detail = str(addr.get("detail") or "").strip()
     parsed = _parse_shanghai_address(detail)
+    # 优先用户结构化字段；无则回落 detail 解析；不设默认值
     district = (
-        _normalize_district_name(parsed.get("district") or "")
+        _normalize_district_name(str(addr.get("district") or ""))
+        or _normalize_district_name(parsed.get("district") or "")
         or _district_from_payload(payload)
-        or _normalize_district_name(str(addr.get("district") or ""))
-        or "虹口区"
+        or ""
     )
-    street = parsed.get("street") or "四川北路街道"
-    road = parsed.get("road") or "四川北路"
-    lane = (parsed.get("lane") or "").strip()
-    number = parsed.get("number") or "1318"
-    building = (parsed.get("building") or "").strip()
-    room = parsed.get("room") or "4楼"
-    postal = (addr.get("postalCode") or "200081").strip()
-    result["detailSource"] = detail or "(fallback)"
+    street = (str(addr.get("street") or "").strip() or (parsed.get("street") or "").strip())
+    road = (str(addr.get("road") or "").strip() or (parsed.get("road") or "").strip())
+    lane = (str(addr.get("lane") or "").strip() or (parsed.get("lane") or "").strip())
+    number = (str(addr.get("number") or "").strip() or (parsed.get("number") or "").strip())
+    number_end = (str(addr.get("numberEnd") or "").strip())
+    building = (str(addr.get("building") or "").strip() or (parsed.get("building") or "").strip())
+    room = (str(addr.get("room") or "").strip() or (parsed.get("room") or "").strip())
+    odd_even = (str(addr.get("oddEvenMode") or "").strip() or "不连号")
+    postal = (addr.get("postalCode") or "").strip()
+    street_try = _street_candidates(district, street, road) if (street or road) else []
+    if street and street not in street_try:
+        street_try = [street] + [c for c in street_try if c != street]
+    result["detailSource"] = detail or "(structured)"
     result["parsed"] = parsed
+    result["streetCandidates"] = street_try
+    result["wanted"] = {
+        "district": district,
+        "street": street,
+        "road": road,
+        "lane": lane,
+        "number": number,
+        "numberEnd": number_end,
+        "oddEvenMode": odd_even,
+        "building": building,
+        "room": room,
+        "postal": postal,
+    }
 
-    # —— 区域级联：区县 → 街道 → 路名（每层等待选项加载并回读校验）——
+    if not district:
+        # 结构化字段缺失时再尝试从 detail 解析（兼容旧草稿）
+        if not detail:
+            result["error"] = "住所缺少区县/街道/路名（请在客户端重新选择住所后提交）"
+            result["customerHint"] = "请返回「企业信息」按区县→街道→路→号→室填写完整住所，确认页应能看到完整地址"
+            _shot(page, case_id, "address-incomplete")
+            return result
+        district = _normalize_district_name(parsed.get("district") or "") or ""
+        if not district:
+            result["error"] = "住所缺少区县"
+            _shot(page, case_id, "address-incomplete")
+            return result
+
+    # 先选「是否自贸区地址」= 其他非自贸区域，否则区县下拉可能不加载选项
+    try:
+        for label in ("其他非自贸区域", "非自贸区", "其他非自贸"):
+            lab = dialog.locator("label.el-radio, .el-radio").filter(has_text=label).first
+            if _visible(lab, timeout=400):
+                try:
+                    lab.click(timeout=2500)
+                except Exception:
+                    lab.click(timeout=2500, force=True)
+                result["ftz"] = label
+                page.wait_for_timeout(400)
+                break
+    except Exception as e:
+        result["ftzError"] = str(e)
+
     dialog = _ensure_address_dialog(page, frame) or dialog
     if _pick_region_select(
         dialog,
@@ -2333,116 +2581,244 @@ def _fill_address_dialog(
     page.wait_for_timeout(600)
 
     dialog = _ensure_address_dialog(page, frame) or dialog
-    if _pick_region_select(
-        dialog,
-        page,
-        index=1,
-        option_text=street,
-        hints=["请选择街道/乡镇", "街道/乡镇", "街道"],
-        retries=4,
-    ):
-        result["street"] = street
+    street_picked: str | None = None
+    for cand in street_try:
+        if not cand:
+            continue
+        if _pick_region_select(
+            dialog,
+            page,
+            index=1,
+            option_text=cand,
+            hints=["请选择街道/乡镇", "街道/乡镇", "街道"],
+            retries=2,
+        ):
+            street_picked = cand
+            break
+        dialog = _ensure_address_dialog(page, frame) or dialog
+    if not street_picked and street:
+        if _pick_region_select(
+            dialog,
+            page,
+            index=1,
+            option_text=street,
+            hints=["请选择街道/乡镇", "街道/乡镇", "街道"],
+            retries=3,
+        ):
+            street_picked = street
+    if not street_picked and road and not street:
+        street_picked = _pick_street_by_road(dialog, page, road=road, index=1)
+        dialog = _ensure_address_dialog(page, frame) or dialog
+    if street_picked:
+        result["street"] = street_picked
     else:
-        result["streetError"] = f"街道未选中: {street}"
-    # 街道级联后路名输入框会重建，稍等再填
+        result["streetError"] = f"街道未选中: {street or (street_try[0] if street_try else '(空)')}"
     page.wait_for_timeout(900)
 
     dialog = _ensure_address_dialog(page, frame) or dialog
-    road_ok = False
-    for _road_try in range(3):
-        if _fill_road_field(dialog, page, frame, road):
-            road_ok = True
-            break
-        page.wait_for_timeout(400)
-        dialog = _ensure_address_dialog(page, frame) or dialog
-    if road_ok:
-        result["road"] = road
-    else:
-        # 级联后路名常已展示；只要区/街道已选且页面含路名，继续填号室
-        page_txt = ""
-        try:
-            page_txt = re.sub(r"\s+", "", dialog.inner_text(timeout=800) or "")
-        except Exception:
-            pass
-        if result.get("district") and result.get("street") and road and road in page_txt:
+    if road:
+        road_ok = False
+        for _road_try in range(3):
+            if _fill_road_field(dialog, page, frame, road):
+                road_ok = True
+                break
+            page.wait_for_timeout(400)
+            dialog = _ensure_address_dialog(page, frame) or dialog
+        if road_ok:
             result["road"] = road
-            result["roadInferred"] = True
         else:
-            result["roadError"] = f"路名未填选: {road}"
-            _shot(page, case_id, "address-road-failed")
+            page_txt = ""
+            try:
+                page_txt = re.sub(r"\s+", "", dialog.inner_text(timeout=800) or "")
+            except Exception:
+                pass
+            if result.get("district") and result.get("street") and road in page_txt:
+                result["road"] = road
+                result["roadInferred"] = True
+            else:
+                result["roadError"] = f"路名未填选: {road}"
+                _shot(page, case_id, "address-road-failed")
+    else:
+        result["roadError"] = "路名为空"
 
-    # 区域选完后必须收起下拉，再填号/室，避免又点到「区」
     dialog = _ensure_address_dialog(page, frame) or dialog
     _close_open_select_dropdowns(page, dialog)
-    page.wait_for_timeout(300)
+    page.wait_for_timeout(200)
+    result["oddEven"] = _pick_odd_even_mode(dialog, page, want=odd_even)
+    page.wait_for_timeout(350)
 
-    # 弄/号/幢/室：按后缀绑定；地址无弄/幢则只清空对应框
+    dialog = _ensure_address_dialog(page, frame) or dialog
+    _close_open_select_dropdowns(page, dialog)
+    page.wait_for_timeout(200)
+
     units = _fill_address_units(
-        dialog, lane=lane, number=number, building=building, room=room
+        dialog,
+        lane=lane,
+        number=number,
+        number_end=number_end if odd_even != "不连号" else "",
+        building=building,
+        room=room,
     )
     result["units"] = units
     got = units.get("values") or {}
-    result["number"] = bool(units.get("numberOk"))
+    # 选填：用户填了才要求写上；未填不阻塞
+    result["number"] = bool(units.get("numberOk")) if number else True
     result["numberValue"] = got.get("number") or ""
-    result["room"] = bool(units.get("roomOk"))
+    result["numberEndValue"] = got.get("numberEnd") or ""
+    result["numberEndOk"] = bool(units.get("numberEndOk"))
+    result["room"] = bool(units.get("roomOk")) if room else True
     result["roomValue"] = got.get("room") or ""
     result["laneValue"] = got.get("lane") or ""
     result["buildingValue"] = got.get("building") or ""
-    if not units.get("laneOk") or not units.get("buildingOk"):
+    if number and not units.get("numberOk"):
         result["unitMisplaced"] = True
-
-    # 单双号：固定选「不连号」（软尝试，失败继续）
-    result["oddEven"] = _pick_odd_even_mode(dialog, page)
+    if room and not units.get("roomOk"):
+        result["unitMisplaced"] = True
+    if lane and not units.get("laneOk"):
+        result["unitMisplaced"] = True
+    if building and not units.get("buildingOk"):
+        result["unitMisplaced"] = True
 
     # 邮编
     try:
-        postal_item = dialog.locator(".el-form-item").filter(has_text="邮政编码").first
-        if _visible(postal_item):
-            postal_item.locator("input").first.fill(postal)
-            result["postal"] = postal
-        else:
-            pin = dialog.get_by_placeholder("邮政", exact=False).first
-            if _visible(pin):
-                pin.fill(postal)
+        if postal:
+            postal_item = dialog.locator(".el-form-item").filter(has_text="邮政编码").first
+            if _visible(postal_item):
+                postal_item.locator("input").first.fill(postal)
                 result["postal"] = postal
             else:
-                for i in range(dialog.locator("input.el-input__inner").count()):
-                    inp = dialog.locator("input.el-input__inner").nth(i)
-                    ph = inp.get_attribute("placeholder") or ""
-                    if "邮" in ph or "编码" in ph:
-                        inp.fill(postal)
-                        result["postal"] = postal
-                        break
+                pin = dialog.get_by_placeholder("邮政", exact=False).first
+                if _visible(pin):
+                    pin.fill(postal)
+                    result["postal"] = postal
+                else:
+                    for i in range(dialog.locator("input.el-input__inner").count()):
+                        inp = dialog.locator("input.el-input__inner").nth(i)
+                        ph = inp.get_attribute("placeholder") or ""
+                        if "邮" in ph or "编码" in ph:
+                            inp.fill(postal)
+                            result["postal"] = postal
+                            break
+        else:
+            result["postalError"] = "邮编为空"
     except Exception as e:
         result["postalError"] = str(e)
+
+    need_end = odd_even != "不连号" and bool(number_end or number)
+    # bySuffix 已写入则以 JS 结果为准，避免 Playwright 回读空误杀
+    by = (units.get("bySuffix") or {}) if isinstance(units, dict) else {}
+    if building and not result.get("buildingValue"):
+        js_b = str((by.get("幢") or {}).get("value") or "").strip()
+        if js_b and (js_b == building or building in js_b):
+            result["buildingValue"] = js_b
+            result["unitMisplaced"] = False
+    if room and not result.get("roomValue"):
+        js_r = str((by.get("室") or {}).get("value") or "").strip()
+        if js_r and (js_r == room or room in js_r):
+            result["roomValue"] = js_r
+            result["room"] = True
+            result["unitMisplaced"] = False
+    # 用户填了幢/室且 bySuffix 已写上 → 视作 units.ok
+    units_ok = bool(units.get("ok"))
+    if not units_ok:
+        b_ok = (not building) or (
+            str((by.get("幢") or {}).get("value") or "").strip() in (building, f"{building}幢")
+            or building in str((by.get("幢") or {}).get("value") or "")
+        )
+        r_ok = (not room) or (
+            str((by.get("室") or {}).get("value") or "").strip() in (room, f"{room}室")
+            or room in str((by.get("室") or {}).get("value") or "")
+        )
+        n_ok = (not number) or (
+            str(((by.get("号") or {}).get("values") or [None])[0] or (by.get("号") or {}).get("value") or "").strip()
+            == number
+        )
+        if b_ok and r_ok and n_ok:
+            units_ok = True
+            result["unitMisplaced"] = False
 
     complete = bool(
         result.get("district")
         and result.get("street")
         and result.get("road")
-        and result.get("number")
-        and result.get("room")
-        and units.get("ok")
+        and (result.get("number") if number else True)
+        and (result.get("numberEndOk") if need_end and number else True)
+        and (result.get("room") if room else True)
+        and units_ok
         and not result.get("unitMisplaced")
         and result.get("postal")
     )
     result["complete"] = complete
     if not complete:
         result["ok"] = False
-        result["error"] = "住所未填完整（区县/街道/路/号/室/邮编）"
+        result["error"] = "住所未填完整（区县/街道/路名/邮编，或已填的弄号幢室未写入）"
         _shot(page, case_id, "address-incomplete")
         # 不点确定，避免写入残缺地址
         return result
 
-    # 生成地址后确定
-    _click_text(dialog, ["生成地址"], exact=False)
-    page.wait_for_timeout(500)
-
-    result["ok"] = _click_text(dialog, ["确定", "确 定"], exact=False)
+    # 生成地址后点弹窗底部「确定」
+    result["generateAddress"] = _click_text(dialog, ["生成地址"], exact=False)
+    page.wait_for_timeout(600)
+    result["ok"] = _confirm_address_dialog(page, dialog)
+    if not result["ok"]:
+        result["ok"] = _click_text(dialog, ["确定", "确 定"], exact=False)
     if not result["ok"]:
         result["ok"] = _click_text_any(page, ["确定"], exact=True)
     page.wait_for_timeout(800)
+    if result["ok"]:
+        _shot(page, case_id, "address-filled")
+    else:
+        result["error"] = "住所已填但未点到确定"
+        _shot(page, case_id, "address-confirm-missed")
     return result
+
+
+def _confirm_address_dialog(page: Page, dialog) -> bool:
+    """点住所填报弹窗 footer 主按钮「确定」（避免点到示意图等其它链接）。"""
+    try:
+        footer = dialog.locator(".el-dialog__footer").first
+        if _visible(footer, timeout=600):
+            btn = footer.locator(
+                "button.el-button--primary, button.el-button--primary span"
+            ).filter(has_text=re.compile(r"^\s*确\s*定\s*$")).first
+            if _visible(btn, timeout=500):
+                try:
+                    btn.click(timeout=4000)
+                except Exception:
+                    btn.click(timeout=4000, force=True)
+                page.wait_for_timeout(400)
+                # 弹窗关掉即成功
+                try:
+                    if not dialog.is_visible(timeout=800):
+                        return True
+                except Exception:
+                    return True
+                return True
+    except Exception:
+        pass
+    # JS 兜底：弹窗内 footer 主按钮
+    try:
+        ok = bool(
+            dialog.evaluate(
+                """(root) => {
+                  const foot = root.querySelector('.el-dialog__footer') || root;
+                  const btns = [...foot.querySelectorAll('button, .el-button')];
+                  const btn = btns.find(b => {
+                    const t = (b.innerText || b.textContent || '').replace(/\\s+/g, '');
+                    return t === '确定' && !b.disabled && !b.classList.contains('is-disabled');
+                  });
+                  if (!btn) return false;
+                  btn.click();
+                  return true;
+                }"""
+            )
+        )
+        if ok:
+            page.wait_for_timeout(400)
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def _is_scope_plugin_url(url: str) -> bool:

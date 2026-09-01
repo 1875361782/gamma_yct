@@ -51,6 +51,10 @@ class RelayHub:
         async with self._lock:
             return self._jobs.get(sid)
 
+    async def list_jobs(self) -> List[RelayJob]:
+        async with self._lock:
+            return list(self._jobs.values())
+
     async def ensure_job(self, sid: str, case_id: str) -> RelayJob:
         async with self._lock:
             job = self._jobs.get(sid)
@@ -165,9 +169,9 @@ class RelayHub:
         self._schedule(_do())
 
     def start_fill_thread(
-        self, sid: str, case_id: str, gamma_root: str, *, headless: bool = False
+        self, sid: str, case_id: str, gamma_root: str, *, headless: bool = True
     ) -> bool:
-        """启动填报线程（默认可见 Chrome 窗口）；若同 sid 已在跑则返回 False。"""
+        """启动填报线程（默认无头）；若同 sid 已在跑则返回 False。"""
         job = self._jobs.get(sid)
         if job is None:
             job = RelayJob(sid=sid, case_id=case_id)

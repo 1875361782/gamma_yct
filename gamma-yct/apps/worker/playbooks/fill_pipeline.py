@@ -1182,6 +1182,8 @@ def _org_form_select_plan(org: str) -> tuple[str, tuple[str, ...]]:
     """核名页组织形式弹层：内资企业类型 → 第二级选项别名。
 
     原型 orgForm（「股份有限公司」）需映射到弹层第 1 步正确类型，不能写死「有限公司」。
+    合伙：第2步只用「合伙企业（普通/有限合伙）」等真实芯片文案，勿把第1步类型名当第2步别名
+    （否则会误点类型按钮并当成已选组织形式）。
     """
     org = (org or "").strip()
     if org in ("股份公司", "股份有限公司"):
@@ -1192,16 +1194,12 @@ def _org_form_select_plan(org: str) -> tuple[str, tuple[str, ...]]:
         return "有限合伙企业", (
             "合伙企业（有限合伙）",
             "合伙企业(有限合伙)",
-            "有限合伙企业",
-            "有限合伙",
         )
     if org == "普通合伙企业":
         # 第1步点「普通合伙企业」；第2步点「合伙企业（普通合伙）」
         return "普通合伙企业", (
             "合伙企业（普通合伙）",
             "合伙企业(普通合伙)",
-            "普通合伙企业",
-            "普通合伙",
         )
     if org == "个人独资企业":
         # 政务网：个人独资企业 → 经营部（个人独资）
@@ -1272,15 +1270,16 @@ def _org_matched_in_text(org: str, text: str, form_opts: Iterable[str] | None = 
     if not text:
         return False
     # 未选中时回读常是整段弹层目录，不能当成功
-    if len(text) > 40 and (
+    if (
         "请选择企业类型" in text
         or "请选择组织形式" in text
         or ("内资企业" in text and "外资企业" in text)
+        or "特殊普通合伙企业" in text
     ):
         return False
     opts = tuple(form_opts or ()) or _org_form_select_plan(org)[1]
-    # 个体工商户在弹层映射为有限公司，只认回读里的二级选项
-    if org == "个体工商户":
+    # 合伙 / 个体：只认第2步真实组织形式，避免「只点了企业类型」被判成功
+    if org in ("普通合伙企业", "有限合伙企业", "个体工商户", "个人独资企业"):
         needles = opts
     else:
         needles = ((org,) if org else ()) + opts
@@ -1300,23 +1299,54 @@ def _select_org_form_two_step(
 
     page = frame.page
     page.wait_for_timeout(500)
-    scopes: list[Any] = []
-    for sel in (
+    popper_sels = (
         ".orgDescPopper:visible",
         ".el-popover:visible",
         ".el-dialog:visible",
         ".el-popper:visible",
-    ):
-        loc = frame.locator(sel).first
-        if _visible(loc):
-            scopes.append(loc)
-        loc2 = page.locator(sel).first
-        if _visible(loc2):
-            scopes.append(loc2)
-    scopes.extend([frame, page])
+    )
+
+    def _scopes() -> list[Any]:
+        out: list[Any] = []
+        for sel in popper_sels:
+            try:
+                loc = frame.locator(sel).first
+                if _visible(loc):
+                    out.append(loc)
+            except Exception:
+                pass
+            try:
+                loc2 = page.locator(sel).first
+                if _visible(loc2):
+                    out.append(loc2)
+            except Exception:
+                pass
+        out.extend([frame, page])
+        return out
+
+    def _chip_text_ok(btn, expect: str) -> bool:
+        try:
+            raw = " ".join((btn.inner_text(timeout=250) or "").split())
+        except Exception:
+            return False
+        return raw.replace(" ", "") == expect.replace(" ", "")
+
+    def _force_click(btn) -> bool:
+        try:
+            btn.click(timeout=3000, force=True)
+            return True
+        except Exception:
+            try:
+                box = btn.bounding_box()
+                if box:
+                    page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+                    return True
+            except Exception:
+                pass
+        return False
 
     def _click_type(scope) -> bool:
-        # 只点「内资企业」下的类型，绝不点外资
+        # 只点「内资企业」区的类型芯片（y 在「外资企业」标题之上），绝不点外资
         type_aliases = (type_opt,)
         if type_opt == "股份公司":
             type_aliases = ("股份公司", "股份有限公司")
@@ -1325,88 +1355,144 @@ def _select_org_form_two_step(
         elif type_opt == "有限合伙企业":
             type_aliases = ("有限合伙企业",)
         elif type_opt == "合伙企业":
-            # 兼容旧映射：无独立「合伙企业」一级时再试普通/有限
             type_aliases = ("合伙企业", "普通合伙企业", "有限合伙企业")
+
+        foreign_y: float | None = None
+        try:
+            foreign = scope.get_by_text("外资企业", exact=True).first
+            if _visible(foreign):
+                fbox = foreign.bounding_box()
+                if fbox:
+                    foreign_y = float(fbox["y"])
+        except Exception:
+            foreign_y = None
+
         for alias in type_aliases:
+            try:
+                cands = scope.get_by_text(alias, exact=True)
+                for i in range(min(cands.count(), 12)):
+                    btn = cands.nth(i)
+                    if not _visible(btn) or not _chip_text_ok(btn, alias):
+                        continue
+                    box = btn.bounding_box()
+                    if not box:
+                        continue
+                    if foreign_y is not None and float(box["y"]) >= foreign_y - 2:
+                        continue
+                    if _force_click(btn):
+                        return True
+            except Exception:
+                pass
+            # 兜底：内资标题后的兄弟块
             try:
                 label = scope.get_by_text("内资企业", exact=True).first
                 if _visible(label):
                     block = label.locator("xpath=following-sibling::*[1]")
                     btn = block.get_by_text(alias, exact=True).first
-                    if _visible(btn):
-                        btn.click(timeout=3000)
-                        return True
-                    parent = label.locator("xpath=..")
-                    btn = parent.get_by_text(alias, exact=True).first
-                    if _visible(btn):
-                        btn.click(timeout=3000)
-                        return True
-            except Exception:
-                pass
-            try:
-                domestic = scope.locator("div,section").filter(has_text="内资企业").filter(
-                    has_not_text="外资企业"
-                )
-                for i in range(min(domestic.count(), 8)):
-                    block = domestic.nth(i)
-                    btn = block.get_by_text(alias, exact=True).first
-                    if _visible(btn):
-                        btn.click(timeout=3000)
+                    if _visible(btn) and _chip_text_ok(btn, alias) and _force_click(btn):
                         return True
             except Exception:
                 pass
         return False
 
     def _click_form(scope) -> bool:
-        # 在「2. 请选择组织形式」下点表格指定的组织形式
+        # 只点「2. 请选择组织形式」标题下方的芯片，避免误点第1步类型名
+        heading_y: float | None = None
+        try:
+            heading = scope.get_by_text(re.compile(r"请选择组织形式")).first
+            if _visible(heading):
+                hbox = heading.bounding_box()
+                if hbox:
+                    heading_y = float(hbox["y"])
+        except Exception:
+            heading = None
+            heading_y = None
+        if heading_y is None:
+            return False
+
         for form_opt in form_list:
             try:
-                heading = scope.get_by_text("请选择组织形式", exact=False).first
-                if _visible(heading):
-                    container = heading.locator("xpath=following-sibling::*[1]")
-                    btn = container.get_by_text(form_opt, exact=True).first
-                    if _visible(btn):
-                        btn.click(timeout=3000)
-                        return True
-                    parent = heading.locator("xpath=..")
-                    btn = parent.get_by_text(form_opt, exact=True).first
-                    if _visible(btn):
-                        btn.click(timeout=3000)
+                cands = scope.get_by_text(form_opt, exact=True)
+                for i in range(min(cands.count(), 12)):
+                    btn = cands.nth(i)
+                    if not _visible(btn) or not _chip_text_ok(btn, form_opt):
+                        continue
+                    box = btn.bounding_box()
+                    if not box or float(box["y"]) < heading_y:
+                        continue
+                    if _force_click(btn):
                         return True
             except Exception:
                 pass
+            # 再试：标题后的兄弟容器
             try:
-                form_zone = scope.locator("div,section").filter(has_text="请选择组织形式")
-                for i in range(min(form_zone.count(), 6)):
-                    btn = form_zone.nth(i).get_by_text(form_opt, exact=True).first
-                    if _visible(btn):
-                        btn.click(timeout=3000)
-                        return True
+                if heading is not None:
+                    for sib_i in range(1, 4):
+                        container = heading.locator(f"xpath=following-sibling::*[{sib_i}]")
+                        btn = container.get_by_text(form_opt, exact=True).first
+                        if _visible(btn) and _chip_text_ok(btn, form_opt) and _force_click(btn):
+                            return True
+            except Exception:
+                pass
+        return False
+
+    def _wait_form_ready(timeout_ms: int = 4500) -> bool:
+        steps = max(1, timeout_ms // 250)
+        for _ in range(steps):
+            for scope in _scopes():
+                for form_opt in form_list:
+                    try:
+                        btn = scope.get_by_text(form_opt, exact=True).first
+                        if _visible(btn) and _chip_text_ok(btn, form_opt):
+                            return True
+                    except Exception:
+                        pass
+            page.wait_for_timeout(250)
+        return False
+
+    def _popper_open() -> bool:
+        for sel in popper_sels:
+            try:
+                if _visible(frame.locator(sel).first) or _visible(page.locator(sel).first):
+                    return True
             except Exception:
                 pass
         return False
 
     typed = formed = False
-    for scope in scopes:
+    for scope in _scopes():
         if not typed:
             typed = _click_type(scope)
             if typed:
-                page.wait_for_timeout(600)
-        if typed and not formed:
+                page.wait_for_timeout(500)
+                _wait_form_ready()
+                break
+    if typed and not formed:
+        for scope in _scopes():
             formed = _click_form(scope)
             if formed:
                 page.wait_for_timeout(400)
                 break
+        if not formed:
+            # 二级偶发未渲染：再等一轮后重试
+            _wait_form_ready(3000)
+            for scope in _scopes():
+                formed = _click_form(scope)
+                if formed:
+                    page.wait_for_timeout(400)
+                    break
     if not (typed and formed):
         return False
 
-    # 确认弹窗（含合伙「一经申报无法修改企业类型」提示）
-    _confirm_org_type_tip(page, frame)
-    _click_text(frame, ["确 定", "确定"], exact=False)
-    _click_text(page, ["确 定", "确定"], exact=False)
+    # 确认弹窗（含合伙「一经申报无法修改企业类型」提示）+ 等弹层关闭
+    for _ in range(8):
+        _confirm_org_type_tip(page, frame)
+        _click_text(frame, ["确 定", "确定"], exact=False)
+        _click_text(page, ["确 定", "确定"], exact=False)
+        page.wait_for_timeout(350)
+        if not _popper_open():
+            break
     page.wait_for_timeout(400)
-    _confirm_org_type_tip(page, frame)
-    page.wait_for_timeout(500)
     return True
 
 
@@ -1730,7 +1816,11 @@ def _run_name_declaration(case_id: str, page: Page, name_sel: dict[str, Any], pa
     if _open_select_by_placeholder(frame, ph.get("org_form") or "请选择组织形式"):
         filled_org = _select_org_form_two_step(frame, type_opt, form_opts)
         if not filled_org:
+            # 兜底只点第2步真实文案，绝不点「普通合伙企业」等类型名（会误点第1步）
+            type_like = {type_opt, "普通合伙企业", "有限合伙企业", "特殊普通合伙企业", "合伙企业"}
             for opt in form_opts:
+                if not opt or opt in type_like:
+                    continue
                 if _pick_dropdown_option(frame, opt):
                     filled_org = True
                     break
@@ -1740,13 +1830,37 @@ def _run_name_declaration(case_id: str, page: Page, name_sel: dict[str, Any], pa
         if org_control.count() and _visible(org_control):
             org_readback = (org_control.input_value(timeout=800) or "").strip()
             if not org_readback:
+                # 优先读 select 展示值，避免祖先 form-item 把整段弹层目录拼进来
+                try:
+                    org_readback = (
+                        org_control.locator(
+                            "xpath=ancestor::div[contains(@class,'el-select')][1]"
+                            "//*[contains(@class,'el-input__inner') or contains(@class,'el-select__selected-item')]"
+                        ).first.inner_text(timeout=600)
+                        or ""
+                    ).strip()
+                except Exception:
+                    org_readback = ""
+            if not org_readback:
                 org_readback = (org_control.locator("xpath=..").inner_text(timeout=800) or "").strip()
     except Exception:
         org_readback = ""
-    if not org_readback:
+    if not org_readback or "请选择企业类型" in org_readback or "请选择组织形式" in org_readback:
         try:
             org_item = frame.locator(".el-form-item").filter(has_text="组织形式").first
-            org_readback = (org_item.inner_text(timeout=800) or "").strip()
+            # 只取已选中的展示节点，不要整项 inner_text（弹层开着时会带目录）
+            show = org_item.locator(
+                ".el-select .el-input__inner, .el-select__selected-item, input"
+            ).first
+            if show.count():
+                try:
+                    org_readback = (show.input_value(timeout=500) or "").strip()
+                except Exception:
+                    org_readback = ""
+                if not org_readback:
+                    org_readback = (show.inner_text(timeout=500) or "").strip()
+            if not org_readback:
+                org_readback = (org_item.inner_text(timeout=800) or "").strip()
         except Exception:
             pass
     # 必须回读到表格指定的组织形式（含股份公司/股份有限公司等别名）

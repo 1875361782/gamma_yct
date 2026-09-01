@@ -12,11 +12,18 @@
 ```bash
 cd 伽马注册_RPA演示包
 bash run.sh
-# 浏览器打开 http://localhost:8766/prototype  走屏 1~6，屏 6 内用随申办扫码即可
+# 浏览器打开 http://localhost:8766/  （首页即 9 屏产品原型）
 ```
 
 > 首次运行会联网自建 `.venv` + 安装 Playwright Chromium（约 150MB）；装好之后反复启动很快，
 > 且 `?mock=1` 离线模式完全不需要政务网。
+>
+> 表单会自动保存在浏览器 localStorage；**重启后端后刷新页面即可继续填写**，无需重填。
+>
+> **外网用户访问**：见 [`docs/PUBLIC_TUNNEL.md`](docs/PUBLIC_TUNNEL.md)（Cloudflare Tunnel + 后台无头填报）。
+> 用户只应打开公网首页；抓码/填报在本机无头 Chrome 完成，不展示监控页。
+>
+> **管理页**：本机打开 `http://localhost:8766/admin` 可查看用户提交任务与 RPA 进度；公网访问需设置环境变量 `GAMMA_ADMIN_TOKEN`。
 
 ---
 

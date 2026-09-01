@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -17,6 +18,8 @@ from typing import Any, Optional
 GAMAZ_API_BASE = "https://api.gamaz.cn"
 DEFAULT_TIMEOUT = 12.0
 CHECK_TIMEOUT = 25.0
+# 直连上游，避免 Windows「系统代理」指向已关闭的 127.0.0.1:xxxx 导致 WinError 10061
+_NO_PROXY_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 _ZIHAO_RE = re.compile(r"^[\u4e00-\u9fff]{2,6}$")
 _ORG_FORMS = [
@@ -368,31 +371,45 @@ def _request(
         headers["Content-Type"] = "application/json"
 
     req = urllib.request.Request(url, data=data, headers=headers, method=method.upper())
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-            try:
-                parsed = json.loads(raw)
-            except json.JSONDecodeError:
-                return _fail("上游返回非 JSON")
-            if isinstance(parsed, dict):
-                return parsed
-            return _fail("上游返回格式异常")
-    except urllib.error.HTTPError as e:
+    last_err: Optional[Exception] = None
+    for attempt in range(3):
         try:
-            raw = e.read().decode("utf-8", errors="replace")
-            parsed = json.loads(raw)
-            if isinstance(parsed, dict):
-                return parsed
-        except Exception:
-            pass
-        return _fail(f"上游 HTTP {e.code}")
-    except urllib.error.URLError as e:
-        return _fail(f"无法连接伽玛 API：{e.reason}")
-    except TimeoutError:
-        return _fail("伽玛 API 请求超时")
-    except Exception as e:
-        return _fail(str(e) or "伽玛 API 请求失败")
+            with _NO_PROXY_OPENER.open(req, timeout=timeout) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+                try:
+                    parsed = json.loads(raw)
+                except json.JSONDecodeError:
+                    return _fail("上游返回非 JSON")
+                if isinstance(parsed, dict):
+                    return parsed
+                return _fail("上游返回格式异常")
+        except urllib.error.HTTPError as e:
+            try:
+                raw = e.read().decode("utf-8", errors="replace")
+                parsed = json.loads(raw)
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                pass
+            return _fail(f"上游 HTTP {e.code}")
+        except urllib.error.URLError as e:
+            last_err = e
+            # 连接被拒 / 临时 DNS：短暂重试
+            if attempt < 2:
+                time.sleep(0.4 * (attempt + 1))
+                continue
+            return _fail(f"无法连接伽玛 API：{e.reason}")
+        except TimeoutError as e:
+            last_err = e
+            if attempt < 2:
+                time.sleep(0.4 * (attempt + 1))
+                continue
+            return _fail("伽玛 API 请求超时")
+        except Exception as e:
+            return _fail(str(e) or "伽玛 API 请求失败")
+    if last_err is not None:
+        return _fail(f"无法连接伽玛 API：{getattr(last_err, 'reason', last_err)}")
+    return _fail("伽玛 API 请求失败")
 
 
 async def proxy_get(

@@ -26,6 +26,15 @@ class AddressBlock(BaseModel):
     province: str = "上海市"
     city: str = "上海市"
     district: str = ""
+    # 与一网通办「住所填报」字段对齐（由前端结构化录入，RPA 直填）
+    street: str = ""
+    road: str = ""
+    lane: str = ""
+    number: str = ""
+    numberEnd: str = ""  # 连号时的止号
+    oddEvenMode: str = "不连号"  # 不连号/单号连号/双号连号/单双号
+    building: str = ""
+    room: str = ""
     detail: str = ""
     propertyCertNo: str = ""
     postalCode: str = ""
@@ -206,8 +215,17 @@ def validate_payload(data: dict[str, Any]) -> list[str]:
     r = p.registration
     if not r.district.strip() and not r.address.district.strip():
         errors.append("住所所在区不能为空")
-    if not r.address.detail.strip():
+    a = r.address
+    has_parts = bool(
+        (a.street or "").strip()
+        and (a.road or "").strip()
+    )
+    if not (a.detail or "").strip() and not has_parts:
         errors.append("住所详细地址不能为空")
+    if has_parts:
+        mode = (a.oddEvenMode or "不连号").strip() or "不连号"
+        if mode != "不连号" and (a.number or "").strip() and not (a.numberEnd or "").strip():
+            errors.append("连号住所请填写起止门牌号")
     # 与 yct「住所填报」一致：非集中登记地不强制上传扫描件；
     # 官方弹窗必填为完整地址 + 邮编；产权证收件编号选填。
     if not r.isCentralizedVenue and r.addressType != "centralized":

@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -179,6 +180,23 @@ def abort_fill_browser(case_id: str, *, kill_all: bool = False) -> bool:
     return True
 
 
+def wipe_chrome_profile(case_id: str) -> None:
+    """关掉本案件浏览器并清空持久化 profile，强制下次重新扫码。"""
+    abort_fill_browser(case_id, kill_all=False)
+    time.sleep(0.5)
+    profile_dir = _chrome_profile_dir(case_id)
+    marker = _profile_marker(case_id)
+    for _ in range(4):
+        try:
+            if profile_dir.exists():
+                shutil.rmtree(profile_dir)
+            break
+        except Exception:
+            _force_kill_by_marker(marker)
+            time.sleep(0.6)
+    profile_dir.mkdir(parents=True, exist_ok=True)
+
+
 def run_fill_session(
     case_id: str,
     *,
@@ -201,6 +219,9 @@ def run_fill_session(
     from playwright.sync_api import sync_playwright
 
     case = store.get_case(case_id)
+    # 先清取消信号，再杀窗+清空 profile，避免重用已登录态导致找不到「扫码登录」
+    store.consume_cancel(case_id)
+    wipe_chrome_profile(case_id)
     store.consume_cancel(case_id)
     store.set_status(
         case_id,

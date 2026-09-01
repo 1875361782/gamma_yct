@@ -7,12 +7,17 @@
 """
 from __future__ import annotations
 import asyncio
+import hashlib
+import hmac
 import json
+import os
 import re
+import secrets
 import time
 import uuid
 from pathlib import Path
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, Form, UploadFile
+from typing import Any
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, Form, UploadFile, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse
 
@@ -36,6 +41,17 @@ REAL_PORTAL_URL = "https://yct.sh.gov.cn/portal_yct/"
 # mock 场景：直接进入 mock 登录页（保留旧 mock 用于离线验证）
 MOCK_GOV_URL = "/mock/index.html"
 
+# 外网简易鉴权：环境变量 GAMMA_API_TOKEN 为共享口令（可选）；
+# 无论是否配置，页面都会通过 /api/bootstrap 领取短时 session token。
+GAMMA_API_TOKEN = (os.environ.get("GAMMA_API_TOKEN") or "").strip()
+# 本机调试才允许打开 A 页监控：GAMMA_ALLOW_MONITOR=1 或来自 localhost
+GAMMA_ALLOW_MONITOR = (os.environ.get("GAMMA_ALLOW_MONITOR") or "").strip() in ("1", "true", "TRUE", "yes")
+# 管理页口令：未设置时仅本机可调 /api/admin/*；设置后公网也可凭 X-Gamma-Admin-Token 访问
+GAMMA_ADMIN_TOKEN = (os.environ.get("GAMMA_ADMIN_TOKEN") or "").strip()
+_BOOTSTRAP_SECRET = (os.environ.get("GAMMA_BOOTSTRAP_SECRET") or secrets.token_hex(16)).encode("utf-8")
+_SESSION_TOKENS: dict[str, float] = {}  # token -> expires_at epoch
+_SESSION_TOKEN_TTL_SEC = 4 * 3600
+
 app = FastAPI(title="伽马注册 RPA QR 同步服务", version="0.2.0")
 sessions = SessionManager(ttl_seconds=600)
 
@@ -47,13 +63,92 @@ _STATIC_ASSETS.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(_STATIC_ASSETS)), name="static")
 
 
+def _purge_expired_tokens() -> None:
+    now = time.time()
+    dead = [t for t, exp in _SESSION_TOKENS.items() if exp <= now]
+    for t in dead:
+        _SESSION_TOKENS.pop(t, None)
+
+
+def _mint_session_token() -> tuple[str, float]:
+    _purge_expired_tokens()
+    raw = secrets.token_urlsafe(24)
+    sig = hmac.new(_BOOTSTRAP_SECRET, raw.encode("utf-8"), hashlib.sha256).hexdigest()[:16]
+    token = f"{raw}.{sig}"
+    expires = time.time() + _SESSION_TOKEN_TTL_SEC
+    _SESSION_TOKENS[token] = expires
+    return token, expires
+
+
+def _token_ok(token: str | None) -> bool:
+    if not token:
+        return False
+    token = str(token).strip()
+    if GAMMA_API_TOKEN and hmac.compare_digest(token, GAMMA_API_TOKEN):
+        return True
+    _purge_expired_tokens()
+    exp = _SESSION_TOKENS.get(token)
+    return bool(exp and exp > time.time())
+
+
+def _extract_api_token(request: Request, body: dict | None = None) -> str | None:
+    header = request.headers.get("x-gamma-token") or request.headers.get("X-Gamma-Token")
+    if header:
+        return header.strip()
+    if body and isinstance(body, dict):
+        t = body.get("token") or body.get("apiToken")
+        if t:
+            return str(t).strip()
+    return None
+
+
+def _require_api_token(request: Request, body: dict | None = None):
+    """启动/取消等写接口需要 bootstrap token 或 GAMMA_API_TOKEN。"""
+    if _token_ok(_extract_api_token(request, body)):
+        return None
+    return JSONResponse(
+        {"ok": False, "error": "unauthorized", "message": "缺少或无效的访问令牌，请刷新页面重试"},
+        status_code=401,
+    )
+
+
+def _client_is_local(request: Request) -> bool:
+    host = (request.client.host if request.client else "") or ""
+    return host in ("127.0.0.1", "::1", "localhost")
+
+
+def _require_admin(request: Request, body: dict | None = None):
+    """管理接口：本机放行；非本机需 GAMMA_ADMIN_TOKEN。"""
+    if _client_is_local(request):
+        return None
+    if not GAMMA_ADMIN_TOKEN:
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "admin locked",
+                "message": "管理接口未配置 GAMMA_ADMIN_TOKEN，仅本机可访问",
+            },
+            status_code=403,
+        )
+    token = request.headers.get("x-gamma-admin-token") or request.headers.get("X-Gamma-Admin-Token")
+    if not token and body:
+        token = str(body.get("adminToken") or body.get("token") or "").strip()
+    if token and hmac.compare_digest(str(token).strip(), GAMMA_ADMIN_TOKEN):
+        return None
+    return JSONResponse(
+        {"ok": False, "error": "unauthorized", "message": "需要有效的管理口令"},
+        status_code=401,
+    )
+
+
 # ---------- 页面路由 ----------
 # 9 屏原型（同源托管，屏 6 内嵌 /qrlogin 同域，避免 iframe cross-origin）
 PROTOTYPE_HTML = BACKEND_DIR / "static_prototype.html"
+ADMIN_HTML = BACKEND_DIR / "static_admin.html"
 
 
 def _serve_prototype():
-    """首页与 /prototype 均返回 9 屏原型。"""
+    """首页与 /prototype 均返回 9 屏产品原型。"""
     if not PROTOTYPE_HTML.exists():
         return JSONResponse({"error": "prototype not found (expected backend/static_prototype.html)"}, status_code=404)
     return FileResponse(
@@ -75,18 +170,48 @@ async def prototype():
     return _serve_prototype()
 
 
+@app.get("/admin", include_in_schema=False)
+async def admin_page():
+    """任务与 RPA 进度管理页。"""
+    if not ADMIN_HTML.exists():
+        return JSONResponse({"error": "admin page not found"}, status_code=404)
+    return FileResponse(
+        ADMIN_HTML,
+        media_type="text/html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+    )
+
+
 @app.get("/acquire", include_in_schema=False)
-async def acquire():
-    """A 页：RPA 二维码获取页（桌面端，展示 RPA 浏览器截图流）。"""
+async def acquire(request: Request):
+    """A 页监控：仅本机或显式开启 GAMMA_ALLOW_MONITOR 时可用（不对公网产品用户开放）。"""
+    if not (GAMMA_ALLOW_MONITOR or _client_is_local(request)):
+        return JSONResponse(
+            {"ok": False, "error": "monitor disabled", "message": "监控页仅本机调试可用"},
+            status_code=404,
+        )
     path = BACKEND_DIR / "static_acquire.html"
     if not path.exists():
         return JSONResponse({"error": "acquire page not found"}, status_code=404)
     return FileResponse(path, media_type="text/html")
 
 
+@app.get("/api/bootstrap")
+async def api_bootstrap():
+    """产品页加载时领取短时 API token（外网访问写接口用）。"""
+    token, expires = _mint_session_token()
+    return {
+        "ok": True,
+        "token": token,
+        "expiresAt": int(expires),
+        "authRequired": True,
+        "sharedTokenConfigured": bool(GAMMA_API_TOKEN),
+    }
+
+
 @app.get("/qrlogin", include_in_schema=False)
 async def qrlogin():
-    """B 页：独立的「扫码登录」手机 H5 单页。"""
+    """B 页：独立的「扫码登录」手机 H5 单页（产品内嵌隐藏 iframe，勿单独外发）。"""
     qr_path = BACKEND_DIR / "static_qrlogin.html"
     if not qr_path.exists():
         return JSONResponse({"error": "QR login page not found"}, status_code=404)
@@ -108,17 +233,139 @@ async def health():
         "real_portal_url": REAL_PORTAL_URL,
         "mock_gov_url": MOCK_GOV_URL,
         "pages": {
-            "prototype": "http://localhost:8766/prototype",
-            "acquire": "http://localhost:8766/acquire",
-            "qrlogin": "http://localhost:8766/qrlogin",
             "index": "http://localhost:8766/",
+            "prototype": "http://localhost:8766/prototype",
+            "admin": "http://localhost:8766/admin",
+            "qrlogin": "http://localhost:8766/qrlogin",
+            "acquire": "local-only unless GAMMA_ALLOW_MONITOR=1",
         },
+        # 外网产品面强制无头；本地可见调试时改为 False
+        "headless_forced": True,
+        "cases_static_exposed": False,
+        "admin_token_configured": bool(GAMMA_ADMIN_TOKEN),
+        "public_tunnel_doc": "docs/PUBLIC_TUNNEL.md",
     }
 
 
 REPO_ROOT = BACKEND_DIR.parents[1]  # …/伽马账（backend → 演示包 → 仓库根）
 GAMMA_CASES_DIR = REPO_ROOT / "gamma-yct" / "data" / "cases"
 DEFAULT_CASE_ID = "GM202608062231EF"
+
+_STAGE_FILES = [
+    ("name", "fill-name-result.json", "名称信息"),
+    ("basic", "fill-basic-info-result.json", "基本信息"),
+    ("capital", "fill-capital-result.json", "出资情况"),
+    ("personnel", "fill-personnel-result.json", "人员信息"),
+    ("opening", "fill-opening-result.json", "企业开办"),
+]
+
+
+def _read_json_file(path: Path) -> dict:
+    try:
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
+    except Exception:
+        pass
+    return {}
+
+
+def _case_summary(case_id: str, job=None) -> dict[str, Any]:
+    """汇总单个案件的提交信息与 RPA 进度（供管理页）。"""
+    case_id = (case_id or "").strip()
+    case_dir = GAMMA_CASES_DIR / case_id if case_id else None
+    meta = _read_json_file(case_dir / "meta.json") if case_dir else {}
+    payload = _read_json_file(case_dir / "payload.json") if case_dir else {}
+    name = payload.get("name") if isinstance(payload.get("name"), dict) else {}
+    reg = payload.get("registration") if isinstance(payload.get("registration"), dict) else {}
+    contact = payload.get("contact") if isinstance(payload.get("contact"), dict) else {}
+
+    case_status = str(meta.get("status") or "")
+    customer_message = str(meta.get("customerMessage") or "")
+    reason = str(meta.get("reason") or "")
+    updated_at = str(meta.get("updatedAt") or meta.get("createdAt") or "")
+
+    stages_done: list[str] = []
+    if case_dir and case_dir.exists():
+        for key, fname, _label in _STAGE_FILES:
+            if (case_dir / fname).exists():
+                stages_done.append(key)
+
+    stage = "pending"
+    stage_label = "等待开始"
+    if len(stages_done) >= len(_STAGE_FILES):
+        stage = "done"
+        stage_label = "已完成各板块"
+    else:
+        for key, _fname, label in _STAGE_FILES:
+            if key not in stages_done:
+                stage = key
+                stage_label = label
+                break
+
+    progress = customer_message or ""
+    running = bool(job and job.thread and job.thread.is_alive())
+    logged_in = bool(job and job.logged_in)
+    has_qr = bool(job and job.qr_b64)
+    finished = bool(job.finished) if job else case_status not in ("", "draft", "queued")
+    if job and not progress:
+        if not logged_in and running:
+            progress = "等待扫码登录…"
+        elif logged_in and stage == "pending" and not stages_done:
+            progress = "登录成功，正在进入名称申报…"
+        elif stage != "done" and stage != "pending":
+            progress = f"正在填写「{stage_label}」"
+        elif not progress:
+            progress = "正在同步填报进度…"
+    if not progress:
+        progress = reason or case_status or "—"
+
+    name_failed = case_status == "name_failed" or any(
+        k in reason for k in ("比对未通过", "名称未通过", "生僻字")
+    )
+    trade = str(name.get("tradeName") or "").strip()
+    preview = str(name.get("fullNamePreview") or "").strip()
+    if not preview and trade:
+        preview = f"上海{trade}{name.get('industry') or ''}{name.get('orgForm') or ''}"
+
+    mtime = 0.0
+    if case_dir and case_dir.exists():
+        try:
+            mtime = (case_dir / "meta.json").stat().st_mtime if (case_dir / "meta.json").exists() else case_dir.stat().st_mtime
+        except Exception:
+            mtime = 0.0
+    if job and getattr(job, "started_at", None):
+        mtime = max(mtime, float(job.started_at))
+
+    return {
+        "caseId": case_id,
+        "sid": getattr(job, "sid", "") if job else "",
+        "tradeName": trade,
+        "companyName": preview,
+        "orgForm": str(name.get("orgForm") or ""),
+        "industry": str(name.get("industry") or ""),
+        "district": str(reg.get("district") or (reg.get("address") or {}).get("district") or ""),
+        "contactPhone": str(contact.get("mobile") or contact.get("phone") or ""),
+        "caseStatus": case_status,
+        "progress": progress,
+        "customerMessage": customer_message,
+        "reason": reason,
+        "stage": stage,
+        "stageLabel": stage_label,
+        "stagesDone": stages_done,
+        "running": running,
+        "loggedIn": logged_in,
+        "hasQr": has_qr,
+        "finished": bool(finished) if job else bool(case_status and case_status not in ("draft",)),
+        "fillOk": bool(job and job.ok) if job else case_status in ("ready_for_user_submit", "name_next_reached"),
+        "nameFailed": name_failed,
+        "needsHuman": (not name_failed) and case_status in ("need_human", "human_confirmation_required"),
+        "error": (job.error if job else None) or (reason if name_failed or case_status == "failed" else None),
+        "updatedAt": updated_at,
+        "startedAt": float(job.started_at) if job else None,
+        "mtime": mtime,
+        "source": "relay" if job else "case",
+    }
 
 
 def _deep_merge(base: dict, patch: dict) -> dict:
@@ -166,7 +413,22 @@ def _normalize_id_image(content: bytes, filename: str = "") -> tuple[bytes, str,
         from io import BytesIO
         from PIL import Image
     except ImportError as e:
-        raise RuntimeError("缺少 Pillow，无法压缩身份证图片") from e
+        # 无 Pillow：若已是 JPEG 且未超业务上限则直存；否则明确报错（避免整站卡死）
+        if is_jpeg_bytes and len(content) <= 5 * 1024 * 1024:
+            out_name = filename if is_jpeg_name else re.sub(r"\.[^.]+$", "", filename or "id") + ".jpg"
+            if not out_name.lower().endswith((".jpg", ".jpeg")):
+                out_name = (out_name or "id") + ".jpg"
+            meta.update(
+                {
+                    "finalSize": len(content),
+                    "finalName": out_name,
+                    "warn": "pillow_missing_passthrough",
+                }
+            )
+            return content, out_name, meta
+        raise RuntimeError(
+            "缺少 Pillow，无法压缩身份证图片。请在演示包 .venv 执行: python -m pip install Pillow"
+        ) from e
 
     img = Image.open(BytesIO(content))
     if img.mode in ("RGBA", "LA", "P"):
@@ -481,8 +743,11 @@ async def biz_scope_generate(body: dict):
 
 
 @app.post("/api/case-payload")
-async def sync_case_payload(body: dict):
+async def sync_case_payload(request: Request, body: dict):
     """把原型表单组装的 gamma-yct payload 写入本地案件（默认 GM202608062231EF）。"""
+    denied = _require_api_token(request, body)
+    if denied is not None:
+        return denied
     case_id = str(body.get("caseId") or DEFAULT_CASE_ID).strip() or DEFAULT_CASE_ID
     patch = body.get("payload")
     if not isinstance(patch, dict):
@@ -522,6 +787,25 @@ async def sync_case_payload(body: dict):
     except Exception as e:
         return JSONResponse(
             {"ok": False, "error": f"payload schema invalid: {e}", "caseId": case_id},
+            status_code=400,
+        )
+
+    # 住所必须结构化完整，否则 RPA 无法填「住所填报」弹窗
+    reg = merged.get("registration") if isinstance(merged.get("registration"), dict) else {}
+    addr = reg.get("address") if isinstance(reg.get("address"), dict) else {}
+    missing_addr = [
+        k
+        for k in ("district", "street", "road", "detail")
+        if not str(addr.get(k) or "").strip()
+    ]
+    if missing_addr:
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "住所未填完整，缺少: " + ",".join(missing_addr) + "。请在客户端重新选择区县/街道并填写路名门牌号。",
+                "caseId": case_id,
+                "missing": missing_addr,
+            },
             status_code=400,
         )
 
@@ -576,8 +860,14 @@ async def sync_case_payload(body: dict):
 
 
 @app.post("/api/start-automation")
-async def start_automation(body: dict):
-    """同步案件后启动可见 Chrome 填报，并把二维码中继到 sid。"""
+async def start_automation(request: Request, body: dict):
+    """同步案件后启动后台填报，二维码中继到 sid。
+
+    外网产品面强制无头；本地可见调试时改为 headless=False，并改用下方「可见窗」返回文案。
+    """
+    denied = _require_api_token(request, body)
+    if denied is not None:
+        return denied
     case_id = str(body.get("caseId") or DEFAULT_CASE_ID).strip() or DEFAULT_CASE_ID
     sid = str(body.get("sid") or "").strip()
     if not sid:
@@ -591,8 +881,24 @@ async def start_automation(body: dict):
         )
 
     gamma_root = str(REPO_ROOT / "gamma-yct")
-    # 默认可见窗口，便于确认自动化已启动；二维码仍投射到演示页
-    headless = bool(body.get("headless", False))
+    # 外网产品面：强制无头，用户看不到抓码/填报浏览器
+    headless = True
+    # 本地调试可见 Chrome 时改用下面一行，并注释掉上面一行：
+    # headless = False
+    # 重试前清掉上一轮 cancel / 残留 Chrome，避免新会话被误杀或复用已登录 profile
+    try:
+        import sys
+
+        if gamma_root not in sys.path:
+            sys.path.insert(0, gamma_root)
+        from apps.api import store as gamma_store
+        from apps.worker.run_fill_session import abort_fill_browser
+
+        abort_fill_browser(case_id, kill_all=False)
+        gamma_store.consume_cancel(case_id)
+    except Exception:
+        pass
+    await asyncio.sleep(0.8)
     await relay_hub.ensure_job(sid, case_id)
     started = relay_hub.start_fill_thread(sid, case_id, gamma_root, headless=headless)
     return {
@@ -600,12 +906,13 @@ async def start_automation(body: dict):
         "caseId": case_id,
         "sid": sid,
         "started": started,
-        "mode": "relay_visible" if not headless else "relay_headless",
-        "headless": headless,
-        "message": (
-            "已启动后台 Chrome 窗口填报" if started and not headless
-            else ("已启动后台无头填报" if started else "同 sid 填报已在运行")
-        ),
+        "mode": "relay_headless",
+        "headless": True,
+        "message": ("已启动后台无头填报" if started else "同 sid 填报已在运行"),
+        # 可见窗调试文案（headless=False 时改用）：
+        # "mode": "relay_visible",
+        # "headless": False,
+        # "message": ("已启动可见窗填报" if started else "同 sid 填报已在运行"),
     }
 
 
@@ -724,6 +1031,51 @@ async def automation_status(sid: str):
     }
 
 
+@app.get("/api/admin/tasks")
+async def admin_list_tasks(request: Request, limit: int = 50):
+    """管理页：用户提交任务 + RPA 进度列表。"""
+    denied = _require_admin(request)
+    if denied is not None:
+        return denied
+    limit = max(1, min(int(limit or 50), 200))
+
+    jobs = await relay_hub.list_jobs()
+    by_case: dict[str, Any] = {}
+    rows: list[dict[str, Any]] = []
+
+    for job in jobs:
+        cid = (job.case_id or "").strip() or f"_sid_{job.sid}"
+        row = _case_summary(job.case_id or "", job)
+        rows.append(row)
+        if job.case_id:
+            by_case[job.case_id] = row
+
+    # 补充磁盘上近期案件（无活跃 relay 也展示）
+    try:
+        case_dirs = [d for d in GAMMA_CASES_DIR.iterdir() if d.is_dir() and not d.name.startswith("_")]
+        case_dirs.sort(key=lambda d: d.stat().st_mtime, reverse=True)
+    except Exception:
+        case_dirs = []
+
+    for d in case_dirs:
+        if d.name in by_case:
+            continue
+        if not (d / "payload.json").exists() and not (d / "meta.json").exists():
+            continue
+        rows.append(_case_summary(d.name, None))
+
+    rows.sort(key=lambda r: float(r.get("mtime") or 0), reverse=True)
+    rows = rows[:limit]
+    running_n = sum(1 for r in rows if r.get("running"))
+    return {
+        "ok": True,
+        "tasks": rows,
+        "total": len(rows),
+        "running": running_n,
+        "serverTime": time.time(),
+    }
+
+
 @app.post("/api/automation/{sid}/resume")
 async def resume_automation(sid: str):
     """人工处理完未知错误后，通知 worker 继续填报（不关浏览器）。"""
@@ -758,8 +1110,17 @@ async def resume_automation(sid: str):
 
 
 @app.post("/api/automation/{sid}/cancel")
-async def cancel_automation(sid: str):
+async def cancel_automation(sid: str, request: Request):
     """用户取消填报：终止 RPA 并关闭浏览器。无 job 时也尽量按 caseId 关窗。"""
+    try:
+        body = await request.json()
+        if not isinstance(body, dict):
+            body = {}
+    except Exception:
+        body = {}
+    denied = _require_api_token(request, body)
+    if denied is not None:
+        return denied
     job = await relay_hub.get(sid)
     case_id = ""
     if job is not None:
@@ -789,8 +1150,11 @@ async def cancel_automation(sid: str):
 
 
 @app.post("/api/automation/cancel-case")
-async def cancel_automation_by_case(body: dict):
+async def cancel_automation_by_case(request: Request, body: dict):
     """按 caseId 取消并强制关闭填报 Chrome（不依赖 sid）。"""
+    denied = _require_api_token(request, body)
+    if denied is not None:
+        return denied
     case_id = str(body.get("caseId") or DEFAULT_CASE_ID).strip() or DEFAULT_CASE_ID
     # 顺带取消仍在跑的同 case 会话
     try:

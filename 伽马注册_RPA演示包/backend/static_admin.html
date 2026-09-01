@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>伽马注册 · 任务管理</title>
+<style>
+  :root{
+    --bg:#f4f6f9; --card:#fff; --text:#0b2e66; --sub:#5a6b85;
+    --line:#e5e7eb; --ok:#059669; --warn:#d97706; --err:#dc2626;
+    --run:#2563eb; --soft:#e8f0fe;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg); color:var(--text); padding:20px;
+  }
+  .wrap{max-width:1180px; margin:0 auto;}
+  h1{font-size:22px; margin:0 0 4px;}
+  .sub{color:var(--sub); font-size:13px; margin:0 0 16px; line-height:1.5;}
+  .bar{
+    display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+    background:var(--card); border:1px solid var(--line); border-radius:12px;
+    padding:12px 14px; margin-bottom:14px;
+  }
+  .bar input[type=password], .bar input[type=text]{
+    height:36px; border:1px solid var(--line); border-radius:8px;
+    padding:0 10px; min-width:180px; font-size:13px;
+  }
+  .bar button{
+    height:36px; border:none; border-radius:8px; padding:0 14px;
+    background:#1e5fd9; color:#fff; font-weight:600; cursor:pointer; font-size:13px;
+  }
+  .bar button.ghost{background:var(--soft); color:#1e5fd9;}
+  .stat{font-size:13px; color:var(--sub);}
+  .stat b{color:var(--text);}
+  .err{color:var(--err); font-size:13px; margin:0 0 10px;}
+  table{
+    width:100%; border-collapse:separate; border-spacing:0;
+    background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden;
+  }
+  th, td{
+    text-align:left; padding:10px 12px; font-size:13px;
+    border-bottom:1px solid var(--line); vertical-align:top;
+  }
+  th{background:#f8fafc; color:var(--sub); font-weight:600; white-space:nowrap;}
+  tr:last-child td{border-bottom:none;}
+  .mono{font-family:ui-monospace,Consolas,monospace; font-size:12px;}
+  .muted{color:var(--sub);}
+  .pill{
+    display:inline-block; font-size:11px; font-weight:700;
+    padding:2px 8px; border-radius:99px; background:#eef2ff; color:#3730a3;
+  }
+  .pill.run{background:#dbeafe; color:#1d4ed8;}
+  .pill.ok{background:#d1fae5; color:#047857;}
+  .pill.warn{background:#ffedd5; color:#c2410c;}
+  .pill.err{background:#fee2e2; color:#b91c1c;}
+  .pill.idle{background:#f3f4f6; color:#4b5563;}
+  .prog{max-width:280px; line-height:1.45;}
+  .empty{padding:40px; text-align:center; color:var(--sub);}
+  @media (max-width:800px){
+    table, thead, tbody, th, td, tr{display:block;}
+    thead{display:none;}
+    tr{border-bottom:1px solid var(--line); padding:10px 0;}
+    td{border:none; padding:4px 12px;}
+    td::before{content:attr(data-label); display:block; color:var(--sub); font-size:11px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>任务与 RPA 进度</h1>
+  <p class="sub">查看用户提交的案件、扫码/填报状态与当前进度。本机默认可访问；公网需配置 <code>GAMMA_ADMIN_TOKEN</code>。</p>
+
+  <div class="bar">
+    <input id="adminToken" type="password" placeholder="管理口令（公网必填）" autocomplete="off" />
+    <button type="button" id="btnSave">保存口令</button>
+    <button type="button" class="ghost" id="btnRefresh">立即刷新</button>
+    <label class="stat"><input type="checkbox" id="autoRefresh" checked /> 每 2 秒自动刷新</label>
+    <span class="stat" id="summary">—</span>
+  </div>
+  <p class="err" id="errBox" hidden></p>
+
+  <div id="tableWrap">
+    <div class="empty">加载中…</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const TOKEN_KEY = 'gamma_admin_token';
+  const tokenEl = document.getElementById('adminToken');
+  const errBox = document.getElementById('errBox');
+  const summary = document.getElementById('summary');
+  const wrap = document.getElementById('tableWrap');
+  const autoEl = document.getElementById('autoRefresh');
+  let timer = null;
+
+  tokenEl.value = localStorage.getItem(TOKEN_KEY) || '';
+
+  function headers(){
+    const h = { 'Accept': 'application/json' };
+    const t = (tokenEl.value || '').trim();
+    if(t) h['X-Gamma-Admin-Token'] = t;
+    return h;
+  }
+
+  function fmtTime(ts){
+    if(!ts) return '—';
+    const d = new Date((ts < 1e12 ? ts * 1000 : ts));
+    if(isNaN(d.getTime())) return String(ts);
+    const p = n => String(n).padStart(2,'0');
+    return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
+  }
+
+  function statusPill(row){
+    if(row.running) return '<span class="pill run">运行中</span>';
+    if(row.nameFailed) return '<span class="pill err">核名失败</span>';
+    if(row.needsHuman) return '<span class="pill warn">需人工</span>';
+    if(row.fillOk || row.stage === 'done') return '<span class="pill ok">完成</span>';
+    if(row.finished && row.error) return '<span class="pill err">失败</span>';
+    if(row.hasQr && !row.loggedIn) return '<span class="pill run">待扫码</span>';
+    return '<span class="pill idle">'+(row.caseStatus || '草稿')+'</span>';
+  }
+
+  function render(data){
+    const tasks = data.tasks || [];
+    summary.innerHTML = '共 <b>'+tasks.length+'</b> 条 · 运行中 <b>'+(data.running||0)+'</b> · 更新 '+fmtTime(data.serverTime);
+    if(!tasks.length){
+      wrap.innerHTML = '<div class="empty">暂无任务。用户在产品页提交并启动填报后会出现在这里。</div>';
+      return;
+    }
+    let html = '<table><thead><tr>'
+      +'<th>时间</th><th>案件 / 会话</th><th>企业</th><th>状态</th><th>阶段</th><th>进度</th>'
+      +'</tr></thead><tbody>';
+    for(const row of tasks){
+      const name = row.companyName || row.tradeName || '—';
+      const sub = [row.orgForm, row.industry, row.district].filter(Boolean).join(' · ');
+      html += '<tr>'
+        +'<td data-label="时间" class="mono">'+fmtTime(row.mtime || row.startedAt)+'</td>'
+        +'<td data-label="案件"><div class="mono">'+(row.caseId||'—')+'</div>'
+        +(row.sid ? '<div class="muted mono">'+row.sid+'</div>' : '')
+        +'</td>'
+        +'<td data-label="企业"><div>'+escapeHtml(name)+'</div>'
+        +(sub ? '<div class="muted">'+escapeHtml(sub)+'</div>' : '')
+        +(row.contactPhone ? '<div class="muted">'+escapeHtml(row.contactPhone)+'</div>' : '')
+        +'</td>'
+        +'<td data-label="状态">'+statusPill(row)+'</td>'
+        +'<td data-label="阶段">'+(row.stageLabel || row.stage || '—')
+        +'<div class="muted">'+((row.stagesDone||[]).length ? (row.stagesDone||[]).join(' → ') : '—')
+        +'</div></td>'
+        +'<td data-label="进度" class="prog">'+escapeHtml(row.progress || '—')
+        +(row.error ? '<div class="muted" style="color:var(--err)">'+escapeHtml(row.error)+'</div>' : '')
+        +'</td>'
+        +'</tr>';
+    }
+    html += '</tbody></table>';
+    wrap.innerHTML = html;
+  }
+
+  function escapeHtml(s){
+    return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  async function load(){
+    errBox.hidden = true;
+    try{
+      const res = await fetch('/api/admin/tasks?limit=80', { headers: headers(), cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if(!res.ok || !data.ok){
+        throw new Error(data.message || data.error || ('HTTP '+res.status));
+      }
+      render(data);
+    }catch(e){
+      errBox.hidden = false;
+      errBox.textContent = '加载失败：' + (e && e.message ? e.message : e);
+    }
+  }
+
+  function schedule(){
+    if(timer){ clearInterval(timer); timer = null; }
+    if(autoEl.checked) timer = setInterval(load, 2000);
+  }
+
+  document.getElementById('btnSave').onclick = ()=>{
+    localStorage.setItem(TOKEN_KEY, (tokenEl.value || '').trim());
+    load();
+  };
+  document.getElementById('btnRefresh').onclick = ()=> load();
+  autoEl.onchange = schedule;
+  load();
+  schedule();
+})();
+</script>
+</body>
+</html>

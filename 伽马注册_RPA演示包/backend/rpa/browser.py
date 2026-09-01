@@ -50,23 +50,66 @@ class Listener:
     screenshot_callback: Optional[Callable[[str, str], Awaitable[None]]] = None
 
 
+def _playwright_cache_dirs() -> list[str]:
+    dirs: list[str] = []
+    env = (os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or "").strip()
+    if env and env != "0" and os.path.isdir(env):
+        dirs.append(env)
+    local = (os.environ.get("LOCALAPPDATA") or "").strip()
+    if local:
+        dirs.append(os.path.join(local, "ms-playwright"))
+    dirs.append(os.path.expanduser("~/Library/Caches/ms-playwright"))
+    dirs.append(os.path.expanduser("~/.cache/ms-playwright"))
+    # Cursor sandbox 偶发把浏览器装到 Temp 缓存；仅作探测，不强制
+    temp = (os.environ.get("TEMP") or os.environ.get("TMP") or "").strip()
+    if temp:
+        dirs.extend(glob.glob(os.path.join(temp, "cursor-sandbox-cache", "*", "playwright")))
+    seen: set[str] = set()
+    out: list[str] = []
+    for d in dirs:
+        nd = os.path.normpath(d)
+        if nd not in seen and os.path.isdir(nd):
+            seen.add(nd)
+            out.append(nd)
+    return out
+
+
 def _find_chromium_executable() -> Optional[str]:
-    """自动探测可用的 chromium 可执行文件。"""
-    cache = os.path.expanduser("~/Library/Caches/ms-playwright")
-    if not os.path.isdir(cache):
-        return None
-    # 1. 优先 headless_shell
-    for p in sorted(glob.glob(f"{cache}/chromium_headless_shell-*/chrome-mac-arm64/chrome-headless-shell"), reverse=True):
-        if os.path.isfile(p):
-            return p
-    # 2. 回退到完整 chromium
-    for p in sorted(glob.glob(f"{cache}/chromium-*/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"), reverse=True):
-        if os.path.isfile(p):
-            return p
+    """自动探测可用的 chromium 可执行文件（Windows / macOS / Linux）。"""
+    patterns = [
+        # Windows
+        "chromium_headless_shell-*/chrome-headless-shell-win64/chrome-headless-shell.exe",
+        "chromium-*/chrome-win64/chrome.exe",
+        "chromium-*/chrome-win/chrome.exe",
+        # macOS
+        "chromium_headless_shell-*/chrome-mac-arm64/chrome-headless-shell",
+        "chromium_headless_shell-*/chrome-mac/chrome-headless-shell",
+        "chromium-*/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "chromium-*/chrome-mac/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        # Linux
+        "chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell",
+        "chromium-*/chrome-linux/chrome",
+    ]
+    for cache in _playwright_cache_dirs():
+        for pat in patterns:
+            for p in sorted(glob.glob(os.path.join(cache, pat)), reverse=True):
+                if os.path.isfile(p):
+                    return p
     return None
 
 
 _CHROMIUM_EXEC = _find_chromium_executable()
+# 与填报 worker 一致：无本地 chromium 时用系统 Chrome，避免缺 playwright install
+_PLAYWRIGHT_CHANNEL = (os.environ.get("PLAYWRIGHT_CHANNEL") or "chrome").strip() or None
+
+
+def _chromium_launch_kwargs(headless: bool) -> dict:
+    kwargs: dict = {"headless": headless}
+    if _CHROMIUM_EXEC:
+        kwargs["executable_path"] = _CHROMIUM_EXEC
+    elif _PLAYWRIGHT_CHANNEL:
+        kwargs["channel"] = _PLAYWRIGHT_CHANNEL
+    return kwargs
 
 
 class RPASession:
@@ -150,10 +193,9 @@ class RPASession:
     async def start(self, url: str, timeout: int = 30) -> None:
         """启动浏览器并打开起始 URL，然后启动 RPA 流程与监控任务。"""
         self.playwright = await async_playwright().start()
-        launch_kwargs = {"headless": self.headless}
-        if _CHROMIUM_EXEC:
-            launch_kwargs["executable_path"] = _CHROMIUM_EXEC
-        self.browser = await self.playwright.chromium.launch(**launch_kwargs)
+        self.browser = await self.playwright.chromium.launch(
+            **_chromium_launch_kwargs(self.headless)
+        )
         self.context = await self.browser.new_context(
             viewport={"width": 1280, "height": 900},
             user_agent=DEFAULT_UA,
@@ -763,10 +805,9 @@ async def get_shared_browser(headless: bool = True) -> Browser:
         if _playwright is None:
             _playwright = await async_playwright().start()
         if _browser is None:
-            launch_kwargs = {"headless": headless}
-            if _CHROMIUM_EXEC:
-                launch_kwargs["executable_path"] = _CHROMIUM_EXEC
-            _browser = await _playwright.chromium.launch(**launch_kwargs)
+            _browser = await _playwright.chromium.launch(
+                **_chromium_launch_kwargs(headless)
+            )
         return _browser
 
 
