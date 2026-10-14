@@ -7,6 +7,8 @@
 4. 经办人：上传身份证正反面 → OCR → 移动电话 / 经办人类型
 5. 企业信息：申请机关 / 企业类型 / 经营期限 / 住所弹窗 / 联系电话 / 章程决议日期 → 暂存
 6. 经营范围：按用户勾选条目名称搜索添加（无勾选时回退行业词前 5 条）→ 生成结果
+   - 生成结果若弹出「国民经济行业分类选择」：多条则轮换添加顺序（第2条起、第1条置末，再第3条起…）后重试；
+     仅 1 条时默认点选弹窗第一项类目
 7. 下拉到底 → 下一步
 """
 
@@ -1612,8 +1614,34 @@ def _click_open_address_field(page: Page, frame: Frame) -> bool:
         except Exception:
             pass
         try:
-            item = scope.locator(".el-form-item").filter(has_text=label_re).first
-            if not _visible(item, timeout=500):
+            # 优先精确匹配「住所」「主要经营场所」标签，避免误点其它含「住所」的表单项
+            items = scope.locator(".el-form-item").filter(has_text=label_re)
+            n = min(items.count(), 8)
+            best = None
+            best_score = 10**9
+            for i in range(n):
+                it = items.nth(i)
+                if not _visible(it, timeout=300):
+                    continue
+                try:
+                    lab = it.locator(".el-form-item__label").first
+                    lab_t = " ".join((lab.inner_text(timeout=200) or "").split()) if lab.count() else ""
+                except Exception:
+                    lab_t = ""
+                # 分数：标签越短且等于目标越好
+                if lab_t in ("住所", "主要经营场所", "经营场所"):
+                    score = len(lab_t)
+                elif "住所" in lab_t or "经营场所" in lab_t:
+                    score = 50 + len(lab_t)
+                else:
+                    continue
+                if score < best_score:
+                    best = it
+                    best_score = score
+            item = best
+            if item is None:
+                item = scope.locator(".el-form-item").filter(has_text=label_re).first
+            if item is None or not _visible(item, timeout=500):
                 continue
             # 1) 点整个表单项里的 input/textarea
             inp = item.locator("input, textarea").first
@@ -1664,10 +1692,66 @@ def _click_open_address_field(page: Page, frame: Frame) -> bool:
     )
 
 
-def _ensure_address_dialog(page: Page, frame: Frame, *, retries: int = 3):
-    """确保住所/经营场所填报弹窗打开；关掉后会重新点击入口字段。"""
+def _close_address_dialog(page: Page) -> bool:
+    """关闭已打开的住所弹窗（取消/关闭），便于重试时重新打开。"""
     dialog = _find_address_dialog(page)
-    if dialog is not None:
+    if dialog is None:
+        return True
+    try:
+        footer = dialog.locator(".el-dialog__footer").first
+        if _visible(footer, timeout=400):
+            for name in ("取消", "关闭"):
+                btn = footer.locator("button").filter(
+                    has_text=re.compile(rf"^\s*{name}\s*$")
+                ).first
+                if _visible(btn, timeout=300):
+                    try:
+                        btn.click(timeout=2500)
+                    except Exception:
+                        btn.click(timeout=2500, force=True)
+                    page.wait_for_timeout(500)
+                    if _find_address_dialog(page) is None:
+                        return True
+        # 右上角叉
+        close = dialog.locator(".el-dialog__headerbtn, button.el-dialog__headerbtn").first
+        if _visible(close, timeout=300):
+            close.click(timeout=2000, force=True)
+            page.wait_for_timeout(500)
+            if _find_address_dialog(page) is None:
+                return True
+    except Exception:
+        pass
+    # 禁止 Escape（会误关其它层）；JS 点取消
+    try:
+        dialog.evaluate(
+            """(root) => {
+              const foot = root.querySelector('.el-dialog__footer') || root;
+              const btn = [...foot.querySelectorAll('button')].find(b => {
+                const t = (b.innerText || '').replace(/\\s+/g, '');
+                return t === '取消' || t === '关闭';
+              });
+              if (btn) { btn.click(); return true; }
+              const x = root.querySelector('.el-dialog__headerbtn');
+              if (x) { x.click(); return true; }
+              return false;
+            }"""
+        )
+        page.wait_for_timeout(500)
+    except Exception:
+        pass
+    return _find_address_dialog(page) is None
+
+
+def _ensure_address_dialog(page: Page, frame: Frame, *, retries: int = 3, fresh: bool = False):
+    """确保住所/经营场所填报弹窗打开；关掉后会重新点击入口字段。
+
+    fresh=True：先关掉已有弹窗再重开（基本信息重试时避免半成品状态）。
+    """
+    if fresh:
+        _close_address_dialog(page)
+        page.wait_for_timeout(400)
+    dialog = _find_address_dialog(page)
+    if dialog is not None and not fresh:
         return dialog
     for _ in range(max(1, retries)):
         if not _click_open_address_field(page, frame):
@@ -1678,7 +1762,7 @@ def _ensure_address_dialog(page: Page, frame: Frame, *, retries: int = 3):
                     ph.click(timeout=3000, force=True)
             except Exception:
                 pass
-        page.wait_for_timeout(700)
+        page.wait_for_timeout(800)
         dialog = _find_address_dialog(page)
         if dialog is not None:
             return dialog
@@ -2492,13 +2576,14 @@ def _fill_address_dialog(
     addr = reg.get("address") or {}
     result: dict[str, Any] = {"opened": False, "ok": False}
 
-    # 点住所输入框打开弹窗（禁止 Escape 关弹窗；失败会重试）
-    dialog = _ensure_address_dialog(page, frame, retries=4)
+    # 重试时先关掉半成品弹窗再打开，避免区县/街道级联卡死
+    dialog = _ensure_address_dialog(page, frame, retries=4, fresh=True)
     if dialog is None:
         result["error"] = "住所填报弹窗未出现"
         _shot(page, case_id, "address-dialog-missing")
         return result
     result["opened"] = True
+    result["freshOpen"] = True
     _shot(page, case_id, "address-dialog")
 
     detail = str(addr.get("detail") or "").strip()
@@ -3629,10 +3714,38 @@ def _fill_business_scope_flow(
           if (!bodyText.includes('国民经济行业分类')) {
             return {ok:false, reason:'no-modal', snippet: bodyText.slice(0,120)};
           }
+          // 先尝试弹层内 radio
+          const radios = deepAll(
+            '.el-dialog input[type=radio], label.el-radio input[type=radio], input[type=radio]'
+          ).filter(el => {
+            const lab = el.closest('label') || el.closest('.el-radio') || el;
+            const r = lab.getBoundingClientRect();
+            return r.width > 4 && r.height > 4 && r.top > 0;
+          });
+          if (radios.length) {
+            const scoredR = radios.map(inp => {
+              const lab = inp.closest('label') || inp.closest('.el-radio') || inp;
+              const t = (lab.innerText || '').replace(/\\s+/g,'');
+              let score = 0;
+              for (let i = 0; i < prefer.length; i++) {
+                if (t.includes(String(prefer[i]).replace(/\\s+/g,''))) score += 100 - i;
+              }
+              return {inp, lab, t, score};
+            }).sort((a,b) => b.score - a.score || a.lab.getBoundingClientRect().top - b.lab.getBoundingClientRect().top);
+            const hit = scoredR[0];
+            const inner = (hit.lab.querySelector && hit.lab.querySelector('.el-radio__inner')) || hit.inp;
+            clickEl(inner);
+            try {
+              const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'checked');
+              if (desc && desc.set) desc.set.call(hit.inp, true); else hit.inp.checked = true;
+              hit.inp.dispatchEvent(new Event('change', {bubbles:true}));
+            } catch (e) {}
+            return {ok:true, picked: hit.t.slice(0,60), via:'prefer-radio'};
+          }
           const labels = deepAll('label, li, div, span, p').filter(el => {
             const t = (el.innerText || '').replace(/\\s+/g,'');
             const r = el.getBoundingClientRect();
-            return r.width > 40 && r.height > 14 && r.height < 80 && /\\(\\d{4}\\)/.test(t) && t.length < 80;
+            return r.width > 40 && r.height > 14 && r.height < 100 && /\\(\\d{4}\\)/.test(t) && t.length < 100;
           });
           const scored = labels.map(el => {
             const t = (el.innerText || '').replace(/\\s+/g,'');
@@ -3644,7 +3757,10 @@ def _fill_business_scope_flow(
             return {el, t, score};
           }).filter(x => x.score > 0).sort((a,b) => b.score - a.score);
           let target = scored[0] && scored[0].el;
-          if (!target && labels.length) target = labels[labels.length - 1];
+          if (!target && labels.length) {
+            labels.sort((a,b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+            target = labels[0];
+          }
           if (!target) return {ok:false, reason:'no-option', labelCount: labels.length};
           // 优先点内部 radio
           const radio = target.querySelector && (target.querySelector('input[type=radio]') || target.querySelector('.el-radio__inner'));
@@ -3702,6 +3818,406 @@ def _fill_business_scope_flow(
                     except Exception:
                         continue
         return info
+
+    def _naics_modal_present() -> bool:
+        """是否仍有「国民经济行业分类选择」弹层。"""
+        for scope in _scope_scopes():
+            try:
+                loc = scope.get_by_text("国民经济行业分类", exact=False).first
+                if loc.count() > 0 and loc.is_visible(timeout=400):
+                    return True
+            except Exception:
+                continue
+            try:
+                hit = scope.evaluate(
+                    """() => {
+                      const t = (document.body && document.body.innerText) || '';
+                      return t.includes('国民经济行业分类选择') || t.includes('国民经济行业分类');
+                    }"""
+                )
+                if hit:
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _close_naics_modal() -> bool:
+        """关闭分类弹窗（不选类目），用于多条经营范围轮换重试。"""
+        js = """() => {
+          const deepAll = (selector) => {
+            const out = [];
+            const walk = (root) => {
+              if (!root || !root.querySelectorAll) return;
+              try { out.push(...root.querySelectorAll(selector)); } catch (e) {}
+              let all = [];
+              try { all = root.querySelectorAll('*'); } catch (e) { return; }
+              for (const el of all) { if (el.shadowRoot) walk(el.shadowRoot); }
+            };
+            walk(document);
+            return out;
+          };
+          const clickEl = (el) => {
+            if (!el) return false;
+            const r = el.getBoundingClientRect();
+            if (r.width < 4 || r.height < 4) return false;
+            const x = r.left + r.width/2, y = r.top + r.height/2;
+            for (const type of ['pointerdown','mousedown','mouseup','pointerup','click']) {
+              el.dispatchEvent(new MouseEvent(type, {bubbles:true, cancelable:true, composed:true, clientX:x, clientY:y, view:window}));
+            }
+            if (typeof el.click === 'function') el.click();
+            return true;
+          };
+          const bodyText = (document.body && document.body.innerText) || '';
+          if (!bodyText.includes('国民经济行业分类')) return {ok:false, reason:'no-modal'};
+          // 优先点弹层右上角关闭
+          const closes = deepAll(
+            '.el-dialog__headerbtn, .el-message-box__headerbtn, .el-dialog__close, button[aria-label="Close"], .el-icon-close, i.el-icon-close, .el-dialog__headerbtn i'
+          );
+          for (const el of closes) {
+            const r = el.getBoundingClientRect();
+            if (r.width >= 8 && r.height >= 8 && r.top < window.innerHeight * 0.55) {
+              if (clickEl(el)) return {ok:true, via:'close-icon'};
+            }
+          }
+          // 文案「关闭 / 取消」（勿点确定）
+          const btns = deepAll('button, a, span, div').filter(el => {
+            const t = (el.innerText || '').replace(/\\s+/g,'');
+            const r = el.getBoundingClientRect();
+            return (t === '关闭' || t === '取消') && r.width > 24 && r.height > 14 && r.width < 200;
+          });
+          if (btns.length && clickEl(btns[0])) return {ok:true, via:'cancel'};
+          return {ok:false, reason:'no-close'};
+        }"""
+        closed = False
+        for scope in _scope_scopes():
+            try:
+                if not _naics_modal_present():
+                    return True
+                res = scope.evaluate(js)
+                if isinstance(res, dict) and res.get("ok"):
+                    closed = True
+                    page.wait_for_timeout(500)
+                    break
+            except Exception:
+                continue
+        # Playwright 兜底
+        if _naics_modal_present():
+            for scope in _scope_scopes():
+                try:
+                    btn = scope.locator(
+                        ".el-dialog__headerbtn, .el-dialog__close, button[aria-label='Close']"
+                    ).first
+                    if btn.count() > 0 and btn.is_visible(timeout=400):
+                        btn.click(force=True, timeout=2000)
+                        closed = True
+                        page.wait_for_timeout(400)
+                        break
+                except Exception:
+                    continue
+        return closed or (not _naics_modal_present())
+
+    def _pick_first_naics_option() -> dict[str, Any]:
+        """仅一条经营范围时：默认点选弹窗第一条类目。"""
+        info: dict[str, Any] = {"ok": False, "picked": None}
+        js = """() => {
+          const deepAll = (selector) => {
+            const out = [];
+            const walk = (root) => {
+              if (!root || !root.querySelectorAll) return;
+              try { out.push(...root.querySelectorAll(selector)); } catch (e) {}
+              let all = [];
+              try { all = root.querySelectorAll('*'); } catch (e) { return; }
+              for (const el of all) { if (el.shadowRoot) walk(el.shadowRoot); }
+            };
+            walk(document);
+            return out;
+          };
+          const clickEl = (el) => {
+            if (!el) return false;
+            try { el.scrollIntoView({block:'center', inline:'nearest'}); } catch (e) {}
+            const r = el.getBoundingClientRect();
+            if (r.width < 4 || r.height < 4) return false;
+            const x = r.left + Math.min(16, r.width/2), y = r.top + r.height/2;
+            for (const type of ['pointerdown','mousedown','mouseup','pointerup','click']) {
+              el.dispatchEvent(new MouseEvent(type, {bubbles:true, cancelable:true, composed:true, clientX:x, clientY:y, view:window}));
+            }
+            if (typeof el.click === 'function') el.click();
+            return true;
+          };
+          const bodyText = (document.body && document.body.innerText) || '';
+          if (!bodyText.includes('国民经济行业分类')) {
+            return {ok:false, reason:'no-modal'};
+          }
+          // 优先点弹层内第一个可见 radio（比扫 label 更稳）
+          const radios = deepAll(
+            '.el-dialog input[type=radio], .el-overlay-dialog input[type=radio], ' +
+            'label.el-radio input[type=radio], .el-radio__original, input[type=radio]'
+          ).filter(el => {
+            const r = el.getBoundingClientRect();
+            const lab = el.closest && (el.closest('label') || el.closest('.el-radio'));
+            const rr = (lab || el).getBoundingClientRect();
+            return rr.width > 4 && rr.height > 4 && rr.top > 0 && rr.bottom < innerHeight + 100;
+          });
+          radios.sort((a,b) => {
+            const ra = (a.closest('label')||a).getBoundingClientRect();
+            const rb = (b.closest('label')||b).getBoundingClientRect();
+            return ra.top - rb.top;
+          });
+          if (radios.length) {
+            const inp = radios[0];
+            const lab = inp.closest('label.el-radio') || inp.closest('.el-radio') || inp.closest('label');
+            const inner = (lab && lab.querySelector('.el-radio__inner')) || inp;
+            clickEl(inner);
+            try {
+              const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'checked');
+              if (desc && desc.set) desc.set.call(inp, true); else inp.checked = true;
+              inp.dispatchEvent(new Event('input', {bubbles:true}));
+              inp.dispatchEvent(new Event('change', {bubbles:true}));
+              clickEl(inp);
+            } catch (e) {}
+            return {
+              ok:true,
+              via:'radio0',
+              picked: ((lab && lab.innerText) || '').replace(/\\s+/g,' ').trim().slice(0,60),
+              radioCount: radios.length
+            };
+          }
+          const labels = deepAll('label, li, div, span, p').filter(el => {
+            const t = (el.innerText || '').replace(/\\s+/g,'');
+            const r = el.getBoundingClientRect();
+            return r.width > 40 && r.height > 14 && r.height < 100
+              && (/\\(\\d{4}\\)/.test(t) || /\\d{4}/.test(t)) && t.length < 100;
+          });
+          // 按屏幕自上而下，取第一条
+          labels.sort((a,b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+          if (!labels.length) return {ok:false, reason:'no-option'};
+          const target = labels[0];
+          const radio = target.querySelector && (
+            target.querySelector('input[type=radio]') || target.querySelector('.el-radio__inner')
+          );
+          clickEl(radio || target);
+          return {
+            ok:true,
+            via:'label',
+            picked: (target.innerText || '').replace(/\\s+/g,' ').trim().slice(0,60),
+            labelCount: labels.length
+          };
+        }"""
+        for scope in _scope_scopes():
+            try:
+                if scope.get_by_text("国民经济行业分类", exact=False).count() == 0:
+                    continue
+            except Exception:
+                continue
+            try:
+                js_res = scope.evaluate(js)
+                info["js"] = js_res
+                if isinstance(js_res, dict) and js_res.get("ok"):
+                    info["ok"] = True
+                    info["picked"] = js_res.get("picked")
+                    page.wait_for_timeout(700)
+                    break
+            except Exception as e:
+                info["jsError"] = str(e)
+            # Playwright：弹层内第一个 radio
+            try:
+                dlg = scope.locator(
+                    ".el-dialog:visible, .el-overlay-dialog:visible, .el-message-box:visible"
+                ).filter(has_text=re.compile(r"国民经济行业分类")).first
+                if dlg.count() > 0 and dlg.is_visible(timeout=500):
+                    radio = dlg.locator("label.el-radio, .el-radio").first
+                    if radio.count() > 0 and radio.is_visible(timeout=400):
+                        try:
+                            radio.scroll_into_view_if_needed(timeout=1200)
+                        except Exception:
+                            pass
+                        inner = radio.locator(".el-radio__inner, input[type=radio]").first
+                        try:
+                            if inner.count() > 0 and inner.evaluate("e => e.tagName==='INPUT'"):
+                                inner.check(force=True, timeout=2000)
+                            elif inner.count() > 0:
+                                inner.click(force=True, timeout=2500)
+                            else:
+                                radio.click(force=True, timeout=2500)
+                        except Exception:
+                            radio.click(force=True, timeout=2500)
+                        info["ok"] = True
+                        info["picked"] = (radio.inner_text(timeout=400) or "")[:60] or "dialog-radio-0"
+                        info["via"] = "pw-dialog-radio"
+                        page.wait_for_timeout(700)
+                        break
+            except Exception:
+                pass
+            # 兜底：第一个带 (四位码) 的可见行
+            try:
+                loc = scope.get_by_text(re.compile(r"\(\d{4}\)"), exact=False).first
+                if loc.count() > 0 and loc.is_visible(timeout=600):
+                    radio = loc.locator(
+                        "xpath=ancestor-or-self::*[.//input[@type='radio'] or contains(@class,'el-radio')][1]"
+                    ).first
+                    if radio.count() > 0:
+                        radio.click(force=True, timeout=2500)
+                    else:
+                        loc.click(force=True, timeout=2500)
+                    info["ok"] = True
+                    info["picked"] = (loc.inner_text(timeout=500) or "")[:60]
+                    page.wait_for_timeout(700)
+                    break
+            except Exception:
+                continue
+        if info.get("ok"):
+            for scope in _scope_scopes():
+                for txt in ("确定", "确认", "保存", "完成", "选好了"):
+                    try:
+                        btn = scope.get_by_role("button", name=re.compile(rf"^\s*{txt}\s*$")).first
+                        if btn.count() > 0 and btn.is_visible(timeout=400):
+                            btn.click(force=True, timeout=2000)
+                            info["confirmed"] = txt
+                            page.wait_for_timeout(400)
+                            break
+                    except Exception:
+                        continue
+                if info.get("confirmed"):
+                    break
+            if _naics_modal_present():
+                info["stillOpen"] = True
+        return info
+
+    def _clear_selected_scope_items() -> dict[str, Any]:
+        """清空右侧已选经营范围条目，便于按新顺序重新添加。"""
+        info: dict[str, Any] = {"cleared": 0}
+        js = """() => {
+          const deepAll = (selector) => {
+            const out = [];
+            const walk = (root) => {
+              if (!root || !root.querySelectorAll) return;
+              try { out.push(...root.querySelectorAll(selector)); } catch (e) {}
+              let all = [];
+              try { all = root.querySelectorAll('*'); } catch (e) { return; }
+              for (const el of all) { if (el.shadowRoot) walk(el.shadowRoot); }
+            };
+            walk(document);
+            return out;
+          };
+          const clickEl = (el) => {
+            if (!el) return false;
+            const r = el.getBoundingClientRect();
+            if (r.width < 3 || r.height < 3) return false;
+            const x = r.left + r.width/2, y = r.top + r.height/2;
+            for (const type of ['pointerdown','mousedown','mouseup','pointerup','click']) {
+              el.dispatchEvent(new MouseEvent(type, {bubbles:true, cancelable:true, composed:true, clientX:x, clientY:y, view:window}));
+            }
+            if (typeof el.click === 'function') el.click();
+            return true;
+          };
+          let n = 0;
+          // 右侧已选区：标签关闭钮
+          const closes = deepAll(
+            '.el-tag__close, .el-icon-close, i[class*="close"], span[class*="close"], .el-tag .el-icon'
+          ).filter(el => {
+            const r = el.getBoundingClientRect();
+            return r.width >= 6 && r.height >= 6 && r.x > window.innerWidth * 0.42;
+          });
+          for (const el of closes) {
+            if (clickEl(el)) n++;
+          }
+          // 「删除」文字按钮（已选列表）
+          const dels = deepAll('button, a, span, i').filter(el => {
+            const t = (el.innerText || '').replace(/\\s+/g,'');
+            const r = el.getBoundingClientRect();
+            return t === '删除' && r.width > 12 && r.height > 10 && r.x > window.innerWidth * 0.40;
+          });
+          for (const el of dels) {
+            if (clickEl(el)) n++;
+          }
+          return {ok:true, clicked:n};
+        }"""
+        for _ in range(12):
+            before = _added_count(sp)
+            if before <= 0:
+                break
+            clicked = 0
+            for scope in _scope_scopes():
+                try:
+                    res = scope.evaluate(js)
+                    if isinstance(res, dict):
+                        clicked += int(res.get("clicked") or 0)
+                except Exception:
+                    continue
+            # Playwright：右侧删除
+            for scope in _scope_scopes():
+                try:
+                    dels = scope.get_by_text("删除", exact=True)
+                    cnt = min(dels.count(), 8)
+                    for i in range(cnt):
+                        try:
+                            d = dels.nth(i)
+                            if d.is_visible(timeout=200):
+                                d.click(force=True, timeout=1500)
+                                clicked += 1
+                                page.wait_for_timeout(200)
+                        except Exception:
+                            continue
+                except Exception:
+                    continue
+            page.wait_for_timeout(350)
+            after = _added_count(sp)
+            info["cleared"] += max(0, before - after)
+            if after <= 0 or (clicked == 0 and after == before):
+                break
+        info["remain"] = _added_count(sp)
+        return info
+
+    def _click_generate_result() -> bool:
+        """点击「生成结果」。"""
+        for scope in _scope_scopes():
+            btn = scope.locator("button, a, span, div").filter(
+                has_text=re.compile(r"^\s*生成结果\s*$")
+            ).first
+            if _visible(btn):
+                try:
+                    btn.click(force=True, timeout=4000)
+                    return True
+                except Exception:
+                    pass
+            if _click_text(scope, ["生成结果"], exact=True):
+                return True
+        for p in _find_scope_tabs(page):
+            plugin = _find_scope_plugin_frame(page)
+            if plugin is not None and _click_text(plugin, ["生成结果"], exact=True):
+                return True
+            if _click_text(p, ["生成结果"], exact=True):
+                return True
+        return False
+
+    def _readd_scope_items_in_order(order_items: list[dict[str, str]]) -> dict[str, Any]:
+        """按指定顺序重新搜索添加经营范围。"""
+        out: dict[str, Any] = {"target": len(order_items), "ok": 0, "details": []}
+        _clear_selected_scope_items()
+        page.wait_for_timeout(400)
+        for it in order_items:
+            name = str(it.get("name") or "").strip()
+            code = str(it.get("code") or "").strip()
+            if not name:
+                continue
+            term = code if code else (name if len(name) <= 24 else name[:18])
+            searched = _do_search(term)
+            page.wait_for_timeout(400)
+            one = _add_named_item(name, code)
+            if not one.get("ok") and code and term != name:
+                searched = _do_search(name if len(name) <= 24 else name[:18]) or searched
+                page.wait_for_timeout(350)
+                one = _add_named_item(name, code)
+            one["searched"] = searched
+            one["term"] = term
+            out["details"].append(one)
+            if one.get("ok"):
+                out["ok"] += 1
+            # 添加过程中若弹出分类，先关掉，留给「生成结果」阶段按规则处理
+            if _naics_modal_present():
+                _close_naics_modal()
+        out["after"] = _added_count(sp)
+        return out
 
     def _js_handle_recommend_modal() -> str:
         return """() => {
@@ -3953,8 +4469,11 @@ def _fill_business_scope_flow(
                 result["recommendClosedEmpty"] = True
                 break
     result["recommendAdded"] = added_rec
-    # 行业「科技」常直接带出主营条目并弹出国民经济行业分类，优先处理该弹窗
-    naics0 = _handle_naics_modal()
+    # 推荐后若弹出分类：有用户多条勾选时先关掉，交给生成轮换；否则沿用自动点选
+    if _naics_modal_present() and user_names and len(user_names) > 1:
+        naics0 = {"closed": _close_naics_modal(), "mode": "defer-generate"}
+    else:
+        naics0 = _handle_naics_modal()
     result["naicsAfterRecommend"] = naics0
     _shot_host("scope-after-recommend")
 
@@ -4160,8 +4679,13 @@ def _fill_business_scope_flow(
             if one.get("ok"):
                 ok_n += 1
             _shot_host(f"scope-user-add-{ok_n}")
+            # 添加时若弹出分类：多条先关掉，留给「生成结果」按轮换规则处理；单条点第一项
             try:
-                _handle_naics_modal()
+                if _naics_modal_present():
+                    if len(items) <= 1:
+                        _pick_first_naics_option()
+                    else:
+                        _close_naics_modal()
             except Exception:
                 pass
 
@@ -4208,54 +4732,108 @@ def _fill_business_scope_flow(
         result["addInfo"] = add_info
         result["addedTop5"] = int(add_info.get("added") or 0)
         result["selectedCount"] = int(add_info.get("after") or 0)
-    # 添加后通常再次弹出国民经济行业分类
-    naics1 = _handle_naics_modal()
+    selected_n = int(result.get("selectedCount") or selected_after_rec or 0)
+    # 添加后若仍有分类弹窗：单条默认第一项；多条关掉，交给生成阶段轮换
+    if _naics_modal_present():
+        if (items and len(items) <= 1) or (not items and selected_n <= 1):
+            naics1 = _pick_first_naics_option()
+        else:
+            naics1 = {"closed": _close_naics_modal(), "mode": "defer-generate"}
+    else:
+        naics1 = {"seen": False}
     result["naicsAfterAdd"] = naics1
     _shot_host("scope-after-add")
 
     gen = False
-    selected_n = int(result.get("selectedCount") or selected_after_rec or 0)
     user_all_ok = (not user_names) or (int(result.get("userScopeOk") or 0) >= len(user_names))
     if selected_n > 0 and user_all_ok:
-        # 生成前再确保行业分类已选
-        naics2 = _handle_naics_modal()
-        result["naicsBeforeGenerate"] = naics2
-        scopes = _scope_scopes()
-        for scope in scopes:
-            # 明确点右上角「生成结果」
-            btn = scope.locator("button, a, span, div").filter(
-                has_text=re.compile(r"^\s*生成结果\s*$")
-            ).first
-            if _visible(btn):
-                try:
-                    btn.click(force=True, timeout=4000)
-                    gen = True
-                    break
-                except Exception:
-                    pass
-            if _click_text(scope, ["生成结果"], exact=True):
+        # 生成前若仍有分类弹窗：多条先关掉（交给轮换逻辑）；单条直接点第一项
+        if _naics_modal_present():
+            if selected_n <= 1 or len(items) == 1:
+                result["naicsBeforeGenerate"] = _pick_first_naics_option()
+            else:
+                result["naicsBeforeGenerate"] = {"closed": _close_naics_modal(), "mode": "defer-rotate"}
+        else:
+            result["naicsBeforeGenerate"] = {"seen": False}
+
+        # 用于轮换重加的条目顺序（用户勾选优先；否则用已成功添加的名称）
+        rotate_items: list[dict[str, str]] = []
+        if items:
+            rotate_items = [
+                {"name": str(it.get("name") or "").strip(), "code": str(it.get("code") or "").strip()}
+                for it in items
+                if str(it.get("name") or "").strip()
+            ]
+        else:
+            picked_names = list((result.get("addInfo") or {}).get("picked") or [])
+            rotate_items = [{"name": str(n).strip(), "code": ""} for n in picked_names if str(n).strip()]
+        if not rotate_items and user_names:
+            rotate_items = [{"name": n, "code": ""} for n in user_names]
+
+        rotation_logs: list[dict[str, Any]] = []
+        max_rounds = max(1, len(rotate_items))
+
+        for rot in range(max_rounds):
+            round_info: dict[str, Any] = {"rot": rot, "order": []}
+            if rot > 0 and len(rotate_items) > 1:
+                # 第 rot 轮：从第 rot+1 条开始添加，前面的放到最后
+                order = rotate_items[rot:] + rotate_items[:rot]
+                round_info["order"] = [x["name"] for x in order]
+                if _naics_modal_present():
+                    _close_naics_modal()
+                readd = _readd_scope_items_in_order(order)
+                round_info["readd"] = readd
+                result["selectedCount"] = int(readd.get("after") or _added_count(sp))
+                _shot_host(f"scope-rotate-{rot}")
+            else:
+                round_info["order"] = [x["name"] for x in rotate_items]
+
+            clicked = _click_generate_result()
+            round_info["clickedGenerate"] = clicked
+            if clicked:
                 gen = True
+            page.wait_for_timeout(1500)
+
+            if not _naics_modal_present():
+                round_info["naics"] = {"seen": False}
+                rotation_logs.append(round_info)
                 break
-        if not gen:
-            # 只在经营范围相关页补点，禁止扫全部标签误点核名「下一步/生成」
-            for p in _find_scope_tabs(page):
-                plugin = _find_scope_plugin_frame(page)
-                if plugin is not None and _click_text(plugin, ["生成结果"], exact=True):
-                    gen = True
-                    break
-                if _click_text(p, ["生成结果"], exact=True):
-                    gen = True
-                    break
-        page.wait_for_timeout(1500)
-        # 生成后若又弹出行业分类，再选一次并重试生成
-        naics3 = _handle_naics_modal()
-        result["naicsAfterGenerate"] = naics3
-        if naics3.get("picked"):
-            for scope in _scope_scopes():
-                if _click_text(scope, ["生成结果"], exact=True):
-                    gen = True
-                    page.wait_for_timeout(1200)
-                    break
+
+            # 出现分类弹窗
+            if len(rotate_items) <= 1:
+                # 仅一条：默认点弹窗第一条类目
+                pick = _pick_first_naics_option()
+                round_info["naics"] = {"seen": True, "mode": "single-first", **pick}
+                rotation_logs.append(round_info)
+                result["naicsAfterGenerate"] = pick
+                if pick.get("ok"):
+                    page.wait_for_timeout(600)
+                    if _click_generate_result():
+                        gen = True
+                        page.wait_for_timeout(1000)
+                break
+
+            # 多条：关闭弹窗，下一轮轮换添加顺序
+            closed = _close_naics_modal()
+            round_info["naics"] = {"seen": True, "mode": "rotate", "closed": closed}
+            rotation_logs.append(round_info)
+            # 若已是最后一轮仍弹窗：兜底点第一项，避免卡死
+            if rot >= max_rounds - 1:
+                pick = _pick_first_naics_option()
+                result["naicsAfterGenerate"] = {"fallbackFirst": True, **pick}
+                if pick.get("ok"):
+                    page.wait_for_timeout(500)
+                    if _click_generate_result():
+                        gen = True
+                        page.wait_for_timeout(1000)
+                break
+            continue
+
+        result["scopeGenerateRotations"] = rotation_logs
+        if rotation_logs and "naicsAfterGenerate" not in result:
+            last_naics = (rotation_logs[-1] or {}).get("naics") or {}
+            result["naicsAfterGenerate"] = last_naics
+
         # 仅点弹层内明确确认，避免误点「取消并退出」旁的其它按钮
         for scope in _scope_scopes():
             for txt in ("确定", "确认", "提交", "完成"):
@@ -4321,12 +4899,19 @@ def _fill_business_scope_flow(
                         p.bring_to_front()
                     except Exception:
                         pass
-                    result["naicsRescue"] = _handle_naics_modal()
-                    for scope in _scope_scopes():
-                        if _click_text(scope, ["生成结果"], exact=True):
-                            result["generatedRescue"] = True
-                            page.wait_for_timeout(2500)
-                            break
+                    # 末次补救：分类弹窗按同样规则处理
+                    if _naics_modal_present():
+                        if selected_n <= 1 or len(items) <= 1:
+                            result["naicsRescue"] = _pick_first_naics_option()
+                        else:
+                            # 轮换已穷尽时兜底点第一项，避免卡死
+                            result["naicsRescue"] = {
+                                "fallbackFirst": True,
+                                **_pick_first_naics_option(),
+                            }
+                    if _click_generate_result():
+                        result["generatedRescue"] = True
+                        page.wait_for_timeout(2500)
                     break
             try:
                 page.bring_to_front()

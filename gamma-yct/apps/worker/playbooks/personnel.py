@@ -1,18 +1,20 @@
 """人员信息 + 受益所有人备案（新增，不改核名/基本信息/出资情况代码）。
 
 出资情况「下一步」之后：
-1. 董事信息：设一名董事；监事：可设立或不设立；设立时仅一名（不设监事会）
-2. 添加董事 → 上传身份证 OCR → 是否担任法定代表人=是 → 确定
+1. 董事信息：1 人「设一名董事」；≥2 人「设董事会」并填人数，职务含董事长/副董事长/董事
+2. 添加董事 → 上传身份证 OCR → 是否担任法定代表人（仅一人为是）→ 确定
 3. 添加监事（如有）→ 职务默认监事 → 上传身份证 OCR → 确定
 4. 财务负责人：有限公司走「添加高级管理人员」；个人独资等为页面内联表单（复用/OCR）
 5. 添加联络员 → 上传身份证 OCR → 代表登录公示系统=是 → 邮箱/住所 → 确定
 6. 下一步 → 填报受益所有人信息
 7. 自行填报 → 下一步
 8. 存在符合下列条件之一的自然人 → 下一步
-9. 填受益所有人（基本信息选吴文彬/证件期限/手机/地址/股权100%/形成日=当日）→ 下一步 → 确定
+9. 填受益所有人（基本信息选人/证件期限/手机/地址四级联/股权/形成日=当日）→ 下一步 → 确定
+   经常居住地：国家/省市区优先前端「户籍属地」；详细地址选人后保留页面带出值；性别/出生由证件号识别
 10. 已完成，进入下一步
    注：自然人不走「复用人员信息」；有上传位则身份证识别，无上传位才回退复用。
    注：股份有限公司必须设立一名监事；其它组织形式可选设立/不设立。
+   注：经理与董事仅一人可为法定代表人；财务负责人不提供「与法人同一人」。
 """
 
 from __future__ import annotations
@@ -38,8 +40,12 @@ DEFAULT_ID_BACK = Path(r"C:\Users\Lenovo\Desktop\身份证反面.jpg")
 
 
 def _parse_cn_region_address(detail: str) -> dict[str, str]:
-    """从中文地址拆出国家/省/市/区 + 详细地址（受益人经常居住地用）。"""
+    """从中文地址拆出国家/省/市/区 + 详细地址（受益人经常居住地用）。
+
+    国家固定为中国；省/市/区从「最终受益人 → 住所*」详细地址自动解析。
+    """
     text = re.sub(r"\s+", "", (detail or "").strip())
+    text = re.sub(r"^中国(人民共和国)?", "", text)
     out = {
         "country": "中国",
         "province": "",
@@ -49,23 +55,33 @@ def _parse_cn_region_address(detail: str) -> dict[str, str]:
     }
     if not text:
         return out
-    # 直辖市
-    m = re.match(r"^(北京市|天津市|上海市|重庆市)", text)
+
+    def _dist(rest: str) -> tuple[str, str]:
+        md = re.match(
+            r"^([\u4e00-\u9fff]{1,12}?(?:新区|矿区|区|县|旗|市))",
+            rest,
+        )
+        if not md:
+            return "", rest
+        return md.group(1), rest[md.end() :]
+
+    # 直辖市（含「上海浦东…」省略「市」）
+    m = re.match(r"^(北京|天津|上海|重庆)(市)?", text)
     if m:
-        out["province"] = m.group(1)
-        out["city"] = m.group(1)
+        city = m.group(1) + "市"
+        out["province"] = city
+        out["city"] = city
         rest = text[m.end() :]
-        md = re.match(r"^([\u4e00-\u9fff]{1,12}?(?:区|县))", rest)
-        if md:
-            out["district"] = md.group(1)
-            rest = rest[md.end() :]
+        dist, rest = _dist(rest)
+        out["district"] = dist
         out["detail"] = rest or text
         return out
-    # 省 + 市 + 区县
+
+    # 省 / 自治区 + 市 + 区县（含壮族/回族/维吾尔自治区）
     m = re.match(
-        r"^([\u4e00-\u9fff]{2,12}?(?:省|自治区))"
-        r"([\u4e00-\u9fff]{1,12}?市)?"
-        r"([\u4e00-\u9fff]{1,12}?(?:区|县|旗))?"
+        r"^([\u4e00-\u9fff]{2,15}?(?:省|壮族自治区|回族自治区|维吾尔自治区|自治区))"
+        r"([\u4e00-\u9fff]{1,12}?(?:州|盟|地区|市))?"
+        r"([\u4e00-\u9fff]{1,12}?(?:新区|矿区|区|县|旗|市))?"
         r"(.*)$",
         text,
     )
@@ -73,18 +89,63 @@ def _parse_cn_region_address(detail: str) -> dict[str, str]:
         out["province"] = m.group(1) or ""
         out["city"] = m.group(2) or ""
         out["district"] = m.group(3) or ""
+        # 地级市下再挂县级市时：第二段是市、第三段也是市 → 第三段当区
         out["detail"] = (m.group(4) or "").strip() or text
+        return out
+
+    # 仅「××市××区…」（无省前缀）
+    m = re.match(
+        r"^([\u4e00-\u9fff]{1,12}市)"
+        r"([\u4e00-\u9fff]{1,12}?(?:新区|矿区|区|县|旗))?"
+        r"(.*)$",
+        text,
+    )
+    if m:
+        out["city"] = m.group(1) or ""
+        out["province"] = out["city"]  # 级联时先用市名试省；失败由调用方兜底
+        out["district"] = m.group(2) or ""
+        out["detail"] = (m.group(3) or "").strip() or text
+        return out
+
+    # 上海地址常省略省、市，直接以区/新区开头。
+    m = re.match(
+        r"^(浦东新区|黄浦区|徐汇区|长宁区|静安区|普陀区|虹口区|杨浦区|"
+        r"闵行区|宝山区|嘉定区|金山区|松江区|青浦区|奉贤区|崇明区)(.*)$",
+        text,
+    )
+    if m:
+        out["province"] = "上海市"
+        out["city"] = "上海市"
+        out["district"] = m.group(1)
+        out["detail"] = (m.group(2) or "").strip() or text
         return out
     return out
 
 
 def _addr_option_variants(name: str) -> tuple[str, ...]:
-    """下拉匹配用：全称 + 去后缀简称。"""
+    """下拉匹配用：全称 + 去后缀简称 + 国家别名。"""
     name = (name or "").strip()
     if not name:
         return ()
+    if name in ("中国", "中华人民共和国", "中国大陆"):
+        return ("中华人民共和国", "中国", "中国大陆")
     variants = [name]
-    for suf in ("省", "市", "区", "县", "自治区", "壮族自治区", "回族自治区", "维吾尔自治区"):
+    for suf in (
+        "壮族自治区",
+        "回族自治区",
+        "维吾尔自治区",
+        "自治区",
+        "省",
+        "市",
+        "新区",
+        "矿区",
+        "区",
+        "县",
+        "旗",
+        "州",
+        "盟",
+        "地区",
+    ):
         if name.endswith(suf) and len(name) > len(suf):
             short = name[: -len(suf)]
             if short and short not in variants:
@@ -94,7 +155,7 @@ def _addr_option_variants(name: str) -> tuple[str, ...]:
 
 
 def _id_card_region_parts(id_no: str) -> dict[str, str]:
-    """按身份证号前 6 位推断省/市/区（身份证住址级联兜底）。"""
+    """按身份证号前 6 位推断省/市/区（身份证户籍级联）。"""
     code = re.sub(r"\D", "", id_no or "")[:6]
     # 常用演示/已知人员
     table = {
@@ -102,18 +163,31 @@ def _id_card_region_parts(id_no: str) -> dict[str, str]:
         "520400": ("贵州省", "安顺市", "西秀区"),
         "370781": ("山东省", "潍坊市", "青州市"),
         "370700": ("山东省", "潍坊市", ""),
+        "310115": ("上海市", "上海市", "浦东新区"),
+        "310100": ("上海市", "上海市", ""),
+        "342623": ("安徽省", "芜湖市", "无为市"),
+        "342600": ("安徽省", "芜湖市", ""),
+        "340200": ("安徽省", "芜湖市", ""),
     }
     prov = city = dist = ""
     if code in table:
         prov, city, dist = table[code]
     elif code[:4] + "00" in table:
         prov, city, dist = table[code[:4] + "00"]
+    elif code[:2] == "34":
+        prov, city, dist = "安徽省", "芜湖市", ""
     elif code[:2] == "52":
         prov, city, dist = "贵州省", "安顺市", "西秀区"
     elif code[:2] == "37":
         prov, city, dist = "山东省", "潍坊市", ""
     elif code[:2] == "31":
         prov, city, dist = "上海市", "上海市", ""
+    elif code[:2] == "11":
+        prov, city, dist = "北京市", "北京市", ""
+    elif code[:2] == "12":
+        prov, city, dist = "天津市", "天津市", ""
+    elif code[:2] == "50":
+        prov, city, dist = "重庆市", "重庆市", ""
     return {
         "country": "中国",
         "province": prov,
@@ -123,49 +197,118 @@ def _id_card_region_parts(id_no: str) -> dict[str, str]:
     }
 
 
+def _lookup_person_id_and_address(
+    payload: dict[str, Any], *, name: str = "", id_no: str = ""
+) -> tuple[str, str]:
+    """按姓名在投资人/人员中找证件号与身份证住址。"""
+    want = (name or "").strip()
+    found_id = (id_no or "").strip()
+    found_addr = ""
+
+    def _take(item: dict[str, Any]) -> None:
+        nonlocal found_id, found_addr
+        if not isinstance(item, dict):
+            return
+        if want and str(item.get("name") or "").strip() != want:
+            return
+        if not found_id:
+            found_id = str(item.get("idNumber") or item.get("idNo") or "").strip()
+        if not found_addr:
+            found_addr = str(
+                item.get("idAddress")
+                or item.get("registeredAddress")
+                or item.get("address")
+                or ""
+            ).strip()
+
+    for inv in payload.get("investors") or []:
+        if isinstance(inv, dict):
+            _take(inv)
+    pers = payload.get("personnel") or {}
+    for key in (
+        "legalRepresentative",
+        "financeOfficer",
+        "liaisonOfficer",
+        "manager",
+    ):
+        _take(pers.get(key) or {})
+    for key in ("directors", "supervisors", "managers"):
+        for item in pers.get(key) or []:
+            _take(item if isinstance(item, dict) else {})
+    bo = payload.get("beneficialOwner") or {}
+    if isinstance(bo, dict):
+        if not found_id:
+            found_id = str(bo.get("idNumber") or "").strip()
+        if not found_addr:
+            found_addr = str(
+                bo.get("idAddress") or bo.get("registeredAddress") or ""
+            ).strip()
+    return found_id, found_addr
+
+
 def _resolve_bo_user_address(
     payload: dict[str, Any], bo: dict[str, Any], *, fallback_name: str = ""
 ) -> tuple[str, dict[str, str]]:
-    """受益人经常居住地：用原型「最终受益人 → 住所*」用户填写值。
+    """受益人经常居住地：国家/省市区优先用前端「户籍属地」；详细地址与身份证住址一致。
 
-    对应 payload.beneficialOwner.address（uboAddress）。
-    解析国家/省/市/区；国家默认中国。不用 OCR、不用企业住所。
+    有 hukouProvince 时锁定省市区，避免详情/证件推断覆盖；否则回退证件号与住址解析。
     """
     bo_name = str(bo.get("name") or fallback_name or "").strip()
     id_no = str(bo.get("idNumber") or "").strip()
-    addr = str((bo or {}).get("address") or "").strip()
-    personnel = payload.get("personnel") or {}
+    id_addr = str(
+        (bo or {}).get("idAddress")
+        or (bo or {}).get("registeredAddress")
+        or ""
+    ).strip()
+    user_addr = str((bo or {}).get("address") or "").strip()
+    hukou_prov = str((bo or {}).get("hukouProvince") or "").strip()
+    hukou_city = str((bo or {}).get("hukouCity") or "").strip()
+    hukou_dist = str((bo or {}).get("hukouDistrict") or "").strip()
 
-    # 空时仅回退同名联络员住所（旧案件兼容）
-    if not addr and bo_name:
-        liaison = personnel.get("liaisonOfficer") or {}
-        if str(liaison.get("name") or "").strip() == bo_name:
-            addr = str(liaison.get("address") or "").strip()
+    looked_id, looked_addr = _lookup_person_id_and_address(
+        payload, name=bo_name, id_no=id_no
+    )
+    if not id_no:
+        id_no = looked_id
+    if not id_addr:
+        id_addr = looked_addr
 
-    if not id_no and bo_name:
-        for inv in payload.get("investors") or []:
-            if isinstance(inv, dict) and str(inv.get("name") or "").strip() == bo_name:
-                id_no = str(inv.get("idNumber") or "").strip()
-                break
-        if not id_no:
-            lr = personnel.get("legalRepresentative") or {}
-            if str(lr.get("name") or "").strip() == bo_name:
-                id_no = str(lr.get("idNumber") or "").strip()
-
-    if addr:
-        parts = _parse_cn_region_address(addr)
-        parts["country"] = "中国"
-        if (not parts.get("province") or not parts.get("city")) and id_no:
-            region = _id_card_region_parts(id_no)
-            for k in ("province", "city", "district"):
-                if not parts.get(k) and region.get(k):
-                    parts[k] = region[k]
-        if not parts.get("detail"):
-            parts["detail"] = addr
-        return addr, parts
-
+    # 住址正文：身份证住址 > 用户住所 > 户籍拼装
+    addr_text = id_addr or user_addr
     region = _id_card_region_parts(id_no)
     region["country"] = "中国"
+
+    if hukou_prov:
+        parts = {
+            "country": "中国",
+            "province": hukou_prov,
+            "city": hukou_city,
+            "district": hukou_dist,
+            "detail": addr_text or "",
+            "_hukou_locked": True,
+        }
+        if not addr_text:
+            addr_text = "".join(
+                x for x in (hukou_prov, hukou_city, hukou_dist) if x
+            )
+            parts["detail"] = addr_text
+        return addr_text, parts
+
+    if addr_text:
+        parts = _parse_cn_region_address(addr_text)
+        parts["country"] = "中国"
+        for k in ("province", "city", "district"):
+            if not parts.get(k) and region.get(k):
+                parts[k] = region[k]
+        if not parts.get("detail"):
+            parts["detail"] = addr_text
+        # 若解析不出省但证件号有户籍，强制用户籍省市区，详情保留住址原文
+        if not parts.get("province") and region.get("province"):
+            parts["province"] = region["province"]
+            parts["city"] = region.get("city") or parts.get("city") or ""
+            parts["district"] = region.get("district") or parts.get("district") or ""
+        return addr_text, parts
+
     assembled = "".join(
         x for x in (region.get("province"), region.get("city"), region.get("district")) if x
     )
@@ -624,7 +767,7 @@ def _person_mobile(
 
 def _select_nationality_china(dialog, page: Page) -> bool:
     """国别（地区）默认中国。"""
-    labels = ("国别（地区）", "国别(地区)", "国别", "国家/地区", "国家")
+    labels = ("国别（地区）", "国别(地区)", "国别", "国籍", "国家/地区", "国家")
     options = ("中国", "中华人民共和国")
     for lab in labels:
         for opt in options:
@@ -633,6 +776,218 @@ def _select_nationality_china(dialog, page: Page) -> bool:
             if _select_inline_option(page, dialog, lab, opt):
                 return True
     return False
+
+
+def _select_bo_nationality_china(scope, page: Page) -> dict[str, Any]:
+    """受益人表单「国籍」强制中国（勿用国家/地区，避免点到地址栏）。"""
+    info: dict[str, Any] = {"ok": False}
+    options = ("中国", "中华人民共和国")
+    for opt in options:
+        js = _js_pick_addr_by_label(scope, "国籍", opt)
+        if js.get("ok"):
+            # 若误伤到地址国家栏则继续；国籍选成功时文案含中国
+            info = {**js, "via": "国籍-js"}
+            if _js_addr_label_shows(scope, "国籍", "中国") or _js_addr_label_shows(
+                scope, "国籍", "中华人民共和国"
+            ):
+                info["ok"] = True
+                return info
+        if _select_dropdown(scope, "国籍", opt):
+            info = {"ok": True, "via": "国籍-dropdown", "text": opt}
+            return info
+        if _open_select_near_label(scope, "国籍", exact=True) or _open_select_near_label(
+            scope, "国籍", exact=False
+        ):
+            page.wait_for_timeout(350)
+            if _click_visible_dropdown_option(page, opt) or _click_option_any(page, opt):
+                info = {"ok": True, "via": "国籍-click", "text": opt}
+                return info
+    # 原生/layui：hint=国籍
+    for opt in options:
+        picked = _js_pick_select(scope, opt, hint="国籍")
+        if picked.get("ok"):
+            info = {**picked, "via": "国籍-native"}
+            return info
+    return info
+
+
+def _js_pick_addr_row_click(scope, field_idx: int, option: str) -> dict[str, Any]:
+    """经常居住地行：点开第 field_idx 个 layui 下拉并点选项（市/区级联最稳）。
+
+    field_idx=0 为国家/地区：禁止「点第一项」兜底（会误点成保加利亚等）。
+    """
+    try:
+        want = (option or "").strip()
+        is_country = field_idx == 0
+        is_china_want = any(x in want for x in ("中国", "中华人民共和国", "中国大陆"))
+        info = scope.evaluate(
+            "([idx, optionText, isCountry, isChinaWant]) => {\n"
+            + _BO_FIND_ADDR_SELS_JS
+            + """
+              const optionN = (optionText || '').replace(/\\s/g, '');
+              const norm = (t) => (t || '').replace(/\\s/g, '').trim();
+              const isChinaText = (t) => {
+                const x = norm(t);
+                return x === '中国' || x === '中华人民共和国' || x === '中国大陆'
+                  || x === '中国内地' || (x.includes('中国') && x.includes('人民共和国'));
+              };
+              const matchOpt = (t) => {
+                const x = norm(t);
+                if (!x || x === '请选择' || x === '-请选择-') return false;
+                if (isCountry && isChinaWant) return isChinaText(x);
+                if (x === optionN) return true;
+                if (x.includes(optionN) || optionN.includes(x)) {
+                  if (isCountry) return false;
+                  return true;
+                }
+                return false;
+              };
+              const sels = __boFindAddrSels();
+              if (!sels.length) return { ok: false, via: 'no-anchor' };
+              if (idx < 0 || idx >= sels.length) {
+                return { ok: false, via: 'bad-idx', total: sels.length };
+              }
+              const sel = sels[idx];
+              const optsSample = [...sel.options].map(o => (o.text || '').trim()).slice(0, 20);
+              let hit = [...sel.options].find(o => matchOpt(o.text));
+              if (!hit && isCountry && isChinaWant) {
+                hit = [...sel.options].find(o => isChinaText(o.text));
+              }
+              if (!hit && optionN.includes('市辖区')) {
+                hit = [...sel.options].find(o => norm(o.text).includes('市辖区'));
+              }
+              const lay = sel.closest('.layui-form-select')
+                || (sel.parentElement && sel.parentElement.querySelector('.layui-form-select'))
+                || sel.parentElement;
+              const title = lay && lay.querySelector
+                ? lay.querySelector('.layui-select-title, .layui-select-title input, input.layui-input')
+                : null;
+              if (title) {
+                try { title.click(); } catch (e) {
+                  try { title.dispatchEvent(new MouseEvent('click', { bubbles: true })); } catch (e2) {}
+                }
+              } else {
+                try { sel.style.display = 'block'; sel.focus(); sel.click(); } catch (e) {}
+              }
+              return {
+                ok: false,
+                via: 'opened',
+                opened: true,
+                hasHit: !!hit,
+                hitText: hit ? (hit.text || '').trim() : '',
+                hitValue: hit ? hit.value : '',
+                opts: optsSample,
+                total: sels.length,
+              };
+            }""",
+            [field_idx, want, is_country, is_china_want],
+        )
+        if not isinstance(info, dict):
+            return {"ok": False}
+        page = _page_of(scope)
+        page.wait_for_timeout(450)
+        # 候选：国家只允许中国系；市才扩市辖区
+        if is_country and is_china_want:
+            candidates = ["中华人民共和国", "中国", "中国大陆", "中国内地"]
+        else:
+            candidates = [want]
+            if "市辖区" in want:
+                candidates = list(dict.fromkeys([want, "市辖区"]))
+        for cand in candidates:
+            if not cand or "请选择" in cand:
+                continue
+            if _click_visible_dropdown_option(page, cand):
+                page.wait_for_timeout(400)
+                # 国家：校验点中的不是外国
+                if is_country and is_china_want:
+                    if not (
+                        _js_addr_label_shows(scope, "国家/地区", "中国")
+                        or _js_addr_label_shows(scope, "国家/地区", "中华人民共和国")
+                    ):
+                        continue
+                return {"ok": True, "via": "addr-row-click", "text": cand, "opened": info}
+        # 面板点失败：直接写 select + layui 同步（国家必须有 hit）
+        if info.get("hasHit") or (is_country and is_china_want and info.get("hitText")):
+            set_info = scope.evaluate(
+                "([idx, value, text, isCountry, isChinaWant]) => {\n"
+                + _BO_FIND_ADDR_SELS_JS
+                + """
+                  const norm = (t) => (t || '').replace(/\\s/g, '');
+                  const isChinaText = (t) => {
+                    const x = norm(t);
+                    return x === '中国' || x === '中华人民共和国' || x === '中国大陆'
+                      || x === '中国内地' || (x.includes('中国') && x.includes('人民共和国'));
+                  };
+                  const sels = __boFindAddrSels();
+                  const sel = sels[idx];
+                  if (!sel) return { ok: false };
+                  let hit = [...sel.options].find(o => String(o.value) === String(value)
+                    || norm(o.text) === norm(text));
+                  if (!hit && isCountry && isChinaWant) {
+                    hit = [...sel.options].find(o => isChinaText(o.text));
+                  }
+                  if (!hit) return { ok: false, via: 'no-hit' };
+                  if (isCountry && isChinaWant && !isChinaText(hit.text)) {
+                    return { ok: false, via: 'not-china', text: (hit.text || '').trim() };
+                  }
+                  sel.selectedIndex = hit.index;
+                  sel.value = hit.value;
+                  try {
+                    const ev = document.createEvent('HTMLEvents');
+                    ev.initEvent('change', true, true);
+                    sel.dispatchEvent(ev);
+                  } catch (e) {}
+                  sel.dispatchEvent(new Event('change', { bubbles: true }));
+                  try { if (window.jQuery) window.jQuery(sel).trigger('change'); } catch (e) {}
+                  const lay = sel.closest('.layui-form-select')
+                    || (sel.parentElement && sel.parentElement.querySelector('.layui-form-select'));
+                  if (lay) {
+                    const titleInp = lay.querySelector('.layui-select-title input, input.layui-input');
+                    if (titleInp) titleInp.value = (hit.text || '').trim();
+                    const cite = lay.querySelector('.layui-select-title cite');
+                    if (cite) cite.textContent = (hit.text || '').trim();
+                    lay.classList.remove('layui-form-selected');
+                  }
+                  try { if (window.layui && layui.form) layui.form.render('select'); } catch (e) {}
+                  return { ok: true, text: (hit.text || '').trim() };
+                }""",
+                [
+                    field_idx,
+                    info.get("hitValue"),
+                    info.get("hitText") or want,
+                    is_country,
+                    is_china_want,
+                ],
+            )
+            if isinstance(set_info, dict) and set_info.get("ok"):
+                page.wait_for_timeout(400)
+                return {"ok": True, "via": "addr-row-set", **set_info}
+        # 国家：绝不点「第一项」——会误成保加利亚等
+        if is_country:
+            return {**info, "ok": False, "via": "country-no-first-dd"}
+        # 市/区才允许点第一个非占位项
+        try:
+            for root in _all_scopes(page):
+                dds = root.locator(
+                    ".layui-form-select.layui-form-selected dl dd:visible, "
+                    ".layui-form-select dl dd:visible, .layui-anim-upbit dd:visible"
+                )
+                n = min(dds.count(), 30)
+                for i in range(n):
+                    dd = dds.nth(i)
+                    if not _visible(dd, timeout=200):
+                        continue
+                    txt = (dd.inner_text(timeout=200) or "").strip()
+                    if not txt or "请选择" in txt:
+                        continue
+                    dd.click(timeout=2500)
+                    page.wait_for_timeout(400)
+                    return {"ok": True, "via": "addr-row-first-dd", "text": txt, "opened": info}
+        except Exception:
+            pass
+        return {**info, "ok": False}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 def _exec_partner_form_item(dialog):
@@ -1349,6 +1704,14 @@ def _birth_from_id(id_no: str) -> str:
     return ""
 
 
+def _gender_from_id(id_no: str) -> str:
+    """18 位身份证第 17 位：奇=男，偶=女。"""
+    s = (id_no or "").strip().upper()
+    if len(s) >= 17 and s[16].isdigit():
+        return "男" if int(s[16]) % 2 == 1 else "女"
+    return ""
+
+
 def _defaults(payload: dict[str, Any], case_id: str = "") -> dict[str, Any]:
     from apps.worker.playbooks.org_fill_profile import profile_for
 
@@ -1358,8 +1721,26 @@ def _defaults(payload: dict[str, Any], case_id: str = "") -> dict[str, Any]:
     directors = [d for d in (personnel.get("directors") or []) if isinstance(d, dict) and str(d.get("name") or "").strip()]
     supervisors = [s for s in (personnel.get("supervisors") or []) if isinstance(s, dict) and str(s.get("name") or "").strip()]
     finance = personnel.get("financeOfficer") or {}
+    managers_raw = [
+        m
+        for m in (personnel.get("managers") or [])
+        if isinstance(m, dict) and str(m.get("name") or "").strip()
+    ]
+    if not managers_raw and isinstance(personnel.get("manager"), dict):
+        m0 = personnel.get("manager") or {}
+        if str(m0.get("name") or "").strip():
+            managers_raw = [m0]
     liaison = personnel.get("liaisonOfficer") or {}
-    bo = payload.get("beneficialOwner") or {}
+    bo_list = [
+        b
+        for b in (payload.get("beneficialOwners") or [])
+        if isinstance(b, dict) and str(b.get("name") or "").strip()
+    ]
+    if not bo_list:
+        bo0 = payload.get("beneficialOwner") or {}
+        if isinstance(bo0, dict) and str(bo0.get("name") or "").strip():
+            bo_list = [bo0]
+    bo = bo_list[0] if bo_list else {}
     dir0 = directors[0] if directors else {}
     sup0 = supervisors[0] if supervisors else {}
     profile = profile_for(payload)
@@ -1369,7 +1750,10 @@ def _defaults(payload: dict[str, Any], case_id: str = "") -> dict[str, Any]:
     is_sole_prop = bool(profile.get("is_sole_prop"))
     skip_board = bool(profile.get("skip_board"))
 
-    id_no = (inv.get("idNumber") or lr.get("idNumber") or "").strip()
+    id_no = (
+        str(bo.get("idNumber") or "").strip()
+        or (inv.get("idNumber") or lr.get("idNumber") or "").strip()
+    )
     lr_name = (lr.get("name") or inv.get("name") or DEFAULT_NAME).strip()
     lr_mobile = (lr.get("mobile") or inv.get("mobile") or DEFAULT_MOBILE).strip()
     address = (
@@ -1381,16 +1765,30 @@ def _defaults(payload: dict[str, Any], case_id: str = "") -> dict[str, Any]:
         (liaison.get("email") if isinstance(liaison, dict) else None) or DEFAULT_EMAIL
     ).strip()
 
-    # 受益人经常居住地：原型「最终受益人 → 住所*」用户填写值
+    # 受益人经常居住地：身份证户籍 + 身份证住址
     bo_name_early = str(bo.get("name") or lr_name or "").strip()
+    looked_id, _looked_addr = _lookup_person_id_and_address(
+        payload, name=bo_name_early, id_no=id_no
+    )
+    if looked_id:
+        id_no = looked_id
     bo_address, bo_parts = _resolve_bo_user_address(
         payload,
         bo if isinstance(bo, dict) else {},
         fallback_name=bo_name_early,
     )
     if not bo_address:
-        bo_address = address
-        bo_parts = _parse_cn_region_address(bo_address)
+        bo_address = "".join(
+            x
+            for x in (
+                bo_parts.get("province"),
+                bo_parts.get("city"),
+                bo_parts.get("district"),
+            )
+            if x
+        ) or address
+        if not bo_parts.get("province"):
+            bo_parts = _parse_cn_region_address(bo_address)
     bo_parts["country"] = "中国"
 
     try:
@@ -1404,6 +1802,9 @@ def _defaults(payload: dict[str, Any], case_id: str = "") -> dict[str, Any]:
         if float(ownership_ratio).is_integer()
         else str(ownership_ratio)
     )
+
+    birth = _birth_from_id(id_no) or "2002-10-31"
+    gender = _gender_from_id(id_no) or "男"
 
     establish_supervisor = bool(personnel.get("establishSupervisor"))
     if not establish_supervisor and supervisors:
@@ -1501,7 +1902,8 @@ def _defaults(payload: dict[str, Any], case_id: str = "") -> dict[str, Any]:
         "email": email,
         "id_valid": (bo.get("idValidUntil") or DEFAULT_ID_VALID).strip() or DEFAULT_ID_VALID,
         "id_number": id_no,
-        "birth": _birth_from_id(id_no) or "2002-10-31",
+        "birth": birth,
+        "gender": gender,
         "director_name": (dir0.get("name") or lr_name).strip(),
         "director_mobile": (dir0.get("mobile") or lr_mobile).strip(),
         "director_list": [
@@ -1509,9 +1911,15 @@ def _defaults(payload: dict[str, Any], case_id: str = "") -> dict[str, Any]:
                 "name": str(d.get("name") or "").strip(),
                 "mobile": str(d.get("mobile") or lr_mobile).strip(),
                 "idNumber": str(d.get("idNumber") or "").strip(),
+                "title": str(d.get("title") or "").strip(),
             }
             for d in directors
-        ] or [{"name": (dir0.get("name") or lr_name).strip(), "mobile": lr_mobile, "idNumber": ""}],
+        ] or [{"name": (dir0.get("name") or lr_name).strip(), "mobile": lr_mobile, "idNumber": "", "title": ""}],
+        "establish_board": bool(personnel.get("establishBoard")) or len(directors) >= 2,
+        "board_member_count": int(
+            personnel.get("boardMemberCount")
+            or (len(directors) if len(directors) >= 2 else (1 if directors else 0))
+        ),
         "supervisor_list": [
             {
                 "name": str(s.get("name") or "").strip(),
@@ -1519,6 +1927,14 @@ def _defaults(payload: dict[str, Any], case_id: str = "") -> dict[str, Any]:
                 "idNumber": str(s.get("idNumber") or "").strip(),
             }
             for s in supervisors
+        ],
+        "manager_list": [
+            {
+                "name": str(m.get("name") or "").strip(),
+                "mobile": str(m.get("mobile") or lr_mobile).strip(),
+                "idNumber": str(m.get("idNumber") or "").strip(),
+            }
+            for m in managers_raw
         ],
         "finance_name": (finance.get("name") or lr_name).strip() if isinstance(finance, dict) else lr_name,
         "finance_mobile": (finance.get("mobile") or lr_mobile).strip()
@@ -1538,7 +1954,25 @@ def _defaults(payload: dict[str, Any], case_id: str = "") -> dict[str, Any]:
         "bo_mobile": (bo.get("mobile") or lr_mobile).strip(),
         "bo_address": bo_address,
         "bo_addr_parts": bo_parts,
+        "hukou_province": str(bo.get("hukouProvince") or "").strip(),
+        "hukou_city": str(bo.get("hukouCity") or "").strip(),
+        "hukou_district": str(bo.get("hukouDistrict") or "").strip(),
+        "bo_hukou_locked": bool(str(bo.get("hukouProvince") or "").strip()),
         "ownership_ratio": ratio_str,
+        "beneficial_owners": [
+            {
+                "name": str(b.get("name") or "").strip(),
+                "mobile": str(b.get("mobile") or "").strip(),
+                "id_valid": str(b.get("idValidUntil") or DEFAULT_ID_VALID).strip()
+                or DEFAULT_ID_VALID,
+                "ownership_ratio": str(b.get("ownershipRatio") or "").strip(),
+                "address": str(b.get("address") or "").strip(),
+                "hukou_province": str(b.get("hukouProvince") or "").strip(),
+                "hukou_city": str(b.get("hukouCity") or "").strip(),
+                "hukou_district": str(b.get("hukouDistrict") or "").strip(),
+            }
+            for b in bo_list
+        ],
         "is_partnership": is_partnership,
         "is_limited_partnership": is_limited_partnership,
         "is_general_partnership": is_general_partnership,
@@ -1658,10 +2092,35 @@ def _open_select_near_label(scope: Page | Frame, label: str, *, exact: bool = Fa
     page = _page_of(scope)
     try:
         trig = loc.locator(
-            "xpath=following::*[contains(@class,'el-select') or contains(@class,'el-cascader') or contains(@class,'ant-select')][1]"
+            "xpath=following::*[contains(@class,'layui-form-select') or contains(@class,'layui-select-title') or contains(@class,'el-select') or contains(@class,'el-cascader') or contains(@class,'ant-select') or contains(@class,'combo')][1]"
         ).first
         if _visible(trig, timeout=300):
-            trig.click(timeout=2500)
+            clickable = trig.locator(
+                ".layui-select-title, .combo-text, .combo-arrow, .el-input__inner"
+            ).first
+            (clickable if _visible(clickable, timeout=200) else trig).click(timeout=2500)
+            page.wait_for_timeout(300)
+            return True
+    except Exception:
+        pass
+    # 标签后的原生 select（可能被 layui 隐藏，仍可触发）
+    try:
+        sel = loc.locator("xpath=following::select[1]").first
+        if sel.count() > 0:
+            # 优先点 layui 标题
+            wrap = sel.locator(
+                "xpath=ancestor::*[contains(@class,'layui-form-select')][1]"
+            ).first
+            if _visible(wrap, timeout=200):
+                title = wrap.locator(".layui-select-title").first
+                (title if _visible(title, timeout=200) else wrap).click(timeout=2500)
+                page.wait_for_timeout(300)
+                return True
+            try:
+                sel.evaluate("el => el.style.display = 'block'")
+            except Exception:
+                pass
+            sel.click(timeout=2500, force=True)
             page.wait_for_timeout(300)
             return True
     except Exception:
@@ -1692,42 +2151,84 @@ def _select_inline_option(
     if _open_select_near_label(scope, label, exact=exact_label):
         if _click_option_any(page, option):
             return True
+        # 打开后用可见面板模糊匹配（如「中华人民共和国」）
+        if _click_visible_dropdown_option(page, option):
+            return True
+        try:
+            for root in _all_scopes(page):
+                opt = root.locator(
+                    ".layui-form-select dl dd:visible, .layui-anim-upbit dd:visible, "
+                    ".combo-panel .combobox-item:visible"
+                ).filter(has_text=re.compile(re.escape(option))).first
+                if _visible(opt, timeout=350):
+                    opt.click(timeout=2500)
+                    page.wait_for_timeout(300)
+                    return True
+        except Exception:
+            pass
     if _select_dropdown(scope, label, option):
         return True
-    return False
+    # 原生 / layui：按标签精确落到对应 select
+    info = _js_pick_addr_by_label(scope, label, option)
+    return bool(info.get("ok"))
 
 
 def _select_cascader_addr(page: Page, scope, country: str, province: str, city: str, district: str) -> dict[str, Any]:
     info: dict[str, Any] = {}
-    info["country"] = _select_dropdown(scope, "国家/地区", country) or _select_dropdown(
-        scope, "国家", country
-    )
-    if not info["country"]:
+    for opt in _addr_option_variants(country or "中国") + ("中华人民共和国", "中国"):
+        if _select_dropdown(scope, "国家/地区", opt) or _select_dropdown(scope, "国家", opt):
+            info["country"] = True
+            break
         if _open_select_near_label(scope, "国家/地区") or _open_select_near_label(scope, "国家"):
-            info["country"] = _click_option_any(page, country)
+            if _click_option_any(page, opt):
+                info["country"] = True
+                break
+        if _js_pick_addr_by_label(scope, "国家/地区", opt).get("ok") or _js_pick_addr_by_label(
+            scope, "国家", opt
+        ).get("ok"):
+            info["country"] = True
+            break
     page.wait_for_timeout(300)
     for lab in ("省、自治区", "省", "自治区"):
-        if _select_dropdown(scope, lab, province):
-            info["province"] = True
-            break
-        if _open_select_near_label(scope, lab) and _click_option_any(page, province):
-            info["province"] = True
+        for opt in _addr_option_variants(province):
+            if _select_dropdown(scope, lab, opt):
+                info["province"] = True
+                break
+            if _open_select_near_label(scope, lab) and _click_option_any(page, opt):
+                info["province"] = True
+                break
+            if _js_pick_addr_by_label(scope, lab, opt).get("ok"):
+                info["province"] = True
+                break
+        if info.get("province"):
             break
     page.wait_for_timeout(300)
     for lab in ("市",):
-        if _select_dropdown(scope, lab, city):
-            info["city"] = True
-            break
-        if _open_select_near_label(scope, lab) and _click_option_any(page, city):
-            info["city"] = True
+        for opt in _addr_option_variants(city) or _addr_option_variants(province):
+            if _select_dropdown(scope, lab, opt):
+                info["city"] = True
+                break
+            if _open_select_near_label(scope, lab) and _click_option_any(page, opt):
+                info["city"] = True
+                break
+            if _js_pick_addr_by_label(scope, lab, opt).get("ok"):
+                info["city"] = True
+                break
+        if info.get("city"):
             break
     page.wait_for_timeout(300)
     for lab in ("县（区）", "县", "区"):
-        if _select_dropdown(scope, lab, district):
-            info["district"] = True
-            break
-        if _open_select_near_label(scope, lab) and _click_option_any(page, district):
-            info["district"] = True
+        for opt in _addr_option_variants(district):
+            if _select_dropdown(scope, lab, opt):
+                info["district"] = True
+                break
+            if _open_select_near_label(scope, lab) and _click_option_any(page, opt):
+                info["district"] = True
+                break
+            if _js_pick_addr_by_label(scope, lab, opt).get("ok"):
+                info["district"] = True
+                break
+        if info.get("district"):
             break
     return info
 
@@ -2002,6 +2503,148 @@ def _inline_finance_name_filled(scope) -> bool:
         return bool(val)
     except Exception:
         return False
+
+
+def _fill_one_senior_officer(
+    page: Page,
+    frame,
+    *,
+    case_id: str,
+    payload: dict | None,
+    person_name: str,
+    mobile: str,
+    job_title: str,
+    shot_tag: str,
+) -> dict[str, Any]:
+    """通过「添加高级管理人员」弹窗添加一人（经理 / 财务负责人等）。"""
+    item: dict[str, Any] = {"name": person_name, "titleWanted": job_title, "ok": False}
+    try:
+        loc = frame.get_by_text("高级管理人员", exact=False).first
+        if _visible(loc, timeout=600):
+            loc.scroll_into_view_if_needed(timeout=2000)
+    except Exception:
+        try:
+            frame.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+        except Exception:
+            page.mouse.wheel(0, 1200)
+    page.wait_for_timeout(300)
+    add_ok = (
+        _click_text(
+            frame,
+            ["+ 添加高级管理人员 >>", "添加高级管理人员 >>", "添加高级管理人员"],
+            exact=False,
+        )
+        or _click_text_any(page, ["添加高级管理人员"], exact=False)
+    )
+    item["addClick"] = add_ok
+    if not add_ok:
+        item["error"] = "未点到添加高级管理人员"
+        return item
+    page.wait_for_timeout(900)
+    dlg, _ = _find_dialog(page, "高级管理人员")
+    if dlg is None:
+        dlg, _ = _find_dialog(page, "新增高级")
+    if dlg is None:
+        item["error"] = "未打开高级管理人员弹窗"
+        _shot(page, case_id, f"{shot_tag}-dialog-missing")
+        return item
+    try:
+        title = (dlg.locator(".el-dialog__title").inner_text(timeout=500) or "")
+        item["dialogTitle"] = title
+        if "董事" in title and "高级" not in title:
+            item["error"] = "打开的仍是董事弹窗，非高级管理人员"
+            _shot(page, case_id, f"{shot_tag}-wrong-dialog")
+            return item
+    except Exception:
+        pass
+    item["person"] = _natural_via_id_ocr(
+        dlg,
+        page,
+        case_id=case_id,
+        payload=payload,
+        person_name=person_name,
+    )
+    page.wait_for_timeout(600)
+    item["title"] = _select_dropdown(dlg, "职务", job_title)
+    if not item["title"]:
+        try:
+            fi = dlg.locator(".el-form-item").filter(has_text=re.compile(r"职务")).first
+            trig = fi.locator(".el-select .el-input__inner, .el-select").first
+            if _visible(trig, timeout=500):
+                trig.click(timeout=2500)
+                page.wait_for_timeout(400)
+                for root in _all_scopes(page):
+                    opt = root.locator(".el-select-dropdown:visible li").filter(
+                        has_text=re.compile(re.escape(job_title))
+                    ).first
+                    if _visible(opt, timeout=400):
+                        opt.click(timeout=2500)
+                        item["title"] = True
+                        break
+        except Exception:
+            pass
+    page.wait_for_timeout(700)
+    for _ in range(10):
+        try:
+            txt = dlg.inner_text(timeout=500) or ""
+        except Exception:
+            txt = ""
+        if "产生方式" in txt:
+            break
+        page.wait_for_timeout(300)
+    # 经理常用「董事会聘任」；财务负责人常用「董事聘任」
+    title_for_appoint = (job_title or "").strip()
+    appoint_opts = (
+        ("董事会聘任", "董事聘任", "股东会聘任", "聘任")
+        if title_for_appoint in ("经理", "副经理")
+        else ("董事聘任", "董事会聘任", "股东会聘任", "聘任")
+    )
+    item["appointMethod"] = False
+    for opt in appoint_opts:
+        if _select_dropdown(dlg, "产生方式", opt):
+            item["appointMethod"] = opt
+            break
+    if not item["appointMethod"]:
+        try:
+            fi = dlg.locator(".el-form-item").filter(has_text=re.compile(r"产生方式")).first
+            trig = fi.locator(".el-select .el-input__inner, .el-select").first
+            if _visible(trig, timeout=500):
+                trig.click(timeout=2500)
+                page.wait_for_timeout(350)
+                for opt in appoint_opts:
+                    for root in _all_scopes(page):
+                        loc = root.get_by_text(opt, exact=False).first
+                        if _visible(loc, timeout=400):
+                            loc.click(timeout=2500)
+                            item["appointMethod"] = opt
+                            break
+                    if item["appointMethod"]:
+                        break
+        except Exception:
+            pass
+    page.wait_for_timeout(300)
+    item["mobile"] = _fill_contact_mobile(dlg, mobile)
+    if not (item.get("mobile") or {}).get("ok"):
+        item["mobile2"] = _fill_contact_mobile(dlg, mobile)
+    _shot(page, case_id, f"{shot_tag}-before-confirm")
+    item["confirm"] = _confirm_until_closed(page, ("高级管理人员",))
+    if not item["confirm"]:
+        item["confirm"] = _confirm_until_closed(page, ("新增", "高级"))
+    page.wait_for_timeout(600)
+    if _dialog_still_open(page, "高级管理人员"):
+        dlg2, _ = _find_dialog(page, "高级管理人员")
+        if dlg2 is None:
+            dlg2, _ = _find_dialog(page, "新增高级")
+        if dlg2 is not None:
+            item["mobileRetry"] = _fill_contact_mobile(dlg2, mobile)
+            page.wait_for_timeout(200)
+            item["confirm"] = _confirm_until_closed(page, ("高级管理人员", "新增"))
+            page.wait_for_timeout(600)
+    if _dialog_still_open(page, "高级管理人员") or _dialog_still_open(page, "新增董事"):
+        item["error"] = "高级管理人员弹窗未关闭"
+        return item
+    item["ok"] = True
+    return item
 
 
 def _fill_inline_finance_officer(
@@ -3045,6 +3688,8 @@ def _fill_one_bo_date(scope, page: Page, labels: list[str], value: str) -> dict[
     if not _year_ok(cur or ""):
         if "有效" in (used_label or labels[0]) or "期限" in (used_label or labels[0]):
             cur = probe.get("idValid") or cur
+        elif "出生" in (used_label or labels[0]):
+            cur = probe.get("birth") or cur
         else:
             cur = probe.get("ownershipDate") or cur
     info["value"] = cur
@@ -3053,8 +3698,16 @@ def _fill_one_bo_date(scope, page: Page, labels: list[str], value: str) -> dict[
     return info
 
 
-def _fill_bo_dates(scope, page: Page, id_valid: str, today_vals: list[str], result: dict[str, Any]) -> None:
-    """证件有效期 + 形成日期；日历点选确认。"""
+def _fill_bo_dates(
+    scope,
+    page: Page,
+    id_valid: str,
+    today_vals: list[str],
+    result: dict[str, Any],
+    *,
+    birth: str = "",
+) -> None:
+    """证件有效期 + 出生日期 + 形成日期；日历点选确认。"""
     _close_calendar_soft(page, scope)
     result["boDateInputs0"] = _js_probe_date_inputs(scope)
     result["boDatesRead0"] = _js_read_bo_dates(scope)
@@ -3075,6 +3728,33 @@ def _fill_bo_dates(scope, page: Page, id_valid: str, today_vals: list[str], resu
     result["idValidPick"] = id_info
     result["idValid"] = bool(id_info.get("ok"))
     result["idValidValue"] = id_info.get("value") or ""
+
+    birth_raw = (birth or "").strip()
+    birth_info: dict[str, Any] = {"ok": False, "skipped": not bool(birth_raw)}
+    if birth_raw:
+        ymd = _parse_ymd(birth_raw)
+        variants = [birth_raw]
+        if ymd:
+            y, m, d = ymd
+            variants = [
+                f"{y}-{m:02d}-{d:02d}",
+                f"{y}/{m}/{d}",
+                f"{y}/{m:02d}/{d:02d}",
+                birth_raw,
+            ]
+        for val in variants:
+            birth_info = _fill_one_bo_date(scope, page, ["出生日期"], val)
+            if birth_info.get("ok"):
+                break
+        # 再读一次页面
+        if not birth_info.get("ok"):
+            probed = _js_read_bo_dates(scope)
+            bv = str(probed.get("birth") or "")
+            if ymd and str(ymd[0]) in bv:
+                birth_info = {"ok": True, "value": bv, "via": "probe"}
+    result["birthPick"] = birth_info
+    result["birth"] = bool(birth_info.get("ok"))
+    result["birthValue"] = birth_info.get("value") or ""
 
     date_info: dict[str, Any] = {"ok": False}
     for val in today_vals:
@@ -3098,7 +3778,10 @@ def _fill_bo_dates(scope, page: Page, id_valid: str, today_vals: list[str], resu
         result["idValid"] = True
     if date_info.get("ok") or str(date.today().year) in (result.get("ownershipDateValue") or ""):
         result["ownershipDate"] = True
+    if birth_info.get("ok") or result.get("birthValue"):
+        result["birth"] = True
     result["boDateInputs1"] = _js_probe_date_inputs(scope)
+    result["boDatesRead1"] = _js_read_bo_dates(scope)
 
 
 def _dismiss_overlays(page: Page) -> None:
@@ -3190,7 +3873,7 @@ def _js_probe_selects(scope) -> dict[str, Any]:
 
 
 def _js_pick_nth_select(scope, n: int, option: str) -> dict[str, Any]:
-    """按页面上第 n 个 select 选值，并尽量触发级联加载。"""
+    """按页面上第 n 个 select 选值，并尽量触发级联加载（含 layui 标题同步）。"""
     try:
         info = scope.evaluate(
             """([n, optionText]) => {
@@ -3207,7 +3890,8 @@ def _js_pick_nth_select(scope, n: int, option: str) -> dict[str, Any]:
               if (!hit && optionN.includes('中国')) {
                 hit = [...sel.options].find(o => {
                   const x = (o.text || '').replace(/\\s/g, '');
-                  return x === '中国' || x === '中华人民共和国' || x.includes('中国');
+                  return x === '中国' || x === '中华人民共和国' || x.includes('中国')
+                    || x.includes('中华人民共和国');
                 });
               }
               if (!hit) {
@@ -3228,18 +3912,35 @@ def _js_pick_nth_select(scope, n: int, option: str) -> dict[str, Any]:
               } catch (e) {}
               sel.dispatchEvent(new Event('input', { bubbles: true }));
               sel.dispatchEvent(new Event('change', { bubbles: true }));
-              try {
-                if (window.jQuery) window.jQuery(sel).trigger('change');
-              } catch (e) {}
-              try {
-                if (typeof sel.onchange === 'function') sel.onchange();
-              } catch (e) {}
+              try { if (window.jQuery) window.jQuery(sel).trigger('change'); } catch (e) {}
+              try { if (typeof sel.onchange === 'function') sel.onchange(); } catch (e) {}
+              // layui 隐藏原生 select：必须同步标题，否则页面仍显示「-请选择-」
+              let titleInp = null;
+              const lay = sel.closest('.layui-form-select')
+                || (sel.parentElement && sel.parentElement.querySelector
+                      ? sel.parentElement.querySelector('.layui-form-select')
+                      : null)
+                || sel.parentElement;
+              if (lay && lay.querySelector) {
+                titleInp = lay.querySelector(
+                  '.layui-select-title input, .layui-select-title .layui-input, input.layui-input'
+                );
+                if (titleInp) {
+                  titleInp.value = (hit.text || '').trim();
+                  titleInp.dispatchEvent(new Event('input', { bubbles: true }));
+                  titleInp.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                const cite = lay.querySelector('.layui-select-title cite');
+                if (cite) cite.textContent = (hit.text || '').trim();
+              }
+              try { if (window.layui && layui.form) layui.form.render('select'); } catch (e) {}
               return {
                 ok: true,
                 via: 'nth-select',
                 n,
                 text: (hit.text || '').trim(),
                 value: hit.value,
+                layuiSynced: !!titleInp,
                 nextOpts: n + 1 < sels.length
                   ? [...sels[n + 1].options].map(o => (o.text || '').trim()).slice(0, 8)
                   : [],
@@ -3250,6 +3951,282 @@ def _js_pick_nth_select(scope, n: int, option: str) -> dict[str, Any]:
         return info if isinstance(info, dict) else {"ok": bool(info)}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+def _js_pick_addr_by_label(scope, label: str, option: str) -> dict[str, Any]:
+    """按「国家/地区」等标签精确落到对应 select / layui，并选中选项。
+
+    注意：地址四联在同一行时，「市」会误匹配「上海市」省下拉；优先用标签节点
+    自身文案精确匹配，再取 following::select；多 select 同行时按地址字段序号选。
+    """
+    try:
+        info = scope.evaluate(
+            """([label, optionText]) => {
+              const labN = (label || '').replace(/\\s/g, '');
+              const optionN = (optionText || '').replace(/\\s/g, '');
+              if (!labN || !optionN) return { ok: false, via: 'empty' };
+              const norm = (t) => (t || '').replace(/\\s/g, '').trim();
+              const ownText = (el) => {
+                let s = '';
+                for (const n of el.childNodes || []) {
+                  if (n.nodeType === 3) s += n.textContent || '';
+                }
+                const t = norm(s) || norm(el.textContent || '').slice(0, 24);
+                return t;
+              };
+              const matchOpt = (t) => {
+                const x = norm(t);
+                if (!x || x === '请选择' || x === '-请选择-') return false;
+                if (x === optionN || x.includes(optionN) || optionN.includes(x)) return true;
+                if (optionN.includes('中国')) {
+                  return x === '中国' || x === '中华人民共和国' || x.includes('中国')
+                    || x.includes('中华人民共和国');
+                }
+                return false;
+              };
+              const syncLayui = (sel, hit) => {
+                sel.focus();
+                sel.selectedIndex = hit.index;
+                sel.value = hit.value;
+                try {
+                  const ev = document.createEvent('HTMLEvents');
+                  ev.initEvent('change', true, true);
+                  sel.dispatchEvent(ev);
+                } catch (e) {}
+                sel.dispatchEvent(new Event('input', { bubbles: true }));
+                sel.dispatchEvent(new Event('change', { bubbles: true }));
+                try { if (window.jQuery) window.jQuery(sel).trigger('change'); } catch (e) {}
+                try { if (typeof sel.onchange === 'function') sel.onchange(); } catch (e) {}
+                const lay = sel.closest('.layui-form-select')
+                  || (sel.parentElement && sel.parentElement.querySelector('.layui-form-select'))
+                  || sel.parentElement;
+                if (lay && lay.querySelector) {
+                  const titleInp = lay.querySelector(
+                    '.layui-select-title input, .layui-select-title .layui-input, input.layui-input'
+                  );
+                  if (titleInp) titleInp.value = (hit.text || '').trim();
+                  const cite = lay.querySelector('.layui-select-title cite');
+                  if (cite) cite.textContent = (hit.text || '').trim();
+                }
+                try { if (window.layui && layui.form) layui.form.render('select'); } catch (e) {}
+              };
+
+              // 地址四联字段序号（同一行多个 select 时用）
+              const addrIdx = ({
+                '国家/地区': 0, '国家': 0, '国别（地区）': 0, '国别': 0,
+                '省、自治区': 1, '省': 1, '自治区': 1,
+                '市': 2,
+                '县（区）': 3, '县': 3, '区': 3,
+              })[labN];
+
+              // 0) 经常居住地行内按序号选（最稳）
+              if (addrIdx !== undefined) {
+                let anchor = null;
+                for (const el of document.querySelectorAll('label, span, td, th, div, p, font, legend')) {
+                  const t = norm(el.innerText || el.textContent || '');
+                  if (t.includes('经常居住地') || t.includes('工作单位地址')) { anchor = el; break; }
+                }
+                let rowSels = [];
+                if (anchor) {
+                  const row = anchor.closest('.layui-form-item, .el-form-item, tr, .form-group, li')
+                    || anchor.parentElement;
+                  if (row) rowSels = [...row.querySelectorAll('select')];
+                  if (rowSels.length < 4) {
+                    try {
+                      const xp = document.evaluate(
+                        'following::select', anchor, null,
+                        XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null
+                      );
+                      rowSels = [];
+                      for (let i = 0; i < Math.min(xp.snapshotLength, 12); i++) {
+                        rowSels.push(xp.snapshotItem(i));
+                      }
+                    } catch (e) {}
+                  }
+                  // 跳过国籍（后接证件类型），对齐到真正的国家/地区
+                  const isIdDoc = (sel) => [...sel.options].some(o => {
+                    const x = norm(o.text);
+                    return x.includes('身份证') || x.includes('护照') || x.includes('通行证');
+                  });
+                  const looksCountry = (sel) => {
+                    if (isIdDoc(sel)) return false;
+                    const texts = [...sel.options].map(o => norm(o.text));
+                    return texts.some(t => t === '中国' || t === '中华人民共和国' || t.includes('中国'))
+                      && texts.length >= 8;
+                  };
+                  let countryIdx = -1;
+                  for (let i = 0; i < rowSels.length; i++) {
+                    if (!looksCountry(rowSels[i])) continue;
+                    if (i + 1 < rowSels.length && isIdDoc(rowSels[i + 1])) continue;
+                    countryIdx = i;
+                  }
+                  if (countryIdx < 0) {
+                    for (let i = rowSels.length - 1; i >= 0; i--) {
+                      if (looksCountry(rowSels[i])) { countryIdx = i; break; }
+                    }
+                  }
+                  if (countryIdx >= 0) rowSels = rowSels.slice(countryIdx, countryIdx + 4);
+                }
+                if (rowSels.length >= 4 && addrIdx < rowSels.length) {
+                  const sel = rowSels[addrIdx];
+                  const hit = [...sel.options].find(o => matchOpt(o.text));
+                  if (hit) {
+                    syncLayui(sel, hit);
+                    return {
+                      ok: true, via: 'addr-row-idx', idx: addrIdx,
+                      text: (hit.text || '').trim(), value: hit.value,
+                      opts: [...sel.options].map(o => (o.text || '').trim()).slice(0, 12),
+                    };
+                  }
+                  return {
+                    ok: false, via: 'addr-row-no-opt', idx: addrIdx,
+                    opts: [...sel.options].map(o => (o.text || '').trim()).slice(0, 12),
+                  };
+                }
+              }
+
+              // 1) 标签自身文案精确匹配 → following select
+              const labNodes = [...document.querySelectorAll(
+                'label, span, td, th, div, p, font, b, strong'
+              )].filter(el => {
+                const t = ownText(el) || norm(el.innerText || '').slice(0, 20);
+                return t === labN || t === labN + '*' || t === '*' + labN
+                  || t === '*' + labN + '*' || t === labN + '：' || t === labN + ':';
+              });
+              for (const lab of labNodes.slice(0, 12)) {
+                let sel = null;
+                try {
+                  const xp = document.evaluate(
+                    'following::select[1]', lab, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null
+                  );
+                  sel = xp.singleNodeValue;
+                } catch (e) {}
+                if (!sel) continue;
+                const hit = [...sel.options].find(o => matchOpt(o.text));
+                if (!hit) continue;
+                syncLayui(sel, hit);
+                return {
+                  ok: true, via: 'exact-label-following',
+                  text: (hit.text || '').trim(), value: hit.value,
+                };
+              }
+
+              // 2) 短标签不再用大 box.includes（会把「上海市」当成「市」）
+              if (labN.length <= 2) {
+                return { ok: false, via: 'short-label-skip-box', label: labN };
+              }
+
+              // 3) 长标签：单 select 的表单项
+              const boxes = [...document.querySelectorAll(
+                '.layui-form-item, .el-form-item, tr, .form-group, li, td, .layui-inline'
+              )];
+              let best = null;
+              for (const box of boxes) {
+                const t = norm(box.innerText || '');
+                if (!t.includes(labN)) continue;
+                const sels = [...box.querySelectorAll('select')];
+                if (sels.length !== 1) continue;
+                const hit = [...sels[0].options].find(o => matchOpt(o.text));
+                if (!hit) continue;
+                const score = 10 + (t.startsWith(labN) ? 5 : 0);
+                if (!best || score > best.score) best = { sel: sels[0], hit, score };
+              }
+              if (!best) return { ok: false, via: 'no-select', label: labN, option: optionN };
+              syncLayui(best.sel, best.hit);
+              return {
+                ok: true, via: 'box-single-select',
+                text: (best.hit.text || '').trim(), value: best.hit.value,
+              };
+            }""",
+            [label, option],
+        )
+        return info if isinstance(info, dict) else {"ok": bool(info)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _js_wait_addr_field_options(
+    scope, field_idx: int, *, min_opts: int = 2, timeout_ms: int = 12000
+) -> dict[str, Any]:
+    """等经常居住地第 field_idx 个下拉（0国家/1省/2市/3区）选项加载。"""
+    deadline = timeout_ms
+    step = 300
+    last: dict[str, Any] = {}
+    waited = 0
+    while waited <= deadline:
+        try:
+            last = (
+                scope.evaluate(
+                    "(idx) => {\n"
+                    + _BO_FIND_ADDR_SELS_JS
+                    + """
+                      const sels = __boFindAddrSels();
+                      if (!sels.length || idx < 0 || idx >= sels.length) {
+                        return { ok: false, total: sels.length, sample: [] };
+                      }
+                      const opts = [...sels[idx].options].map(o => (o.text || '').trim())
+                        .filter(t => t && t !== '请选择' && t !== '-请选择-');
+                      return {
+                        ok: opts.length > 0,
+                        count: opts.length,
+                        sample: opts.slice(0, 12),
+                        total: sels.length,
+                      };
+                    }""",
+                    field_idx,
+                )
+                or {}
+            )
+        except Exception as e:
+            last = {"ok": False, "error": str(e)}
+        if last.get("ok") and int(last.get("count") or 0) >= max(1, min_opts - 1):
+            return last
+        page = _page_of(scope)
+        page.wait_for_timeout(step)
+        waited += step
+    last["timeout"] = True
+    return last
+
+
+def _js_addr_label_shows(scope, label: str, expect: str) -> bool:
+    """校验地址下拉（含 layui 标题）是否已显示期望值。"""
+    try:
+        return bool(
+            scope.evaluate(
+                """([label, expect]) => {
+                  const labN = (label || '').replace(/\\s/g, '');
+                  const expN = (expect || '').replace(/\\s/g, '');
+                  const norm = (t) => (t || '').replace(/\\s/g, '');
+                  const okText = (t) => {
+                    const x = norm(t);
+                    if (!x || x.includes('请选择')) return false;
+                    if (x.includes(expN) || expN.includes(x)) return true;
+                    if (expN.includes('中国')) {
+                      return x.includes('中国') || x.includes('中华人民共和国');
+                    }
+                    return false;
+                  };
+                  for (const box of document.querySelectorAll(
+                    '.layui-form-item, .el-form-item, tr, .form-group, .layui-inline, td'
+                  )) {
+                    if (!norm(box.innerText || '').includes(labN)) continue;
+                    for (const inp of box.querySelectorAll(
+                      '.layui-select-title input, .layui-select-title cite, input.layui-input'
+                    )) {
+                      if (okText(inp.value || inp.textContent || '')) return true;
+                    }
+                    for (const sel of box.querySelectorAll('select')) {
+                      const o = sel.options[sel.selectedIndex];
+                      if (o && okText(o.text)) return true;
+                    }
+                  }
+                  return false;
+                }""",
+                [label, expect],
+            )
+        )
+    except Exception:
+        return False
 
 
 def _js_wait_select_options(scope, n: int, *, min_opts: int = 2, timeout_ms: int = 8000) -> dict[str, Any]:
@@ -3284,64 +4261,446 @@ def _js_wait_select_options(scope, n: int, *, min_opts: int = 2, timeout_ms: int
     return last
 
 
+# 跳过「国籍」(后接证件类型)，定位真正的「国家/地区」+省市区四联。
+_BO_FIND_ADDR_SELS_JS = r"""
+  const __boFindAddrSels = () => {
+    const norm = (t) => (t || '').replace(/\s/g, '');
+    const isChinaText = (t) => {
+      const x = norm(t);
+      return x === '中国' || x === '中华人民共和国' || x === '中国大陆' || x === '中国内地'
+        || (x.includes('中国') && x.includes('人民共和国'));
+    };
+    const isIdDocSelect = (sel) => {
+      const texts = [...sel.options].map(o => norm(o.text));
+      return texts.some(t => t.includes('身份证') || t.includes('护照') || t.includes('通行证'));
+    };
+    const looksCountry = (sel) => {
+      if (isIdDocSelect(sel)) return false;
+      const texts = [...sel.options].map(o => norm(o.text));
+      return texts.some(t => isChinaText(t)) && texts.length >= 8;
+    };
+    let anchor = null;
+    for (const el of document.querySelectorAll('label, span, td, th, div, p, font, legend')) {
+      const t = norm(el.innerText || el.textContent || '');
+      if (t.includes('经常居住地') || t.includes('工作单位地址')) { anchor = el; break; }
+    }
+    if (!anchor) return [];
+    let sels = [];
+    const row = anchor.closest('.layui-form-item, .el-form-item, tr, .form-group, li')
+      || anchor.parentElement;
+    if (row) sels = [...row.querySelectorAll('select')];
+    if (sels.length < 4) {
+      try {
+        const xp = document.evaluate(
+          'following::select', anchor, null,
+          XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null
+        );
+        sels = [];
+        for (let i = 0; i < Math.min(xp.snapshotLength, 12); i++) sels.push(xp.snapshotItem(i));
+      } catch (e) {}
+    }
+    let countryIdx = -1;
+    for (let i = 0; i < sels.length; i++) {
+      if (!looksCountry(sels[i])) continue;
+      // 国籍后面是证件类型 —— 跳过，避免点到保加利亚/国籍
+      if (i + 1 < sels.length && isIdDocSelect(sels[i + 1])) continue;
+      countryIdx = i;
+    }
+    if (countryIdx < 0) {
+      for (let i = sels.length - 1; i >= 0; i--) {
+        if (looksCountry(sels[i])) { countryIdx = i; break; }
+      }
+    }
+    if (countryIdx < 0) return sels.slice(0, 4);
+    return sels.slice(countryIdx, countryIdx + 4);
+  };
+"""
+
+
+def _bo_open_addr_dropdown(scope, page: Page, field_idx: int) -> dict[str, Any]:
+    """点开经常居住地行第 field_idx 个下拉（0国家/1省/2市/3区），只负责打开。"""
+    try:
+        info = scope.evaluate(
+            "(idx) => {\n"
+            + _BO_FIND_ADDR_SELS_JS
+            + """
+              const sels = __boFindAddrSels();
+              if (!sels.length) return { ok: false, via: 'no-anchor' };
+              if (idx < 0 || idx >= sels.length) return { ok: false, via: 'bad-idx', total: sels.length };
+              const sel = sels[idx];
+              document.querySelectorAll('.layui-form-select.layui-form-selected').forEach(el => {
+                el.classList.remove('layui-form-selected');
+              });
+              const lay = sel.closest('.layui-form-select')
+                || (sel.parentElement && sel.parentElement.querySelector('.layui-form-select'))
+                || sel.parentElement;
+              const title = lay && lay.querySelector
+                ? lay.querySelector('.layui-select-title, .layui-select-title input, input.layui-input, cite')
+                : null;
+              if (title) {
+                try { title.click(); } catch (e) {
+                  try { title.dispatchEvent(new MouseEvent('click', { bubbles: true })); } catch (e2) {}
+                }
+              } else {
+                try { sel.style.display = 'block'; sel.click(); } catch (e) {}
+              }
+              if (lay) lay.classList.add('layui-form-selected');
+              return {
+                ok: true,
+                via: 'opened',
+                opts: [...sel.options].map(o => (o.text || '').trim()).slice(0, 30),
+                addrStartHint: (sels[0] && sels[0].options[1] && (sels[0].options[1].text || '').trim()) || '',
+              };
+            }""",
+            field_idx,
+        )
+        page.wait_for_timeout(500)
+        return info if isinstance(info, dict) else {"ok": False}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _bo_click_dropdown_texts(page: Page, texts: list[str], *, china_only: bool = False) -> dict[str, Any]:
+    """在当前可见下拉面板中点选 texts 之一；china_only 时只认中国系文案。"""
+    allow = [t for t in texts if t and "请选择" not in t]
+    if china_only:
+        allow = ["中华人民共和国", "中国", "中国大陆", "中国内地"]
+    for root in _all_scopes(page):
+        try:
+            dds = root.locator(
+                ".layui-form-select.layui-form-selected dl dd:visible, "
+                ".layui-form-select dl dd:visible, .layui-anim-upbit dd:visible, "
+                ".el-select-dropdown:visible li, .el-popper:visible li"
+            )
+            n = min(dds.count(), 400)
+        except Exception:
+            continue
+        # 先精确匹配
+        for want in allow:
+            for i in range(n):
+                dd = dds.nth(i)
+                if not _visible(dd, timeout=120):
+                    continue
+                try:
+                    txt = " ".join((dd.inner_text(timeout=200) or "").split())
+                except Exception:
+                    continue
+                if not txt or "请选择" in txt:
+                    continue
+                compact = txt.replace(" ", "")
+                if china_only:
+                    if compact not in ("中国", "中华人民共和国", "中国大陆", "中国内地"):
+                        continue
+                elif compact != want.replace(" ", "") and want not in txt:
+                    continue
+                try:
+                    dd.scroll_into_view_if_needed(timeout=1500)
+                except Exception:
+                    pass
+                try:
+                    dd.click(timeout=2500)
+                except Exception:
+                    try:
+                        dd.click(timeout=2500, force=True)
+                    except Exception:
+                        continue
+                page.wait_for_timeout(450)
+                return {"ok": True, "text": txt, "want": want}
+        # 非中国：模糊包含
+        if not china_only:
+            for want in allow:
+                for i in range(n):
+                    dd = dds.nth(i)
+                    if not _visible(dd, timeout=80):
+                        continue
+                    try:
+                        txt = " ".join((dd.inner_text(timeout=150) or "").split())
+                    except Exception:
+                        continue
+                    if want and want in txt and "请选择" not in txt:
+                        try:
+                            dd.scroll_into_view_if_needed(timeout=1200)
+                            dd.click(timeout=2500, force=True)
+                            page.wait_for_timeout(450)
+                            return {"ok": True, "text": txt, "want": want, "fuzzy": True}
+                        except Exception:
+                            continue
+    return {"ok": False}
+
+
+def _bo_pick_addr_field(
+    scope, page: Page, field_idx: int, options: list[str], *, china_only: bool = False
+) -> dict[str, Any]:
+    """固定动作：点开地址行第 n 个下拉 → 点选项。"""
+    opened = _bo_open_addr_dropdown(scope, page, field_idx)
+    if not opened.get("ok"):
+        return {"ok": False, "opened": opened}
+    picked = _bo_click_dropdown_texts(page, list(options), china_only=china_only)
+    if picked.get("ok"):
+        return {"ok": True, "via": "open-click", "opened": opened, **picked}
+    # 写原生 select（国家仅中国；省市区优先精确匹配）
+    set_info = scope.evaluate(
+        "([idx, opts, chinaOnly]) => {\n"
+        + _BO_FIND_ADDR_SELS_JS
+        + """
+          const norm = (t) => (t || '').replace(/\\s/g, '');
+          const isChinaText = (t) => {
+            const x = norm(t);
+            return x === '中国' || x === '中华人民共和国' || x === '中国大陆' || x === '中国内地';
+          };
+          const sels = __boFindAddrSels();
+          const sel = sels[idx];
+          if (!sel) return { ok: false, via: 'bad-idx', total: sels.length };
+          const options = [...sel.options];
+          let hit = null;
+          if (chinaOnly) {
+            hit = options.find(o => isChinaText(o.text));
+          } else {
+            const wants = opts.map(norm).filter(on => on && !on.includes('请选择'));
+            // 1) 全文精确
+            for (const on of wants) {
+              hit = options.find(o => norm(o.text) === on);
+              if (hit) break;
+            }
+            // 2) 去「省/市/区/县」后再精确
+            if (!hit) {
+              const strip = (x) => x.replace(/(省|市|区|县|自治州|地区|盟)$/g, '');
+              for (const on of wants) {
+                const os = strip(on);
+                if (os.length < 2) continue;
+                hit = options.find(o => strip(norm(o.text)) === os);
+                if (hit) break;
+              }
+            }
+            // 3) 仅当候选以目标开头/目标以选项开头（避免「市」误伤全省）
+            if (!hit) {
+              for (const on of wants) {
+                if (on.length < 2 || on === '市辖区') continue;
+                hit = options.find(o => {
+                  const x = norm(o.text);
+                  if (!x || x.includes('请选择')) return false;
+                  return x.startsWith(on) || on.startsWith(x);
+                });
+                if (hit) break;
+              }
+            }
+            // 4) 直辖市市一级才允许「市辖区」
+            if (!hit && wants.includes('市辖区')) {
+              hit = options.find(o => norm(o.text) === '市辖区');
+            }
+          }
+          if (!hit) return { ok: false, via: 'no-opt', sample: options.map(o=>o.text).slice(0,12) };
+          if (chinaOnly && !isChinaText(hit.text)) return { ok: false, via: 'not-china' };
+          sel.selectedIndex = hit.index;
+          sel.value = hit.value;
+          try {
+            const ev = document.createEvent('HTMLEvents');
+            ev.initEvent('change', true, true);
+            sel.dispatchEvent(ev);
+          } catch (e) {}
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+          try { if (window.jQuery) window.jQuery(sel).trigger('change'); } catch (e) {}
+          const lay = sel.closest('.layui-form-select')
+            || (sel.parentElement && sel.parentElement.querySelector('.layui-form-select'));
+          if (lay) {
+            const titleInp = lay.querySelector('.layui-select-title input, input.layui-input');
+            if (titleInp) titleInp.value = (hit.text || '').trim();
+            const cite = lay.querySelector('.layui-select-title cite');
+            if (cite) cite.textContent = (hit.text || '').trim();
+            lay.classList.remove('layui-form-selected');
+          }
+          try { if (window.layui && layui.form) layui.form.render('select'); } catch (e) {}
+          return { ok: true, text: (hit.text || '').trim(), via: 'native-set' };
+        }""",
+        [field_idx, list(options), china_only],
+    )
+    if isinstance(set_info, dict) and set_info.get("ok"):
+        page.wait_for_timeout(500)
+        return {"ok": True, "opened": opened, **set_info}
+    return {"ok": False, "opened": opened, "picked": picked, "set": set_info}
+
+
 def _fill_bo_addr_cascade(
     scope, page: Page, result: dict[str, Any], parts: dict[str, str] | None = None
 ) -> dict[str, bool]:
-    """地址四级联：国家/省/市/县，按实际地址 parts 选择（不再写死贵州）。"""
+    """经常居住地：国家固定中国（点开下拉选中国），再点开选省/市/区。"""
     parts = parts or {}
-    probe = _js_probe_selects(scope)
-    total = int(probe.get("selectCount") or 0)
-    # 常见布局：前 4 个是投资人/性别/国籍/证件类型，后 4 个是地址
-    start = max(0, total - 4) if total >= 4 else 0
-    if total >= 8:
-        start = 4
-    result["boAddrStart"] = start
-    result["boAddrProbe0"] = probe
     result["boAddrPartsUsed"] = dict(parts)
+    result["boAddrProbe0"] = _js_probe_selects(scope)
 
-    country = (parts.get("country") or "中国").strip() or "中国"
     province = (parts.get("province") or "").strip()
     city = (parts.get("city") or "").strip()
     district = (parts.get("district") or "").strip()
+    if not province and city:
+        province = city
     if not province:
-        # 无解析结果时不回落上海企业住所；保留空让调用方感知失败
         result["boAddrMissingRegion"] = True
-        return {"country": False, "province": False, "city": False, "district": False}
 
-    pairs = (
-        (_addr_option_variants(country) + ("中华人民共和国", "中国"), "country"),
-        (_addr_option_variants(province), "province"),
-        (_addr_option_variants(city) or _addr_option_variants(province), "city"),
-        (_addr_option_variants(district), "district"),
-    )
-    addr: dict[str, bool] = {}
+    is_muni = province in {"北京市", "天津市", "上海市", "重庆市"} or city in {
+        "北京市",
+        "天津市",
+        "上海市",
+        "重庆市",
+    }
+    if is_muni:
+        if not province:
+            province = city
+        if not city:
+            city = province
+        city_opts = ["市辖区", province, city]
+    else:
+        city_opts = list(_addr_option_variants(city) or _addr_option_variants(province))
+
+    province_opts = list(_addr_option_variants(province))
+    district_opts = list(_addr_option_variants(district))
+
+    addr: dict[str, bool] = {
+        "country": False,
+        "province": False,
+        "city": False,
+        "district": False,
+    }
     picks: dict[str, Any] = {}
-    hints = ("国家/地区", "省、自治区", "市", "县")
-    for i, (opts, key) in enumerate(pairs):
-        opts = tuple(o for o in opts if o)
-        if not opts:
-            addr[key] = False
-            picks[key] = {"ok": False, "reason": "empty-option"}
-            continue
-        idx = start + i
-        if i > 0:
-            waited = _js_wait_select_options(scope, idx, min_opts=2, timeout_ms=10000)
-            picks[f"{key}Wait"] = waited
-        info: dict[str, Any] = {"ok": False}
-        for opt in opts:
-            info = _js_pick_nth_select(scope, idx, opt)
-            if info.get("ok"):
-                break
-        if not info.get("ok"):
-            for opt in opts:
-                info = _pick_bo_dropdown(scope, page, opt, hint=hints[i])
-                if info.get("ok"):
-                    break
-        picks[key] = info
-        addr[key] = bool(info.get("ok"))
+
+    try:
+        loc = scope.get_by_text("经常居住地或工作单位地址", exact=False).first
+        if _visible(loc, timeout=500):
+            loc.scroll_into_view_if_needed(timeout=2000)
+    except Exception:
+        pass
+    _dismiss_overlays(page)
+    page.wait_for_timeout(300)
+
+    # 1) 国家/地区：写死中国 —— 点开下拉 → 只点中国系选项
+    country_pick = _bo_pick_addr_field(
+        scope, page, 0, ["中华人民共和国", "中国"], china_only=True
+    )
+    picks["country"] = country_pick
+    addr["country"] = bool(country_pick.get("ok"))
+    # 若仍显示外国，再强制两次
+    for round_i in range(2):
+        shows_cn = _js_addr_label_shows(scope, "国家/地区", "中国") or _js_addr_label_shows(
+            scope, "国家/地区", "中华人民共和国"
+        )
+        if shows_cn:
+            addr["country"] = True
+            break
+        addr["country"] = False
+        country_pick = _bo_pick_addr_field(
+            scope, page, 0, ["中华人民共和国", "中国"], china_only=True
+        )
+        picks[f"countryRetry{round_i}"] = country_pick
+        addr["country"] = bool(country_pick.get("ok"))
+    page.wait_for_timeout(900)
+
+    # 2) 省、自治区
+    if province_opts:
+        _js_wait_addr_field_options(scope, 1, min_opts=2, timeout_ms=10000)
+        prov_pick = _bo_pick_addr_field(scope, page, 1, province_opts)
+        picks["province"] = prov_pick
+        addr["province"] = bool(prov_pick.get("ok"))
+        page.wait_for_timeout(1000)
+    else:
+        picks["province"] = {"ok": False, "reason": "empty-province"}
+
+    # 3) 市
+    if city_opts:
+        waited = _js_wait_addr_field_options(scope, 2, min_opts=2, timeout_ms=12000)
+        picks["cityWait"] = waited
+        sample = [str(x) for x in (waited.get("sample") or [])]
+        if sample and city:
+            # 只把与目标市匹配的选项提前，勿灌入全省所有市（否则会点成贵阳市）
+            matched = [
+                s
+                for s in sample
+                if s
+                and "请选择" not in s
+                and (
+                    s == city
+                    or s == city.replace("市", "") + "市"
+                    or city.replace("市", "") == s.replace("市", "")
+                )
+            ]
+            city_opts = list(dict.fromkeys(matched + city_opts))
+            # 非直辖市：候选中去掉「市辖区」
+            if not is_muni:
+                city_opts = [c for c in city_opts if c != "市辖区"]
+        city_pick = _bo_pick_addr_field(scope, page, 2, city_opts)
+        picks["city"] = city_pick
+        addr["city"] = bool(city_pick.get("ok"))
+        # 校验未误选其它市
+        picked_city = str((city_pick or {}).get("text") or "")
+        if addr["city"] and city and picked_city:
+            want_s = city.replace("市", "")
+            got_s = picked_city.replace("市", "")
+            if want_s and got_s and want_s not in got_s and got_s not in want_s:
+                addr["city"] = False
+                picks["cityMismatch"] = {"want": city, "got": picked_city}
+        page.wait_for_timeout(1000)
+    else:
+        picks["city"] = {"ok": False, "reason": "empty-city"}
+
+    # 4) 县（区）
+    if district_opts:
+        waited = _js_wait_addr_field_options(scope, 3, min_opts=2, timeout_ms=12000)
+        picks["districtWait"] = waited
+        sample = [str(x) for x in (waited.get("sample") or [])]
+        if sample and district:
+            matched = [
+                s
+                for s in sample
+                if s
+                and "请选择" not in s
+                and (s == district or district in s or s in district)
+            ]
+            # 非目标时不要把「市辖区」塞进最前
+            district_opts = list(
+                dict.fromkeys(
+                    matched
+                    + [d for d in district_opts if d != "市辖区" or district == "市辖区"]
+                )
+            )
+        dist_pick = _bo_pick_addr_field(scope, page, 3, district_opts)
+        picks["district"] = dist_pick
+        addr["district"] = bool(dist_pick.get("ok"))
+        picked_dist = str((dist_pick or {}).get("text") or "")
+        if (
+            addr["district"]
+            and district
+            and picked_dist
+            and district not in picked_dist
+            and picked_dist not in district
+        ):
+            addr["district"] = False
+            picks["districtMismatch"] = {"want": district, "got": picked_dist}
         page.wait_for_timeout(600)
+    else:
+        picks["district"] = {"ok": False, "reason": "empty-district"}
+
     result["boAddrPick"] = picks
     result["boAddrProbe1"] = _js_probe_selects(scope)
+    result["boCountryShows"] = _js_addr_label_shows(scope, "国家/地区", "中国") or _js_addr_label_shows(
+        scope, "国家/地区", "中华人民共和国"
+    )
+    if result["boCountryShows"]:
+        addr["country"] = True
+    result["boCityShows"] = bool(
+        _js_addr_label_shows(scope, "市", "市辖区")
+        or (city and _js_addr_label_shows(scope, "市", city))
+        or (province and _js_addr_label_shows(scope, "市", province))
+    )
+    if result["boCityShows"]:
+        addr["city"] = True
+    result["boDistrictShows"] = bool(
+        district
+        and (
+            _js_addr_label_shows(scope, "县（区）", district)
+            or _js_addr_label_shows(scope, "县", district)
+            or _js_addr_label_shows(scope, "区", district)
+        )
+    )
+    if result["boDistrictShows"]:
+        addr["district"] = True
     return addr
 
 
@@ -3556,13 +4915,29 @@ def _fill_bo_form(
     *,
     case_id: str = "",
 ) -> None:
-    """受益所有人表单：选投资人，再填期限/手机/地址/股权/当日。填后校验真实值。
+    """受益所有人表单：选投资人，再填性别/出生/期限/手机/户籍地址/股权/当日。填后校验真实值。
 
-    经常居住地：用户填写的最终受益人「住所*」→ 解析省/市/区，国家默认中国。
+    经常居住地：国家/省市区优先前端「户籍属地」；详细地址选人后保留，缺失则重选人员信息带出。
     """
     person = (cfg.get("bo_name") or cfg.get("name") or DEFAULT_NAME).strip()
     mobile = cfg.get("bo_mobile") or cfg.get("mobile") or DEFAULT_MOBILE
     parts = dict(cfg.get("bo_addr_parts") or {})
+    hukou_locked = bool(
+        parts.pop("_hukou_locked", False)
+        or cfg.get("bo_hukou_locked")
+        or (
+            str(cfg.get("hukou_province") or cfg.get("hukouProvince") or "").strip()
+        )
+    )
+    # 若 cfg 直接带了户籍属地且 parts 缺省，写入 parts
+    hp = str(cfg.get("hukou_province") or cfg.get("hukouProvince") or "").strip()
+    hc = str(cfg.get("hukou_city") or cfg.get("hukouCity") or "").strip()
+    hd = str(cfg.get("hukou_district") or cfg.get("hukouDistrict") or "").strip()
+    if hp and (hukou_locked or not parts.get("province")):
+        parts["province"] = hp
+        parts["city"] = hc
+        parts["district"] = hd
+        hukou_locked = True
     detail = (
         (parts.get("detail") or "").strip()
         or (cfg.get("bo_address") or "").strip()
@@ -3572,19 +4947,34 @@ def _fill_bo_form(
     full = (cfg.get("bo_address") or "").strip()
     if full and (not detail or detail in (parts.get("district") or "")):
         detail = full
-    if not parts.get("province") and full:
-        parts = _parse_cn_region_address(full)
-        if (parts.get("detail") or "").strip():
-            detail = parts["detail"]
+    # 未锁定户籍时，才以详细地址重解析省市区
+    if not hukou_locked:
+        detail_for_parse = (full or detail or "").strip()
+        if detail_for_parse:
+            parsed = _parse_cn_region_address(detail_for_parse)
+            if parsed.get("province") or parsed.get("city"):
+                parts = parsed
+                if (parsed.get("detail") or "").strip():
+                    detail = parsed["detail"]
+                elif not detail:
+                    detail = detail_for_parse
+        elif not parts.get("province") and full:
+            parts = _parse_cn_region_address(full)
+            if (parts.get("detail") or "").strip():
+                detail = parts["detail"]
     parts["country"] = "中国"
     ratio = str(cfg.get("ownership_ratio") or "100").strip() or "100"
+    id_no = str(cfg.get("id_number") or cfg.get("idNumber") or "").strip()
+    gender = str(cfg.get("gender") or _gender_from_id(id_no) or "").strip()
+    birth = str(cfg.get("birth") or _birth_from_id(id_no) or "").strip()
     pg = _page_of(form_scope)
     _dismiss_overlays(pg)
     result["boDom"] = _js_probe_selects(form_scope)
     result["ownershipRatioExpected"] = ratio
-    result["boAddressSource"] = "user-ubo-address"
+    result["boAddressSource"] = "hukou-ui" if hukou_locked else "id-card-hukou"
+    result["boHukouLocked"] = hukou_locked
     result["boAddressExpected"] = {
-        "parts": parts,
+        "parts": {k: v for k, v in parts.items() if k != "_hukou_locked"},
         "detail": detail,
     }
 
@@ -3605,6 +4995,70 @@ def _fill_bo_form(
         inv = person in (name_val or "") or _js_has_person(form_scope, person)
     result["investorInfo"] = bool(inv)
     result["investorNameValue"] = name_val or person if inv else (name_val or "")
+
+    # 选人后页面会带出详细地址；级联前再读一次（异步带出），后续不改写，仅冲掉时还原
+    detail_from_page = (_field_value(form_scope, "详细地址") or "").strip()
+    result["boDetailFromPersonSelect"] = detail_from_page
+
+    # 1a) 选人后读页面证件号 → 推性别/出生/户籍
+    page_id = (
+        _field_value(form_scope, "身份证件或身份证明文件号码")
+        or _field_value(form_scope, "证件号码")
+        or _field_value(form_scope, "身份证号")
+        or ""
+    ).strip()
+    if page_id and len(re.sub(r"\W", "", page_id)) >= 15:
+        id_no = re.sub(r"\s", "", page_id)
+        result["boIdFromPage"] = id_no
+        g2 = _gender_from_id(id_no)
+        b2 = _birth_from_id(id_no)
+        if g2:
+            gender = g2
+        if b2:
+            birth = b2
+        region = _id_card_region_parts(id_no)
+        if region.get("province") and not hukou_locked:
+            # 户籍优先覆盖手填非户籍地址（前端户籍属地已锁则不覆盖）
+            for k in ("province", "city", "district"):
+                if region.get(k):
+                    parts[k] = region[k]
+            parts["country"] = "中国"
+            if not detail or detail == full:
+                # 详细地址：保留已有身份证住址；否则用户籍拼装
+                if not (parts.get("detail") or "").strip():
+                    detail = "".join(
+                        x
+                        for x in (
+                            parts.get("province"),
+                            parts.get("city"),
+                            parts.get("district"),
+                            parts.get("detail"),
+                        )
+                        if x
+                    )
+            result["boAddrPartsFromId"] = dict(parts)
+
+    if not gender:
+        gender = "男"
+    if not birth:
+        birth = "2002-10-31"
+
+    # 1b) 性别（证件识别）
+    _dismiss_overlays(pg)
+    gender_info = _js_pick_addr_by_label(form_scope, "性别", gender)
+    if not gender_info.get("ok"):
+        gender_info = _js_pick_select(form_scope, gender, hint="性别")
+    if not gender_info.get("ok"):
+        gender_info = _js_pick_nth_select(form_scope, 1, gender)
+    result["boGender"] = gender_info
+    result["boGenderExpected"] = gender
+    pg.wait_for_timeout(300)
+
+    # 1c) 国籍默认中国（投资人带出后可能变成其它国家）
+    _dismiss_overlays(pg)
+    nat = _select_bo_nationality_china(form_scope, pg)
+    result["boNationality"] = nat
+    pg.wait_for_timeout(400)
 
     # 2) 先取消「长期」（证件有效期稍后和其他日期一起填，避免被日历冲掉）
     try:
@@ -3639,20 +5093,77 @@ def _fill_bo_form(
     except Exception:
         pass
     _dismiss_overlays(pg)
+    # 级联前再确认选人带出的详细地址（避免异步晚到）
+    pre_cascade_detail = (_field_value(form_scope, "详细地址") or "").strip()
+    if pre_cascade_detail:
+        detail_from_page = pre_cascade_detail
+        result["boDetailFromPersonSelect"] = detail_from_page
     addr = _fill_bo_addr_cascade(form_scope, pg, result, parts)
     result["boAddr"] = addr
-    # 详细地址用完整实际地址（与省市区一致，不用贵州默认）
-    detail_to_fill = (cfg.get("bo_address") or detail or "").strip()
-    _js_fill_near(form_scope, "详细地址", detail_to_fill) or _fill_by_label(
-        form_scope, "详细地址", detail_to_fill
-    )
-    detail_val = _field_value(form_scope, "详细地址")
-    result["boDetailAddr"] = bool(detail_val) and (
-        detail_to_fill[:6] in detail_val
-        or detail_val[:6] in detail_to_fill
-        or len(detail_val) > 4
-    )
+    # 详细地址：选人后已带出，RPA 不再改写；级联若冲掉则只还原选人时快照
+    detail_val = (_field_value(form_scope, "详细地址") or "").strip()
+    if detail_from_page and not detail_val:
+        _js_fill_near(form_scope, "详细地址", detail_from_page) or _fill_by_label(
+            form_scope, "详细地址", detail_from_page
+        )
+        detail_val = (_field_value(form_scope, "详细地址") or "").strip()
+        result["boDetailRestored"] = True
+
+    # 仍缺失：再点一次人员信息带出详细地址，必要时重填省市区后再还原
+    if not detail_val or len(detail_val) <= 4:
+        reselect_rounds: list[dict[str, Any]] = []
+        for round_i in range(2):
+            _dismiss_overlays(pg)
+            pick2 = _pick_bo_dropdown(form_scope, pg, person, hint="投资人信息")
+            if not pick2.get("ok"):
+                pick2 = _pick_bo_dropdown(form_scope, pg, person, hint="受益所有人基本信息")
+            if not pick2.get("ok"):
+                pick2 = _pick_bo_dropdown(form_scope, pg, person, hint="")
+            if not pick2.get("ok"):
+                pick2 = (
+                    _pick_bo_investor(pg, form_scope, person)
+                    and {"ok": True, "via": "legacy-reselect"}
+                ) or {"ok": False}
+            pg.wait_for_timeout(1800)
+            brought = (_field_value(form_scope, "详细地址") or "").strip()
+            # 给异步带出一点时间
+            if not brought:
+                pg.wait_for_timeout(1200)
+                brought = (_field_value(form_scope, "详细地址") or "").strip()
+            round_info: dict[str, Any] = {
+                "round": round_i,
+                "pick": pick2 if isinstance(pick2, dict) else {"ok": bool(pick2)},
+                "detailAfterReselect": brought,
+            }
+            if brought:
+                detail_from_page = brought
+                result["boDetailFromPersonSelect"] = brought
+                # 重选人可能冲掉国家/省市区，按户籍再填一遍，然后再还原详细地址
+                addr_retry = _fill_bo_addr_cascade(form_scope, pg, result, parts)
+                round_info["addrRetry"] = addr_retry
+                detail_val = (_field_value(form_scope, "详细地址") or "").strip()
+                if detail_from_page and not detail_val:
+                    _js_fill_near(form_scope, "详细地址", detail_from_page) or _fill_by_label(
+                        form_scope, "详细地址", detail_from_page
+                    )
+                    detail_val = (_field_value(form_scope, "详细地址") or "").strip()
+                    round_info["restored"] = True
+                reselect_rounds.append(round_info)
+                if detail_val and len(detail_val) > 4:
+                    break
+            else:
+                reselect_rounds.append(round_info)
+        result["boDetailReselectPerson"] = reselect_rounds
+
+    result["boDetailAddr"] = bool(detail_val) and len(detail_val) > 4
     result["boDetailAddrValue"] = detail_val
+    result["boDetailAddrSkippedFill"] = True
+    # 地址操作后国籍可能被冲掉，再强制一次中国
+    if not (
+        _js_addr_label_shows(form_scope, "国籍", "中国")
+        or _js_addr_label_shows(form_scope, "国籍", "中华人民共和国")
+    ):
+        result["boNationalityRetry"] = _select_bo_nationality_china(form_scope, pg)
     # 手机号再补一次（日历遮罩可能导致前一次未落库）
     if not result.get("boMobile"):
         _js_fill_near(form_scope, "联系方式一（手机号）", mobile) or _js_fill_near(
@@ -3837,12 +5348,12 @@ def _fill_bo_form(
     ]
     id_cfg = (cfg.get("id_valid") or DEFAULT_ID_VALID).replace("-", "/")
     # 2032-06-24 → 2032/6/24
-    parts = id_cfg.replace("-", "/").split("/")
-    if len(parts) == 3:
-        id_slash = f"{int(parts[0])}/{int(parts[1])}/{int(parts[2])}"
+    parts_d = id_cfg.replace("-", "/").split("/")
+    if len(parts_d) == 3:
+        id_slash = f"{int(parts_d[0])}/{int(parts_d[1])}/{int(parts_d[2])}"
     else:
         id_slash = "2032/6/24"
-    _fill_bo_dates(form_scope, pg, id_slash, today_vals, result)
+    _fill_bo_dates(form_scope, pg, id_slash, today_vals, result, birth=birth)
     _close_calendar_soft(pg, form_scope)
 
     # 日期填写可能影响勾选区，再确认股权类型 + 比例
@@ -4208,10 +5719,22 @@ def _complete_beneficial(
     dates_ok = bool(
         (result.get("idValid") or ("2032" in id_input_v))
         and (result.get("ownershipDate") or bool(own_input_v))
+        and (result.get("birth") or bool(result.get("birthValue")))
     )
+    gender_ok = bool(
+        isinstance(result.get("boGender"), dict) and result["boGender"].get("ok")
+    )
+    if not gender_ok:
+        try:
+            gender_ok = _js_addr_label_shows(
+                form_scope, "性别", str(result.get("boGenderExpected") or "男")
+            )
+        except Exception:
+            pass
     form_ok = bool(
         result.get("investorInfo")
         and dates_ok
+        and gender_ok
         and result.get("boMobile")
         and addr.get("country")
         and addr.get("province")
@@ -4222,6 +5745,7 @@ def _complete_beneficial(
     )
     result["beneficialFormOk"] = form_ok
     result["datesOk"] = dates_ok
+    result["genderOk"] = gender_ok
     next4 = False
     conf = False
     if form_ok:
@@ -4511,8 +6035,27 @@ def run_personnel_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dic
                 _dump(case_id, "fill-personnel-result.json", result)
                 return result
     else:
-        # 1) 董事/监事选项
-        result["oneDirector"] = _click_radio(frame, "设一名董事")
+        # 1) 董事选项：≥2 人勾选「设董事会」并填人数；否则「设一名董事」
+        director_list = list(cfg.get("director_list") or [])
+        if not director_list:
+            director_list = [{"name": cfg.get("director_name") or cfg.get("name") or ""}]
+        n_dir = len([d for d in director_list if str((d or {}).get("name") or "").strip()])
+        establish_board = bool(cfg.get("establish_board")) or n_dir >= 2
+        board_count = int(cfg.get("board_member_count") or (n_dir if n_dir >= 2 else 1) or 1)
+        if establish_board and n_dir >= 2:
+            result["boardOfDirectors"] = (
+                _click_radio(frame, "设董事会")
+                or _click_radio(frame, "设立董事会")
+            )
+            page.wait_for_timeout(300)
+            result["boardMemberCount"] = (
+                _fill_by_label(frame, "董事会人数", str(board_count))
+                or _js_fill_near(frame, "董事会人数", str(board_count))
+            )
+            result["oneDirector"] = False
+        else:
+            result["oneDirector"] = _click_radio(frame, "设一名董事")
+            result["boardOfDirectors"] = False
         page.wait_for_timeout(300)
         # 仅一名监事（不设监事会）
         sup_list = list(cfg.get("supervisor_list") or [])[:1]
@@ -4626,12 +6169,27 @@ def run_personnel_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dic
                 )
                 item["mobile"] = _fill_contact_mobile(dlg, dir_mobile)
                 page.wait_for_timeout(200)
+                # 董事会多人时选择职务（董事长/副董事长/董事）
+                dir_title = str(d_person.get("title") or "").strip()
+                if not dir_title and n_dir >= 2:
+                    dir_title = "董事长" if d_idx == 0 else "董事"
+                if dir_title and (establish_board or n_dir >= 2):
+                    item["title"] = (
+                        _select_dropdown(dlg, "职务", dir_title)
+                        or _select_dropdown(dlg, "董事职务", dir_title)
+                    )
+                    if not item["title"]:
+                        for alt in (dir_title, "董事", "董事长", "副董事长"):
+                            if _select_dropdown(dlg, "职务", alt):
+                                item["title"] = alt
+                                break
+                    item["titleWanted"] = dir_title
                 # 法定代表人：与法人同名的董事设为是
                 is_lr = True
                 if dir_name and lr_name and dir_name != lr_name:
                     is_lr = False
                 item["isLegalRep"] = _set_yes_no(dlg, "法定代表人", is_lr) or _set_yes_no(
-                    dlg, "是否由董事担任", is_lr
+                    dlg, "是否担任法定代表人", is_lr
                 )
                 page.wait_for_timeout(300)
                 # 确定前再写一次电话，避免被其它控件冲掉
@@ -4814,7 +6372,7 @@ def run_personnel_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dic
                 )
                 _shot(page, case_id, "personnel-after-supervisor")
 
-    # 3) 财务负责人：有限公司「添加高级管理人员」；个人独资等为页面内联表单
+    # 3) 经理（可选多人）+ 财务负责人：有限公司「添加高级管理人员」；个人独资等为页面内联表单
     if _section_quota_done(frame, "高管"):
         result["addManagerClick"] = True
         result["managerConfirm"] = True
@@ -4833,135 +6391,84 @@ def run_personnel_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dic
             _dump(case_id, "fill-personnel-result.json", result)
             return result
     else:
-        try:
-            loc = frame.get_by_text("高级管理人员", exact=False).first
-            if _visible(loc, timeout=600):
-                loc.scroll_into_view_if_needed(timeout=2000)
-        except Exception:
-            try:
-                frame.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            except Exception:
-                page.mouse.wheel(0, 1200)
-        page.wait_for_timeout(400)
-        add_mgr = (
-            _click_text(
-                frame,
-                ["+ 添加高级管理人员 >>", "添加高级管理人员 >>", "添加高级管理人员"],
-                exact=False,
+        senior_jobs: list[dict[str, str]] = []
+        for m in list(cfg.get("manager_list") or []):
+            mn = str((m or {}).get("name") or "").strip()
+            if not mn:
+                continue
+            senior_jobs.append(
+                {
+                    "name": mn,
+                    "mobile": str((m or {}).get("mobile") or cfg.get("mobile") or DEFAULT_MOBILE).strip(),
+                    "title": "经理",
+                    "tag": "manager",
+                }
             )
-            or _click_text_any(page, ["添加高级管理人员"], exact=False)
-        )
-        result["addManagerClick"] = add_mgr
-        page.wait_for_timeout(900)
-        dlg, _ = _find_dialog(page, "高级管理人员")
-        if dlg is None:
-            dlg, _ = _find_dialog(page, "新增高级")
-        if dlg is None:
-            # 无弹窗时回退内联财务负责人（部分组织形式）
-            if _has_inline_finance(frame):
-                inline = _fill_inline_finance_officer(page, frame, cfg, case_id, payload)
-                result["managerInline"] = inline
-                result["addManagerClick"] = True
-                result["managerConfirm"] = bool(inline.get("ok"))
-                result["managerVia"] = "inline-finance-fallback"
-                if not result["managerConfirm"]:
-                    result["error"] = "财务负责人填写未生效"
-                    result["missing"] = ["财务负责人"]
-                    _dump(case_id, "fill-personnel-result.json", result)
-                    return result
-            else:
-                result["error"] = "未打开高级管理人员弹窗"
-                _shot(page, case_id, "personnel-manager-dialog-missing")
-                _dump(case_id, "fill-personnel-result.json", result)
-                return result
-        if dlg is not None and not result.get("managerConfirm"):
-            try:
-                title = (dlg.locator(".el-dialog__title").inner_text(timeout=500) or "")
-                result["managerDialogTitle"] = title
-                if "董事" in title and "高级" not in title:
-                    result["error"] = "打开的仍是董事弹窗，非高级管理人员"
-                    _shot(page, case_id, "personnel-manager-wrong-dialog")
-                    _dump(case_id, "fill-personnel-result.json", result)
-                    return result
-            except Exception:
-                pass
-            result["managerPerson"] = _natural_via_id_ocr(
-                dlg,
-                page,
-                case_id=case_id,
-                payload=payload,
-                person_name=cfg.get("finance_name") or cfg.get("name") or "",
+        fin_name = str(cfg.get("finance_name") or cfg.get("name") or "").strip()
+        if fin_name:
+            senior_jobs.append(
+                {
+                    "name": fin_name,
+                    "mobile": str(cfg.get("finance_mobile") or cfg.get("mobile") or DEFAULT_MOBILE).strip(),
+                    "title": "财务负责人",
+                    "tag": "finance",
+                }
             )
-            page.wait_for_timeout(600)
-            mgr_mobile = str(cfg.get("finance_mobile") or cfg.get("mobile") or DEFAULT_MOBILE).strip()
-            result["managerTitle"] = _select_dropdown(dlg, "职务", "财务负责人")
-            if not result["managerTitle"]:
-                try:
-                    item = dlg.locator(".el-form-item").filter(has_text=re.compile(r"职务")).first
-                    trig = item.locator(".el-select .el-input__inner, .el-select").first
-                    if _visible(trig, timeout=500):
-                        trig.click(timeout=2500)
-                        page.wait_for_timeout(400)
-                        for root in _all_scopes(page):
-                            opt = root.locator(".el-select-dropdown:visible li").filter(
-                                has_text=re.compile(r"财务负责人")
-                            ).first
-                            if _visible(opt, timeout=400):
-                                opt.click(timeout=2500)
-                                result["managerTitle"] = True
-                                break
-                except Exception:
-                    pass
-            page.wait_for_timeout(700)
-            for _ in range(10):
-                try:
-                    txt = dlg.inner_text(timeout=500) or ""
-                except Exception:
-                    txt = ""
-                if "产生方式" in txt:
-                    break
-                page.wait_for_timeout(300)
-            result["appointMethod"] = _select_dropdown(dlg, "产生方式", "董事聘任")
-            if not result["appointMethod"]:
-                try:
-                    item = dlg.locator(".el-form-item").filter(has_text=re.compile(r"产生方式")).first
-                    trig = item.locator(".el-select .el-input__inner, .el-select").first
-                    if _visible(trig, timeout=500):
-                        trig.click(timeout=2500)
-                        page.wait_for_timeout(350)
-                        for root in _all_scopes(page):
-                            opt = root.get_by_text("董事聘任", exact=False).first
-                            if _visible(opt, timeout=400):
-                                opt.click(timeout=2500)
-                                result["appointMethod"] = True
-                                break
-                except Exception:
-                    pass
-            # 职务/产生方式选完后再填移动电话（避免误写固定电话或被冲掉）
-            page.wait_for_timeout(300)
-            result["managerMobile"] = _fill_contact_mobile(dlg, mgr_mobile)
-            if not (result.get("managerMobile") or {}).get("ok"):
-                result["managerMobile2"] = _fill_contact_mobile(dlg, mgr_mobile)
-            _shot(page, case_id, "personnel-manager-before-confirm")
-            result["managerConfirm"] = _confirm_until_closed(page, ("高级管理人员",))
+        if not senior_jobs:
+            result["error"] = "缺少财务负责人姓名"
+            result["missing"] = ["财务负责人"]
+            _dump(case_id, "fill-personnel-result.json", result)
+            return result
+
+        # 无「添加高级管理人员」时回退内联财务负责人
+        if not _has_add_manager_button(frame) and _has_inline_finance(frame):
+            inline = _fill_inline_finance_officer(page, frame, cfg, case_id, payload)
+            result["managerInline"] = inline
+            result["addManagerClick"] = True
+            result["managerConfirm"] = bool(inline.get("ok"))
+            result["managerVia"] = "inline-finance-fallback"
             if not result["managerConfirm"]:
-                result["managerConfirm"] = _confirm_until_closed(page, ("新增", "高级"))
-            page.wait_for_timeout(600)
-            if _dialog_still_open(page, "高级管理人员"):
-                dlg2, _ = _find_dialog(page, "高级管理人员")
-                if dlg2 is None:
-                    dlg2, _ = _find_dialog(page, "新增高级")
-                if dlg2 is not None:
-                    result["managerMobileRetry"] = _fill_contact_mobile(dlg2, mgr_mobile)
-                    page.wait_for_timeout(200)
-                    result["managerConfirm"] = _confirm_until_closed(page, ("高级管理人员", "新增"))
-                    page.wait_for_timeout(600)
-            _shot(page, case_id, "personnel-after-manager")
-            if _dialog_still_open(page, "高级管理人员") or _dialog_still_open(page, "新增董事"):
-                result["error"] = "高级管理人员弹窗未关闭"
-                result["missing"] = ["高级管理人员"]
+                result["error"] = "财务负责人填写未生效"
+                result["missing"] = ["财务负责人"]
                 _dump(case_id, "fill-personnel-result.json", result)
                 return result
+        else:
+            result["seniorOfficersAdded"] = []
+            all_senior_ok = True
+            for s_idx, job in enumerate(senior_jobs):
+                frame = _frame_personnel(page) or frame
+                filled = _fill_one_senior_officer(
+                    page,
+                    frame,
+                    case_id=case_id,
+                    payload=payload,
+                    person_name=job["name"],
+                    mobile=job["mobile"],
+                    job_title=job["title"],
+                    shot_tag=f"personnel-senior-{job['tag']}-{s_idx}",
+                )
+                filled["index"] = s_idx
+                filled["role"] = job["tag"]
+                result["seniorOfficersAdded"].append(filled)
+                if job["tag"] == "finance":
+                    result["addManagerClick"] = bool(filled.get("addClick"))
+                    result["managerConfirm"] = bool(filled.get("ok"))
+                    result["managerTitle"] = filled.get("title")
+                    result["managerMobile"] = filled.get("mobile")
+                    result["appointMethod"] = filled.get("appointMethod")
+                    result["managerPerson"] = filled.get("person")
+                if not filled.get("ok"):
+                    all_senior_ok = False
+                    result["error"] = filled.get("error") or f"{job['title']}未完成"
+                    result["missing"] = [job["title"]]
+                    _shot(page, case_id, f"personnel-senior-fail-{job['tag']}-{s_idx}")
+                    _dump(case_id, "fill-personnel-result.json", result)
+                    return result
+            result["addManagerClick"] = any(
+                x.get("addClick") for x in result["seniorOfficersAdded"]
+            )
+            result["managerConfirm"] = all_senior_ok
+            _shot(page, case_id, "personnel-after-manager")
 
     # 4) 添加联络员
     if _section_quota_done(frame, "联络员"):

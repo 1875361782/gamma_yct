@@ -882,9 +882,9 @@ async def start_automation(request: Request, body: dict):
 
     gamma_root = str(REPO_ROOT / "gamma-yct")
     # 外网产品面：强制无头，用户看不到抓码/填报浏览器
-    headless = True
+    # headless = True
     # 本地调试可见 Chrome 时改用下面一行，并注释掉上面一行：
-    # headless = False
+    headless = False
     # 重试前清掉上一轮 cancel / 残留 Chrome，避免新会话被误杀或复用已登录 profile
     try:
         import sys

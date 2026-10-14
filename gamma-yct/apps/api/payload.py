@@ -109,6 +109,10 @@ class BeneficialOwner(BaseModel):
     idValidUntil: str = ""
     ownershipRatio: float = 0
     address: str = ""
+    # 户籍属地（前端省市区选择；RPA 按此填国家/地区级联）
+    hukouProvince: str = ""
+    hukouCity: str = ""
+    hukouDistrict: str = ""
 
 
 class PersonnelBlock(BaseModel):
@@ -173,6 +177,7 @@ class CasePayload(BaseModel):
     investors: list[Investor] = Field(default_factory=list)
     personnel: PersonnelBlock = Field(default_factory=PersonnelBlock)
     beneficialOwner: BeneficialOwner = Field(default_factory=BeneficialOwner)
+    beneficialOwners: list[BeneficialOwner] = Field(default_factory=list)
     seals: SealsBlock = Field(default_factory=SealsBlock)
     tax: TaxBlock = Field(default_factory=TaxBlock)
     socialInsurance: SocialInsuranceBlock = Field(default_factory=SocialInsuranceBlock)

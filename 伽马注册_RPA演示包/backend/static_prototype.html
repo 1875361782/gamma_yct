@@ -368,6 +368,7 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
 .suggest-item:last-child{border-bottom:none;}
 .suggest-item:hover,.suggest-item.on{background:var(--color-primary-soft); color:var(--color-primary);}
 .suggest-item .code{float:right; font-size:11px; color:var(--color-text-sub);}
+.ethnicity-suggest{top:calc(100% + 4px); max-height:220px;}
 .api-note{font-size:11px; color:var(--color-text-sub); line-height:1.5; margin-top:8px;}
 .reco-h{font-size:13px; font-weight:700; color:var(--color-text); margin-bottom:10px;}
 .reco-empty{font-size:12.5px; color:var(--color-text-sub); padding:8px 0;}
@@ -418,7 +419,24 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
 .role-sec{border:1px solid var(--color-border); border-radius:var(--radius); background:var(--color-surface); padding:var(--space-md); margin-bottom:var(--space-md);}
 .role-h{display:flex; align-items:center; gap:8px; font-size:14px; font-weight:700; margin-bottom:var(--space-md);}
 .role-h .req{color:var(--color-danger);}
-.role-h .opt{margin-left:auto; font-size:11px; font-weight:600; color:var(--color-text-sub); background:var(--color-bg); padding:2px 8px; border-radius:99px;}
+.role-h .opt{font-size:11px; font-weight:600; color:var(--color-text-sub); background:var(--color-bg); padding:2px 8px; border-radius:99px;}
+.role-h > .opt:last-child{margin-left:auto;}
+.role-add-btn{
+  margin-left:auto;
+  flex-shrink:0;
+  border:1px solid var(--color-primary);
+  background:#fff;
+  color:var(--color-primary);
+  font-family:var(--font);
+  font-size:13px;
+  font-weight:600;
+  padding:6px 18px;
+  border-radius:99px;
+  cursor:pointer;
+  line-height:1.2;
+}
+.role-add-btn:hover{background:var(--color-primary-soft);}
+.role-add-btn:focus-visible{outline:2px solid var(--color-primary); outline-offset:2px;}
 .role-meta{margin-left:auto; font-size:11px; font-weight:500; color:var(--color-text-sub);}
 .role-dot{width:10px; height:10px; border-radius:3px; flex-shrink:0;}
 .r-sh{background:#1E5FD9;} .r-legal{background:#0EA5E9;} .r-sup{background:#8B5CF6;} .r-fin{background:#F59E0B;}
@@ -440,10 +458,25 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
 .seg{display:inline-flex; border:1px solid var(--color-border); border-radius:99px; padding:3px; gap:3px; margin-bottom:var(--space-md);}
 .seg-btn{border:none; background:none; font-family:var(--font); font-size:13px; font-weight:600; color:var(--color-text-sub); padding:6px 18px; border-radius:99px; cursor:pointer;}
 .seg-btn.on{background:var(--color-primary); color:#fff;}
+.role-h-actions{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-bottom:var(--space-md);
+}
+.role-h-actions .seg{margin-bottom:0;}
+.role-h-actions .role-add-btn{margin-left:auto;}
 
 .same-toggle{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--color-text); margin-bottom:var(--space-md); cursor:pointer;}
 .same-toggle input{width:18px; height:18px; accent-color:var(--color-primary);}
+.role-same-row{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:10px; align-items:end;}
+.role-same-row .same-toggle{margin-bottom:0; min-height:40px;}
+.role-same-row.solo{grid-template-columns:1fr;}
+.role-card.locked{opacity:.85;}
 #dirBody.locked, #finBody.locked{opacity:.6;}
+@media (max-width:360px){ .role-same-row{grid-template-columns:1fr;} }
 
 .np-card{border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:12px; margin-bottom:10px; background:var(--color-bg);}
 .np-card-h{display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;}
@@ -463,8 +496,14 @@ input::placeholder, textarea::placeholder{color:#9AA3B2;}
 .sum-state.err{background:#FECACA; color:#991B1B;}
 
 .grid2{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+.grid3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;}
 .legal-fields{display:flex; flex-direction:column; gap:12px;}
-@media (max-width:360px){ .grid2{grid-template-columns:1fr;} }
+.ubo-hukou-row .suggest-wrap{width:100%;}
+.ubo-hukou-suggest{max-height:200px;}
+@media (max-width:360px){
+  .grid2{grid-template-columns:1fr;}
+  .grid3{grid-template-columns:1fr;}
+}
 
 /* ============ 按人身份证上传 ============ */
 .id-people{display:flex; flex-direction:column; gap:14px; margin-top:var(--space-md);}
@@ -899,7 +938,7 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
                 <select id="addrDistrict" aria-label="区县">
                   <option value="" selected disabled>请选择区县</option>
                 </select>
-              </div>
+          </div>
               <div class="addr-cell">
                 <select id="addrStreet" aria-label="街道/乡镇" disabled>
                   <option value="" selected disabled>请选择街道/乡镇</option>
@@ -1000,7 +1039,7 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
           <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="legalName" placeholder="如：张伟" /></div>
           <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="legalMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" /></div>
         </div>
-        <div class="inline-note" id="legalNote">法人可同时担任董事或财务负责人</div>
+        <div class="inline-note" id="legalNote">法人可同时担任董事或经理（卡片内「与法人同一人」全员仅勾一人）；财务负责人需单独填写</div>
       </div>
 
       <!-- 自然人 / 合伙人 -->
@@ -1008,20 +1047,20 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
         <div class="role-h">
           <span class="role-dot r-sh"></span>
           <span id="npSectionTitle">自然人（股东）</span><span class="req">*</span>
+          <button type="button" class="role-add-btn" id="npAddBtn" onclick="addNaturalPerson()">+ 添加</button>
         </div>
         <div id="npList"></div>
-        <div class="add-card" id="npAddBtn" onclick="addNaturalPerson()">+ 添加自然人</div>
         <div class="np-tip" id="npTip">自然人可为一人或多人，持股比例总计为100%</div>
       </div>
 
-      <!-- 董事 -->
+      <!-- 董事（可多人；≥2 人时政务网勾选设董事会） -->
       <div class="role-sec" id="dirSection">
-        <div class="role-h"><span class="role-dot r-legal"></span>董事<span class="req">*</span></div>
-        <label class="same-toggle"><input type="checkbox" id="dirSame" onchange="toggleSameLegal('dir')" /> 与法人同一人（身居一职）</label>
-        <div id="dirBody" class="grid2">
-          <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="dirName" placeholder="如：张伟" /></div>
-          <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="dirMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" /></div>
+        <div class="role-h">
+          <span class="role-dot r-legal"></span>董事<span class="req">*</span>
+          <button type="button" class="role-add-btn" id="dirAddBtn" onclick="addDirectorCard()">+ 添加</button>
         </div>
+        <div id="dirList"></div>
+        <div class="inline-note" id="dirBoardNote" style="display:none;">董事 ≥ 2 人时，填报勾选「设董事会」并填写董事会人数；请为每位董事选择职务（董事长 / 副董事长 / 董事）。董事与经理合计仅一人可勾选「与法人同一人」。</div>
       </div>
 
       <!-- 监事 -->
@@ -1039,10 +1078,26 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
         <div class="inline-note" id="supSharesNote" style="display:none;">股份有限公司必须设立一名监事（不设监事会）。</div>
       </div>
 
-      <!-- 财务负责人 -->
+      <!-- 经理（可选；可多人；卡片内可勾选与法人同一人，与董事互斥） -->
+      <div class="role-sec" id="mgrSection">
+        <div class="role-h">
+          <span class="role-dot r-legal"></span>经理
+          <span class="opt">可选</span>
+        </div>
+        <div class="role-h-actions">
+          <div class="seg" id="mgrSeg">
+            <button type="button" class="seg-btn on" data-v="1" onclick="setManager(1,this)">设立</button>
+            <button type="button" class="seg-btn" data-v="0" onclick="setManager(0,this)">不设立</button>
+          </div>
+          <button type="button" class="role-add-btn" id="mgrAddBtn" onclick="addManagerCard()">+ 添加</button>
+        </div>
+        <div id="mgrList"></div>
+        <div class="inline-note" id="mgrBoardNote">所有董事与经理合计仅一人可勾选「与法人同一人」。</div>
+      </div>
+
+      <!-- 财务负责人（不可勾选与法人同一人） -->
       <div class="role-sec">
         <div class="role-h"><span class="role-dot r-fin"></span>财务负责人<span class="req">*</span></div>
-        <label class="same-toggle"><input type="checkbox" id="finSame" onchange="toggleSameLegal('fin')" /> 与法人同一人（身居一职）</label>
         <div id="finBody" class="grid2">
           <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="finName" placeholder="如：王芳" /></div>
           <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="finMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" /></div>
@@ -1062,25 +1117,13 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
       </div>
       </div>
 
-      <!-- 最终受益人 -->
-      <div class="role-sec">
-        <div class="role-h"><span class="role-dot r-sup"></span>最终受益人<span class="req">*</span></div>
-        <div class="legal-fields">
-          <div class="grid2">
-            <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="uboName" placeholder="如：张伟" /></div>
-            <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="uboMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" /></div>
-          </div>
-          <div class="grid2">
-            <div class="field"><label>身份证有效期<span class="req">*</span></label><input type="date" id="uboIdValid" /></div>
-            <div class="field"><label>持股比例<span class="req">*</span></label>
-              <div class="input-wrap has-suffix">
-                <input type="number" id="uboPct" min="0" max="100" step="1" placeholder="0" />
-                <span class="unit">%</span>
-              </div>
-            </div>
-          </div>
-          <div class="field"><label>住所<span class="req">*</span></label><input type="text" id="uboAddress" placeholder="请填写住所地址（含省市区及门牌）" /></div>
+      <!-- 最终受益人（可多人；下拉仅持股>25%的自然人） -->
+      <div class="role-sec" id="uboSection">
+        <div class="role-h">
+          <span class="role-dot r-sup"></span>最终受益人<span class="req">*</span>
+          <button type="button" class="role-add-btn" id="uboAddBtn" onclick="addUboCard()">+ 添加</button>
         </div>
+        <div id="uboList"></div>
       </div>
     </section>
 
@@ -1142,6 +1185,7 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
           <div class="sum-line"><div class="k" id="sumNpLabel">自然人</div><div class="v" id="sumNp">—</div></div>
           <div class="sum-line" id="sumDirLine"><div class="k">董事</div><div class="v" id="sumDir">—</div></div>
           <div class="sum-line" id="sumSupLine"><div class="k">监事</div><div class="v" id="sumSup">—</div></div>
+          <div class="sum-line" id="sumMgrLine"><div class="k">经理</div><div class="v" id="sumMgr">—</div></div>
           <div class="sum-line"><div class="k">财务负责人</div><div class="v" id="sumFin">—</div></div>
           <div class="sum-line"><div class="k">联络员</div><div class="v" id="sumLia">—</div></div>
           <div class="sum-line"><div class="k">最终受益人</div><div class="v" id="sumUbo">—</div></div>
@@ -1283,8 +1327,9 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
     <button class="btn btn-primary" id="nextBtn" onclick="next()">下一步</button>
   </div>
 
-</div>
+  </div>
 
+<script src="/static/cn-region.js"></script>
 <script>
 /* ============ 状态机 ============ */
 const TOTAL = 8;
@@ -1359,6 +1404,7 @@ function go(i){
   document.querySelector(`.screen[data-screen="${i}"]`).classList.add('active');
   if(i===4) syncConfirm();   // 进入信息确认单 → 同步屏1 动态值
   if(i===3) refreshIdPeopleUploads();  // 屏4：按当前人员去重渲染上传位
+  if(i===2){ ensureUboCards(); refreshUboNameOptions(); }
   if(i===1) ensureNameScopeApis();     // 企业信息：拉 meta / 经营范围目录
 
   const meta = STEP_META[i];
@@ -1660,6 +1706,28 @@ function buildCasePayload(){
     };
   });
 
+  const uboCards = collectUboCards();
+  const beneficialOwners = uboCards.map(u => ({
+    name: u.name,
+    mobile: u.mobile,
+    idValidUntil: u.idValidUntil,
+    ownershipRatio: u.pct,
+    address: '',
+    hukouProvince: u.hukouProvince || '',
+    hukouCity: u.hukouCity || '',
+    hukouDistrict: u.hukouDistrict || '',
+  }));
+  const beneficialOwner = beneficialOwners[0] || {
+    name: '',
+    mobile: '',
+    idValidUntil: '',
+    ownershipRatio: 0,
+    address: '',
+    hukouProvince: '',
+    hukouCity: '',
+    hukouDistrict: '',
+  };
+
   const limitedP = isLimitedPartnership();
   const generalP = isGeneralPartnership();
   // 有限合伙：法人=无限责任执行事务（持照人同）；其它合伙人仅无限责任可勾选执行事务
@@ -1683,13 +1751,11 @@ function buildCasePayload(){
     .map(inv => inv.name)
     .filter(Boolean);
 
-  const dirSame = document.getElementById('dirSame').checked;
-  const finSame = document.getElementById('finSame').checked;
   const hideBoard = hidesBoardRoles();
-  const dirName = hideBoard ? '' : (dirSame ? legalName : (document.getElementById('dirName').value || '').trim());
-  const dirMobile = hideBoard ? '' : (dirSame ? legalMobile : (document.getElementById('dirMobile').value || '').trim());
-  const finName = finSame ? legalName : (document.getElementById('finName').value || '').trim();
-  const finMobile = finSame ? legalMobile : (document.getElementById('finMobile').value || '').trim();
+  ensureRoleListsSeeded();
+  const directorCards = hideBoard ? [] : collectDirectorCards();
+  const finName = (document.getElementById('finName').value || '').trim();
+  const finMobile = (document.getElementById('finMobile').value || '').trim();
 
   const supOn = isSupervisorOn();
   const supervisors = [];
@@ -1704,8 +1770,13 @@ function buildCasePayload(){
       });
     }
   }
+  const managerOn = isManagerOn();
+  const managerCards = managerOn ? collectManagerCards() : [];
+  const managerName = managerCards[0] ? managerCards[0].name : '';
+  const managerMobile = managerCards[0] ? managerCards[0].mobile : '';
+  const establishBoard = directorCards.length >= 2;
+  const boardMemberCount = establishBoard ? directorCards.length : (directorCards.length ? 1 : 0);
 
-  const uboPct = parseFloat(document.getElementById('uboPct').value) || 0;
   const authority = district ? (district + '市场监督管理局') : '';
 
   return {
@@ -1764,19 +1835,35 @@ function buildCasePayload(){
         mobile: legalMobile,
         fromInvestorIndex: 0,
       },
-      directors: dirName ? [{
-        name: dirName,
+      directors: directorCards.map(d => ({
+        name: d.name,
         idType: 'id_card',
         idNumber: '',
-        mobile: dirMobile,
+        mobile: d.mobile,
+        title: d.title || (directorCards.length >= 2 ? '董事' : '董事'),
         fromInvestorIndex: null,
-      }] : [],
+      })),
+      establishBoard,
+      boardMemberCount,
       supervisors,
       // 设立时仅一名监事（不设监事会）；股份有限公司必须设立
       establishSupervisor: !!supOn || (isSharesCompany() && !hideBoard),
       establishSupervisorBoard: false,
       employeeSupervisorCount: 0,
-      manager: null,
+      manager: managerName ? {
+        name: managerName,
+        idType: 'id_card',
+        idNumber: '',
+        mobile: managerMobile,
+        fromInvestorIndex: null,
+      } : null,
+      managers: managerCards.map(m => ({
+        name: m.name,
+        idType: 'id_card',
+        idNumber: '',
+        mobile: m.mobile,
+        fromInvestorIndex: null,
+      })),
       financeOfficer: finName ? {
         name: finName,
         idType: 'id_card',
@@ -1795,14 +1882,8 @@ function buildCasePayload(){
       executivePartnerNames,
       licenseHolderNames,
     },
-    beneficialOwner: {
-      name: (document.getElementById('uboName').value || '').trim(),
-      mobile: (document.getElementById('uboMobile').value || '').trim(),
-      idValidUntil: (document.getElementById('uboIdValid').value || '').trim(),
-      ownershipRatio: uboPct,
-      // 经常居住地：最终受益人「住所*」用户填写值
-      address: (document.getElementById('uboAddress').value || '').trim(),
-    },
+    beneficialOwner,
+    beneficialOwners,
     attachments: {
       idCards: collectIdPeople().map(p => {
         const u = STATE.idUploads[p.personKey] || {};
@@ -2569,8 +2650,6 @@ function bindOwnershipPctInputs(){
     el.addEventListener('change', () => clampOwnershipPctInput(el));
     el.addEventListener('blur', () => clampOwnershipPctInput(el));
   };
-  const ubo = document.getElementById('uboPct');
-  if(ubo) bindOne(ubo);
   document.querySelectorAll('input.np-pct').forEach(bindOne);
   const npList = document.getElementById('npList');
   if(npList && !npList.dataset.pctObs){
@@ -2578,6 +2657,23 @@ function bindOwnershipPctInputs(){
     new MutationObserver(() => {
       npList.querySelectorAll('input.np-pct').forEach(bindOne);
     }).observe(npList, { childList: true, subtree: true });
+  }
+  if(!document.body.dataset.uboPctRefresh){
+    document.body.dataset.uboPctRefresh = '1';
+    document.addEventListener('input', (e) => {
+      if(e.target && e.target.classList && e.target.classList.contains('np-pct')){
+        refreshUboNameOptions();
+      }
+    });
+    document.addEventListener('change', (e) => {
+      if(e.target && e.target.classList && (
+        e.target.classList.contains('np-pct')
+        || e.target.classList.contains('np-name')
+        || e.target.classList.contains('np-phone')
+      )){
+        refreshUboNameOptions();
+      }
+    });
   }
 }
 
@@ -2607,12 +2703,7 @@ function collectIdPeople(){
   });
 
   if(!hidesBoardRoles()){
-    const dirSame = document.getElementById('dirSame').checked;
-    add(
-      '董事',
-      dirSame ? legalName : (document.getElementById('dirName').value || '').trim(),
-      dirSame ? legalMobile : (document.getElementById('dirMobile').value || '').trim()
-    );
+    collectDirectorCards().forEach(d => add('董事', d.name, d.mobile));
 
     const supOn = isSupervisorOn();
     if(supOn){
@@ -2622,13 +2713,15 @@ function collectIdPeople(){
         (document.getElementById('supMobile').value || '').trim()
       );
     }
+    if(isManagerOn()){
+      collectManagerCards().forEach(m => add('经理', m.name, m.mobile));
+    }
   }
 
-  const finSame = document.getElementById('finSame').checked;
   add(
     '财务',
-    finSame ? legalName : (document.getElementById('finName').value || '').trim(),
-    finSame ? legalMobile : (document.getElementById('finMobile').value || '').trim()
+    (document.getElementById('finName').value || '').trim(),
+    (document.getElementById('finMobile').value || '').trim()
   );
 
   add(
@@ -2636,13 +2729,284 @@ function collectIdPeople(){
     (document.getElementById('liaName').value || '').trim(),
     (document.getElementById('liaMobile').value || '').trim()
   );
-  add(
-    '最终受益人',
-    (document.getElementById('uboName').value || '').trim(),
-    (document.getElementById('uboMobile').value || '').trim()
-  );
+  collectUboCards().forEach(u => add('最终受益人', u.name, u.mobile));
 
   return [...map.values()];
+}
+
+/** 持股>25% 的自然人（最终受益人候选） */
+function collectUboCandidatePeople(){
+  const out = [];
+  const seen = new Set();
+  document.querySelectorAll('#npList .np-card').forEach(c => {
+    const name = String((c.querySelector('.np-name') || {}).value || '').trim();
+    const mobile = String((c.querySelector('.np-phone') || {}).value || '').trim();
+    const pct = parseFloat((c.querySelector('.np-pct') || {}).value) || 0;
+    if(!name || pct <= 25) return;
+    if(seen.has(name)) return;
+    seen.add(name);
+    out.push({ name, mobile, pct });
+  });
+  return out;
+}
+
+function collectUboCards(){
+  return [...document.querySelectorAll('#uboList .ubo-card')].map(card => {
+    const sel = card.querySelector('.ubo-name');
+    const name = String((sel && sel.value) || '').trim();
+    const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
+    const mobile = String(
+      (opt && opt.getAttribute('data-mobile')) || card.dataset.mobile || ''
+    ).trim();
+    const pct = parseFloat(
+      (opt && opt.getAttribute('data-pct')) || card.dataset.pct || 0
+    ) || 0;
+    const idValidUntil = String((card.querySelector('.ubo-id-valid') || {}).value || '').trim();
+    const hukouProvince = String((card.querySelector('.ubo-hukou-prov') || {}).value || '').trim();
+    const hukouCity = String((card.querySelector('.ubo-hukou-city') || {}).value || '').trim();
+    const hukouDistrict = String((card.querySelector('.ubo-hukou-dist') || {}).value || '').trim();
+    return { name, mobile, pct, idValidUntil, hukouProvince, hukouCity, hukouDistrict };
+  });
+}
+
+function _cnPca(){
+  return (typeof window !== 'undefined' && window.CN_PCA) ? window.CN_PCA : {};
+}
+
+function _uboHukouOptions(level, card){
+  const pca = _cnPca();
+  const prov = String((card.querySelector('.ubo-hukou-prov') || {}).value || '').trim();
+  const city = String((card.querySelector('.ubo-hukou-city') || {}).value || '').trim();
+  if(level === 'prov') return Object.keys(pca);
+  if(level === 'city'){
+    if(prov && pca[prov]) return Object.keys(pca[prov]);
+    return [];
+  }
+  if(level === 'dist'){
+    if(prov && city && pca[prov] && pca[prov][city]) return pca[prov][city].slice();
+    return [];
+  }
+  return [];
+}
+
+function _filterHukouOpts(opts, kw){
+  const q = String(kw || '').trim().replace(/\s+/g, '');
+  if(!q) return opts.slice(0, 40);
+  return opts.filter(name => name.includes(q)).slice(0, 40);
+}
+
+function bindUboHukouSuggest(input, level){
+  if(!input || input.dataset.hukouBound === '1') return;
+  input.dataset.hukouBound = '1';
+  input.dataset.hukouLevel = level;
+  const box = input.parentElement.querySelector('.ubo-hukou-suggest');
+  if(!box) return;
+  const card = () => input.closest('.ubo-card');
+  const render = () => {
+    const c = card();
+    if(!c) return;
+    const pca = _cnPca();
+    const provVal = String((c.querySelector('.ubo-hukou-prov') || {}).value || '').trim();
+    const cityVal = String((c.querySelector('.ubo-hukou-city') || {}).value || '').trim();
+    let emptyHint = '';
+    if(level === 'city' && !pca[provVal]){
+      emptyHint = '<div class="suggest-item" style="cursor:default;color:var(--color-text-sub)">请先选择省/自治区</div>';
+    } else if(level === 'dist' && !(pca[provVal] && pca[provVal][cityVal])){
+      emptyHint = '<div class="suggest-item" style="cursor:default;color:var(--color-text-sub)">请先选择市</div>';
+    }
+    const opts = _uboHukouOptions(level, c);
+    const list = _filterHukouOpts(opts, input.value);
+    if(!list.length){
+      box.innerHTML = emptyHint || '<div class="suggest-item" style="cursor:default;color:var(--color-text-sub)">无匹配</div>';
+      box.classList.add('show');
+      return;
+    }
+    box.innerHTML = list.map(name =>
+      `<div class="suggest-item" data-name="${String(name).replace(/"/g, '&quot;')}">${name}</div>`
+    ).join('');
+    box.classList.add('show');
+    box.querySelectorAll('.suggest-item[data-name]').forEach(item => item.addEventListener('mousedown', e => {
+      e.preventDefault();
+      input.value = item.dataset.name;
+      box.classList.remove('show');
+      onUboHukouPicked(input, level);
+    }));
+  };
+  input.addEventListener('input', () => {
+    render();
+    if(level === 'prov'){
+      const c = card();
+      if(!c) return;
+      const city = c.querySelector('.ubo-hukou-city');
+      const dist = c.querySelector('.ubo-hukou-dist');
+      if(city) city.value = '';
+      if(dist) dist.value = '';
+    } else if(level === 'city'){
+      const c = card();
+      const dist = c && c.querySelector('.ubo-hukou-dist');
+      if(dist) dist.value = '';
+    }
+  });
+  input.addEventListener('focus', render);
+  input.addEventListener('blur', () => setTimeout(() => box.classList.remove('show'), 120));
+}
+
+function onUboHukouPicked(input, level){
+  const card = input && input.closest && input.closest('.ubo-card');
+  if(!card) return;
+  if(level === 'prov'){
+    const city = card.querySelector('.ubo-hukou-city');
+    const dist = card.querySelector('.ubo-hukou-dist');
+    if(city) city.value = '';
+    if(dist) dist.value = '';
+  } else if(level === 'city'){
+    const dist = card.querySelector('.ubo-hukou-dist');
+    if(dist) dist.value = '';
+  }
+}
+
+function initUboHukouCascade(card, preset){
+  if(!card) return;
+  const p = preset || {};
+  const prov = card.querySelector('.ubo-hukou-prov');
+  const city = card.querySelector('.ubo-hukou-city');
+  const dist = card.querySelector('.ubo-hukou-dist');
+  if(prov) prov.value = p.hukouProvince || '';
+  if(city) city.value = p.hukouCity || '';
+  if(dist) dist.value = p.hukouDistrict || '';
+  bindUboHukouSuggest(prov, 'prov');
+  bindUboHukouSuggest(city, 'city');
+  bindUboHukouSuggest(dist, 'dist');
+}
+
+function refreshUboNameOptions(sel){
+  const targets = sel
+    ? [sel]
+    : [...document.querySelectorAll('#uboList .ubo-name')];
+  const people = collectUboCandidatePeople();
+  const esc = (s) => String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/"/g, '&quot;');
+  const selectedNames = new Set(
+    [...document.querySelectorAll('#uboList .ubo-name')]
+      .map(s => s.value)
+      .filter(Boolean)
+  );
+  targets.forEach(el => {
+    if(!el || el.tagName !== 'SELECT') return;
+    const cur = el.value;
+    const options = people.filter(p => p.name === cur || !selectedNames.has(p.name) || p.name === cur);
+    el.innerHTML = '<option value="">请选择自然人（持股&gt;25%）</option>' + options.map(p =>
+      `<option value="${esc(p.name)}" data-mobile="${esc(p.mobile)}" data-pct="${esc(p.pct)}">${esc(p.name)}（${esc(p.pct)}%）</option>`
+    ).join('');
+    if(cur && [...el.options].some(o => o.value === cur)) el.value = cur;
+    else el.value = '';
+    const card = el.closest('.ubo-card');
+    if(card){
+      const opt = el.selectedOptions && el.selectedOptions[0];
+      card.dataset.mobile = (opt && opt.getAttribute('data-mobile')) || '';
+      card.dataset.pct = (opt && opt.getAttribute('data-pct')) || '';
+    }
+  });
+}
+
+function onUboNameChange(sel){
+  const card = sel && sel.closest && sel.closest('.ubo-card');
+  if(!card) return;
+  const opt = sel.selectedOptions && sel.selectedOptions[0];
+  card.dataset.mobile = (opt && opt.getAttribute('data-mobile')) || '';
+  card.dataset.pct = (opt && opt.getAttribute('data-pct')) || '';
+  refreshUboNameOptions();
+}
+
+function reindexUboCards(){
+  document.querySelectorAll('#uboList .ubo-card').forEach((card, i) => {
+    const idx = card.querySelector('.ubo-idx');
+    if(idx) idx.textContent = '受益人 ' + (i + 1);
+    const del = card.querySelector('.ubo-del');
+    if(del) del.style.visibility = (i === 0 && document.querySelectorAll('#uboList .ubo-card').length <= 1)
+      ? 'hidden' : 'visible';
+  });
+}
+
+function addUboCard(data){
+  const list = document.getElementById('uboList');
+  if(!list) return null;
+  const d = data || {};
+  const card = document.createElement('div');
+  card.className = 'ubo-card role-card';
+  card.dataset.mobile = d.mobile || '';
+  card.dataset.pct = d.pct != null ? String(d.pct) : '';
+  card.innerHTML = `
+    <div class="np-card-h">
+      <span class="np-idx ubo-idx">受益人</span>
+      <button type="button" class="sh-del ubo-del" title="删除" onclick="removeUboCard(this)">✕</button>
+    </div>
+    <div class="legal-fields">
+      <div class="grid2">
+        <div class="field"><label>姓名<span class="req">*</span></label>
+          <select class="ubo-name" onfocus="refreshUboNameOptions(this)" onmousedown="refreshUboNameOptions(this)" onchange="onUboNameChange(this)">
+            <option value="">请选择自然人（持股&gt;25%）</option>
+          </select>
+        </div>
+        <div class="field"><label>身份证有效期<span class="req">*</span></label>
+          <input type="date" class="ubo-id-valid" value="${(d.idValidUntil || '').replace(/"/g, '')}" />
+        </div>
+      </div>
+      <div class="field ubo-hukou-row">
+        <label>户籍地<span class="req">*</span></label>
+        <div class="grid3">
+          <div class="suggest-wrap">
+            <input type="text" class="ubo-hukou-prov" placeholder="省/自治区" value="" autocomplete="off" aria-label="省/自治区" />
+            <div class="suggest-list ubo-hukou-suggest"></div>
+          </div>
+          <div class="suggest-wrap">
+            <input type="text" class="ubo-hukou-city" placeholder="市" value="" autocomplete="off" aria-label="市" />
+            <div class="suggest-list ubo-hukou-suggest"></div>
+          </div>
+          <div class="suggest-wrap">
+            <input type="text" class="ubo-hukou-dist" placeholder="区/县" value="" autocomplete="off" aria-label="区/县" />
+            <div class="suggest-list ubo-hukou-suggest"></div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  list.appendChild(card);
+  initUboHukouCascade(card, d);
+  const sel = card.querySelector('.ubo-name');
+  refreshUboNameOptions(sel);
+  if(d.name){
+    sel.value = d.name;
+    onUboNameChange(sel);
+  }
+  reindexUboCards();
+  return card;
+}
+
+function removeUboCard(btn){
+  const list = document.getElementById('uboList');
+  const card = btn && btn.closest && btn.closest('.ubo-card');
+  if(!list || !card) return;
+  if(list.querySelectorAll('.ubo-card').length <= 1){
+    alert('至少保留一名最终受益人');
+    return;
+  }
+  card.remove();
+  refreshUboNameOptions();
+  reindexUboCards();
+}
+
+function ensureUboCards(){
+  const list = document.getElementById('uboList');
+  if(!list) return;
+  if(!list.querySelector('.ubo-card')) addUboCard();
+  refreshUboNameOptions();
+  reindexUboCards();
+}
+
+function bindUboNameSelect(){
+  ensureUboCards();
 }
 
 function ensureIdUploadRecord(person){
@@ -2868,46 +3232,297 @@ function setSup(v, btn){
   if(nr) nr.style.display = reqShow;
   if(mr) mr.style.display = reqShow;
 }
+function setManager(v, btn){
+  const on = v === 1;
+  document.querySelectorAll('#mgrSeg .seg-btn').forEach(b=>b.classList.remove('on'));
+  const target = btn || document.querySelector(`#mgrSeg .seg-btn[data-v="${on ? '1' : '0'}"]`);
+  if(target) target.classList.add('on');
+  const list = document.getElementById('mgrList');
+  const addBtn = document.getElementById('mgrAddBtn');
+  const note = document.getElementById('mgrBoardNote');
+  if(list) list.style.display = on ? '' : 'none';
+  if(addBtn) addBtn.style.display = on ? '' : 'none';
+  if(note) note.style.display = on ? '' : 'none';
+  if(on && list && !list.children.length) addManagerCard();
+  if(!on && list){
+    // 关闭设立时清除经理侧「与法人同一人」勾选，避免锁死法人名额
+    list.querySelectorAll('.role-same:checked').forEach(cb => {
+      cb.checked = false;
+      applyRoleSameLegal(cb.closest('.role-card'), false);
+    });
+  }
+  syncRoleTitleVisibility('mgr');
+}
+function isManagerOn(){
+  return !hidesBoardRoles() && document.querySelector('#mgrSeg .seg-btn.on')?.dataset?.v === '1';
+}
 function isSupervisorOn(){
   if(hidesBoardRoles()) return false;
   if(isSharesCompany()) return true;
   return document.querySelector('#supSeg .seg-btn.on')?.dataset?.v === '1';
 }
-function toggleSameLegal(prefix){
-  const sameEl = document.getElementById(prefix + 'Same');
-  const same = sameEl.checked;
-  // 董事 / 财务负责人「与法人同一人」互斥，只能选一个
-  if(same && (prefix === 'dir' || prefix === 'fin')){
-    const other = prefix === 'dir' ? 'fin' : 'dir';
-    const otherSame = document.getElementById(other + 'Same');
-    if(otherSame && otherSame.checked){
-      otherSame.checked = false;
-      const on = document.getElementById(other + 'Name');
-      const om = document.getElementById(other + 'Mobile');
-      const ob = document.getElementById(other + 'Body');
-      on.readOnly = false; om.readOnly = false;
-      ob.classList.remove('locked');
-    }
+
+/** 收集董事卡片（含职务 / 是否与法人同一人） */
+function collectDirectorCards(){
+  return [...document.querySelectorAll('#dirList .role-card')].map(c => ({
+    name: (c.querySelector('.role-name')?.value || '').trim(),
+    mobile: (c.querySelector('.role-mobile')?.value || '').trim(),
+    title: (c.querySelector('.role-title')?.value || '').trim() || '董事',
+    sameAsLegal: !!(c.querySelector('.role-same')?.checked),
+  })).filter(x => x.name);
+}
+/** 收集经理卡片 */
+function collectManagerCards(){
+  if(!isManagerOn()) return [];
+  return [...document.querySelectorAll('#mgrList .role-card')].map(c => ({
+    name: (c.querySelector('.role-name')?.value || '').trim(),
+    mobile: (c.querySelector('.role-mobile')?.value || '').trim(),
+    sameAsLegal: !!(c.querySelector('.role-same')?.checked),
+  })).filter(x => x.name);
+}
+function syncRoleTitleVisibility(kind){
+  const listId = kind === 'dir' ? 'dirList' : 'mgrList';
+  const cards = document.querySelectorAll('#' + listId + ' .role-card');
+  const multi = kind === 'dir' && cards.length >= 2;
+  if(kind === 'dir'){
+    const note = document.getElementById('dirBoardNote');
+    if(note) note.style.display = multi ? '' : 'none';
   }
+  cards.forEach((c, i) => {
+    const row = c.querySelector('.role-same-row');
+    const titleField = c.querySelector('.role-title-field');
+    if(row) row.classList.toggle('solo', !multi);
+    if(titleField) titleField.style.display = multi ? '' : 'none';
+    const sel = c.querySelector('.role-title');
+    if(kind === 'dir' && sel && multi && !sel.value){
+      sel.value = i === 0 ? '董事长' : '董事';
+    }
+  });
+}
+function syncDirectorTitleVisibility(){ syncRoleTitleVisibility('dir'); }
+
+function makeRoleCard({ kind, name, mobile, title, locked, sameAsLegal }){
+  const card = document.createElement('div');
+  card.className = 'role-card np-card';
+  // 经理在政务网无职务选项；仅董事多人时显示职务
+  const titleBlock = kind === 'dir' ? `
+      <div class="field role-title-field" style="display:none;">
+        <label>职务<span class="req">*</span></label>
+        <select class="role-title">
+          <option value="董事长">董事长</option>
+          <option value="副董事长">副董事长</option>
+          <option value="董事">董事</option>
+        </select>
+      </div>` : '';
+  card.innerHTML = `
+    <div class="np-card-h">
+      <span class="np-idx">${kind === 'dir' ? '董事' : '经理'}</span>
+      <button type="button" class="sh-del" title="删除" onclick="removeRoleCard(this,'${kind}')">✕</button>
+    </div>
+    <div class="grid2">
+      <div class="field"><label>姓名<span class="req">*</span></label>
+        <input type="text" class="role-name" placeholder="如：张伟" value="${(name||'').replace(/"/g,'&quot;')}" />
+      </div>
+      <div class="field"><label>手机号<span class="req">*</span></label>
+        <input type="tel" class="role-mobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" value="${(mobile||'').replace(/"/g,'&quot;')}" />
+      </div>
+    </div>
+    <div class="role-same-row solo">
+      <label class="same-toggle">
+        <input type="checkbox" class="role-same" ${sameAsLegal || locked ? 'checked' : ''} onchange="onRoleSameLegalChange(this)" />
+        与法人同一人（身居一职）
+      </label>
+      ${titleBlock}
+    </div>
+  `;
+  if(kind === 'dir' && title && card.querySelector('.role-title')){
+    card.querySelector('.role-title').value = title;
+  }
+  if(locked || sameAsLegal){
+    applyRoleSameLegal(card, true, { skipExclusive: true });
+  }
+  return card;
+}
+function addDirectorCard(data){
+  const list = document.getElementById('dirList');
+  if(!list) return;
+  const d = data || {};
+  list.appendChild(makeRoleCard({
+    kind: 'dir',
+    name: d.name || '',
+    mobile: d.mobile || '',
+    title: d.title || '',
+    locked: !!d.locked,
+    sameAsLegal: !!d.sameAsLegal || !!d.locked,
+  }));
+  syncRoleTitleVisibility('dir');
+  reindexRoleCards('dir');
+}
+function addManagerCard(data){
+  const list = document.getElementById('mgrList');
+  if(!list) return;
+  const d = data || {};
+  list.appendChild(makeRoleCard({
+    kind: 'mgr',
+    name: d.name || '',
+    mobile: d.mobile || '',
+    title: d.title || '',
+    locked: !!d.locked,
+    sameAsLegal: !!d.sameAsLegal || !!d.locked,
+  }));
+  syncRoleTitleVisibility('mgr');
+  reindexRoleCards('mgr');
+}
+function removeRoleCard(btn, kind){
+  const card = btn.closest('.role-card');
+  if(!card) return;
+  const list = document.getElementById(kind === 'dir' ? 'dirList' : 'mgrList');
+  if(list && list.children.length <= 1 && kind === 'dir'){
+    alert('至少保留一名董事');
+    return;
+  }
+  if(list && list.children.length <= 1 && kind === 'mgr'){
+    alert('已设立经理时至少保留一名经理；若不需要请改选「不设立」');
+    return;
+  }
+  card.remove();
+  syncRoleTitleVisibility(kind);
+  reindexRoleCards(kind);
+}
+function reindexRoleCards(kind){
+  const list = document.getElementById(kind === 'dir' ? 'dirList' : 'mgrList');
+  if(!list) return;
+  list.querySelectorAll('.role-card .np-idx').forEach((el, i) => {
+    el.textContent = (kind === 'dir' ? '董事' : '经理') + (i + 1);
+  });
+}
+function ensureRoleListsSeeded(){
+  const dirList = document.getElementById('dirList');
+  if(dirList && !dirList.children.length) addDirectorCard();
+  if(isManagerOn()){
+    const mgrList = document.getElementById('mgrList');
+    if(mgrList && !mgrList.children.length) addManagerCard();
+  }
+}
+/** 将某张卡片设为 / 取消「与法人同一人」锁定态 */
+function applyRoleSameLegal(card, same, opts){
+  if(!card) return;
+  const skipExclusive = !!(opts && opts.skipExclusive);
+  const legalName = (document.getElementById('legalName').value || '').trim();
+  const legalMobile = (document.getElementById('legalMobile').value || '').trim();
+  const n = card.querySelector('.role-name');
+  const m = card.querySelector('.role-mobile');
+  const cb = card.querySelector('.role-same');
+  if(same){
+    if(!skipExclusive){
+      // 全部董事+经理仅一人可勾选
+      document.querySelectorAll('#dirList .role-card, #mgrList .role-card').forEach(other => {
+        if(other === card) return;
+        const ocb = other.querySelector('.role-same');
+        if(ocb && ocb.checked){
+          ocb.checked = false;
+          applyRoleSameLegal(other, false, { skipExclusive: true });
+        }
+      });
+    }
+    if(cb) cb.checked = true;
+    if(n){ n.value = legalName; n.readOnly = true; }
+    if(m){ m.value = legalMobile; m.readOnly = true; }
+    card.classList.add('locked');
+  }else{
+    if(cb) cb.checked = false;
+    if(n) n.readOnly = false;
+    if(m) m.readOnly = false;
+    card.classList.remove('locked');
+  }
+}
+function onRoleSameLegalChange(cb){
+  const card = cb && cb.closest ? cb.closest('.role-card') : null;
+  if(!card) return;
+  applyRoleSameLegal(card, !!cb.checked);
+}
+/** 法人姓名/手机变更时，刷新已勾选「同法人」的卡片 */
+function syncSameLegalCardsFromLegal(){
+  document.querySelectorAll('#dirList .role-card .role-same:checked, #mgrList .role-card .role-same:checked').forEach(cb => {
+    applyRoleSameLegal(cb.closest('.role-card'), true, { skipExclusive: true });
+  });
+}
+function applySameLegalToList(kind, same){
+  // 兼容旧调用：作用于该列表第一张卡
+  const list = document.getElementById(kind === 'dir' ? 'dirList' : 'mgrList');
+  if(!list || !list.children.length){
+    if(same){
+      if(kind === 'dir') addDirectorCard({ sameAsLegal: true, locked: true });
+      else addManagerCard({ sameAsLegal: true, locked: true });
+    }
+    return;
+  }
+  applyRoleSameLegal(list.children[0], same);
+}
+function toggleSameLegal(prefix){
+  // 兼容旧 id=dirSame/mgrSame（已移除）；财务负责人不再提供该选项
+  if(prefix === 'dir' || prefix === 'mgr'){
+    const checked = document.querySelector(
+      (prefix === 'dir' ? '#dirList' : '#mgrList') + ' .role-same:checked'
+    );
+    if(checked) applyRoleSameLegal(checked.closest('.role-card'), true);
+    return;
+  }
+  const sameEl = document.getElementById(prefix + 'Same');
+  if(!sameEl) return;
   const name = document.getElementById(prefix + 'Name');
   const mobile = document.getElementById(prefix + 'Mobile');
   const body = document.getElementById(prefix + 'Body');
-  if(same){
+  if(!name || !mobile) return;
+  if(sameEl.checked){
     name.value = document.getElementById('legalName').value;
     mobile.value = document.getElementById('legalMobile').value;
     name.readOnly = true; mobile.readOnly = true;
-    body.classList.add('locked');
+    if(body) body.classList.add('locked');
   }else{
     name.readOnly = false; mobile.readOnly = false;
-    body.classList.remove('locked');
+    if(body) body.classList.remove('locked');
   }
 }
 function requireRole(prefix, label){
-  if(document.getElementById(prefix + 'Same') && document.getElementById(prefix + 'Same').checked) return true;
-  if(!document.getElementById(prefix + 'Name').value.trim()){ alert('请填写' + label + '姓名'); return false; }
-  if(!requireMobile(document.getElementById(prefix + 'Mobile').value, label + '手机号')) return false;
+  if(prefix === 'dir'){
+    ensureRoleListsSeeded();
+    const cards = collectDirectorCards();
+    if(!cards.length){ alert('请至少填写一名董事'); return false; }
+    for(const c of cards){
+      if(!c.name){ alert('请填写董事姓名'); return false; }
+      if(!requireMobile(c.mobile, '董事手机号')) return false;
+    }
+    if(cards.length >= 2){
+      for(const c of cards){
+        if(!c.title){ alert('董事人数 ≥ 2 时，请为每位董事选择职务'); return false; }
+      }
+      const chairs = cards.filter(c => c.title === '董事长');
+      if(chairs.length !== 1){ alert('设董事会时须指定且仅指定一名董事长'); return false; }
+    }
   return true;
 }
+  if(prefix === 'mgr'){
+    if(!isManagerOn()) return true;
+    ensureRoleListsSeeded();
+    const cards = collectManagerCards();
+    if(!cards.length){ alert('已选择设立经理，请至少填写一名经理'); return false; }
+    for(const c of cards){
+      if(!c.name){ alert('请填写经理姓名'); return false; }
+      if(!requireMobile(c.mobile, '经理手机号')) return false;
+    }
+    return true;
+  }
+  if(document.getElementById(prefix + 'Same') && document.getElementById(prefix + 'Same').checked) return true;
+  const nameEl = document.getElementById(prefix + 'Name');
+  const mobileEl = document.getElementById(prefix + 'Mobile');
+  if(!nameEl || !nameEl.value.trim()){ alert('请填写' + label + '姓名'); return false; }
+  if(!requireMobile(mobileEl.value, label + '手机号')) return false;
+  return true;
+}
+document.addEventListener('DOMContentLoaded', () => {
+  try{ ensureRoleListsSeeded(); }catch(e){}
+});
 const NP_POLITICAL_OPTS = [
   '中共党员','中共预备党员','共青团员','民革会员','民盟盟员','民建会员','民进会员',
   '农工党员','致公党员','九三学社社员','台盟盟员','无党派人群','群众'
@@ -2936,6 +3551,30 @@ function normalizeEthnicity(v){
   if(NP_ETHNICITY_SET.has(s + '族')) return s + '族';
   return '';
 }
+function bindEthnicitySuggest(input){
+  if(!input || input.dataset.ethnicityBound === '1') return;
+  input.dataset.ethnicityBound = '1';
+  const box = input.parentElement.querySelector('.ethnicity-suggest');
+  if(!box) return;
+  const render = () => {
+    const kw = input.value.trim().replace(/\s+/g, '');
+    const list = NP_ETHNICITY_OPTS.filter(name =>
+      !kw || name.includes(kw) || name.replace(/族$/, '').includes(kw)
+    );
+    box.innerHTML = list.map(name =>
+      `<div class="suggest-item" data-name="${name}">${name}</div>`
+    ).join('');
+    box.classList.toggle('show', list.length > 0);
+    box.querySelectorAll('.suggest-item').forEach(item => item.addEventListener('mousedown', e => {
+      e.preventDefault();
+      input.value = item.dataset.name;
+      box.classList.remove('show');
+    }));
+  };
+  input.addEventListener('input', render);
+  input.addEventListener('focus', render);
+  input.addEventListener('blur', () => setTimeout(() => box.classList.remove('show'), 120));
+}
 function npCardHtml(idx, data){
   const d = data || {name:'', ethnicity:'', phone:'', pct:'', postalCode:'', politicalStatus:'', education:'', priorOccupation:'', isExecutivePartner:false, isLicenseHolder:false, liabilityType:''};
   const sole = isSoleProprietorship();
@@ -2959,7 +3598,12 @@ function npCardHtml(idx, data){
     </div>
     <div class="grid2" style="margin-bottom:12px;">
       <div class="field"><label>姓名<span class="req">*</span></label><input type="text" class="np-name" placeholder="姓名" value="${d.name||''}" /></div>
-      <div class="field"><label>民族<span class="req">*</span></label><input type="text" class="np-ethnicity" placeholder="如：汉族" value="${d.ethnicity||''}" /></div>
+      <div class="field"><label>民族<span class="req">*</span></label>
+        <div class="suggest-wrap">
+          <input type="text" class="np-ethnicity" placeholder="输入民族名称搜索" value="${d.ethnicity||''}" autocomplete="off" />
+          <div class="suggest-list ethnicity-suggest"></div>
+        </div>
+      </div>
     </div>
     <div class="grid2" style="margin-bottom:12px;">
       <div class="field"><label>电话<span class="req">*</span></label><input type="tel" class="np-phone" inputmode="numeric" maxlength="11" placeholder="电话" value="${d.phone||''}" /></div>
@@ -3141,7 +3785,7 @@ function syncPersonnelByOrgForm(){
     title.textContent = partnership ? '合伙人' : (sole ? '投资人' : (isIndividualBusiness() ? '自然人' : '自然人（股东）'));
   }
   if(addBtn){
-    addBtn.textContent = '+ 添加' + roleLabel;
+    addBtn.textContent = '+ 添加';
     // 个人独资 / 个体工商户不可增加
     addBtn.style.display = npMaxCount() <= 1 ? 'none' : '';
   }
@@ -3160,24 +3804,28 @@ function syncPersonnelByOrgForm(){
   }
   const dirSec = document.getElementById('dirSection');
   const supSec = document.getElementById('supSection');
+  const mgrSec = document.getElementById('mgrSection');
   const legalNote = document.getElementById('legalNote');
   if(dirSec) dirSec.style.display = hideBoard ? 'none' : '';
   if(supSec) supSec.style.display = hideBoard ? 'none' : '';
+  if(mgrSec) mgrSec.style.display = hideBoard ? 'none' : '';
   if(legalNote){
     if(limited){
       legalNote.style.display = '';
       legalNote.textContent = '有限合伙：法人默认为无限责任且为执行事务合伙人，请在合伙人中填写与法人相同的姓名并选择无限责任';
     }else{
       legalNote.style.display = hideBoard ? 'none' : '';
-      if(!hideBoard) legalNote.textContent = '法人可同时担任董事或财务负责人';
+      if(!hideBoard) legalNote.textContent = '法人可同时担任董事或经理（卡片内「与法人同一人」全员仅勾一人）；财务负责人需单独填写';
     }
   }
   const sumNpLabel = document.getElementById('sumNpLabel');
   if(sumNpLabel) sumNpLabel.textContent = roleLabel;
   const sumDirLine = document.getElementById('sumDirLine');
   const sumSupLine = document.getElementById('sumSupLine');
+  const sumMgrLine = document.getElementById('sumMgrLine');
   if(sumDirLine) sumDirLine.style.display = hideBoard ? 'none' : '';
   if(sumSupLine) sumSupLine.style.display = hideBoard ? 'none' : '';
+  if(sumMgrLine) sumMgrLine.style.display = hideBoard ? 'none' : '';
 
   // 股份有限公司：必须设立一名监事，隐藏「设立/不设立」
   const shares = isSharesCompany();
@@ -3257,6 +3905,7 @@ function addNaturalPerson(data){
   const wrap = document.createElement('div');
   wrap.innerHTML = npCardHtml(list.children.length + 1, data);
   list.appendChild(wrap.firstElementChild);
+  list.lastElementChild.querySelectorAll('.np-ethnicity').forEach(bindEthnicitySuggest);
   // 单人组织形式隐藏删除按钮
   if(npMaxCount() <= 1){
     list.querySelectorAll('.np-card .sh-del').forEach(btn=>{ btn.style.display = 'none'; });
@@ -3370,10 +4019,7 @@ function validatePersonnel(){
     }
   }
   if(!hidesBoardRoles()){
-  if(!requireRole('dir', '董事')) return false;
-    if(!document.getElementById('dirSame').checked){
-      if(!requireMobile(document.getElementById('dirMobile').value, '董事手机号')) return false;
-    }
+    if(!requireRole('dir', '董事')) return false;
     const supOn = isSupervisorOn();
     if(supOn){
       if(!document.getElementById('supName').value.trim()){
@@ -3384,40 +4030,56 @@ function validatePersonnel(){
       }
       if(!requireMobile(document.getElementById('supMobile').value, '监事手机号')) return false;
       // 董事与监事不能同一人
+      const dirNames = new Set(collectDirectorCards().map(d => d.name).filter(Boolean));
       const legalName = (document.getElementById('legalName').value || '').trim();
-      const dirSame = document.getElementById('dirSame').checked;
-      const dirName = (dirSame ? legalName : (document.getElementById('dirName').value || '').trim());
+      if(document.querySelector('#dirList .role-same:checked') && legalName) dirNames.add(legalName);
       const supName = (document.getElementById('supName').value || '').trim();
-      if(dirName && supName && dirName === supName){
+      if(supName && dirNames.has(supName)){
         alert('董事与监事不能为同一人，请修改其中一方');
         return false;
       }
     }
   }
+  if(isManagerOn() && !requireRole('mgr', '经理')) return false;
   if(!requireRole('fin', '财务负责人')) return false;
-  if(!document.getElementById('finSame').checked){
-    if(!requireMobile(document.getElementById('finMobile').value, '财务负责人手机号')) return false;
-  }
+  if(!requireMobile(document.getElementById('finMobile').value, '财务负责人手机号')) return false;
   if(!document.getElementById('liaName').value.trim()){ alert('请填写联络员姓名'); return false; }
   if(!requireMobile(document.getElementById('liaMobile').value, '联络员手机号')) return false;
   if(!document.getElementById('liaEmail').value.trim()){ alert('请填写联络员邮箱'); return false; }
   if(!document.getElementById('liaAddress').value.trim()){ alert('请填写联络员住所'); return false; }
-  if(!document.getElementById('uboName').value.trim()){ alert('请填写最终受益人姓名'); return false; }
-  if(!requireMobile(document.getElementById('uboMobile').value, '最终受益人手机号')) return false;
-  if(!document.getElementById('uboIdValid').value.trim()){ alert('请选择最终受益人身份证有效期'); return false; }
-  if(!document.getElementById('uboAddress').value.trim()){ alert('请填写最终受益人住所'); return false; }
-  const uboPct = parseFloat(document.getElementById('uboPct').value);
-  if(isNaN(uboPct) || uboPct <= 0){ alert('请填写最终受益人有效持股比例（须 > 0）'); return false; }
-  if(uboPct > 100){ alert('最终受益人持股比例最高为 100%'); return false; }
+  const uboCards = collectUboCards();
+  if(!uboCards.length){ alert('请添加最终受益人'); return false; }
+  const uboNames = new Set();
+  for(let i = 0; i < uboCards.length; i++){
+    const u = uboCards[i];
+    if(!u.name){ alert('请选择最终受益人 ' + (i + 1) + '（持股>25%的自然人）'); return false; }
+    if(uboNames.has(u.name)){ alert('最终受益人不能重复选择：' + u.name); return false; }
+    uboNames.add(u.name);
+    if(!(u.pct > 25)){ alert(u.name + ' 持股比例须大于 25%'); return false; }
+    if(!u.mobile || !isValidMobile(u.mobile)){
+      alert('最终受益人「' + u.name + '」手机号无效，请先在自然人卡片中填写');
+      return false;
+    }
+    if(!u.idValidUntil){ alert('请填写最终受益人「' + u.name + '」身份证有效期'); return false; }
+    if(!u.hukouProvince || !u.hukouCity || !u.hukouDistrict){
+      alert('请填写最终受益人「' + u.name + '」户籍地（省/市/区）');
+      return false;
+    }
+    const pca = _cnPca();
+    const cities = (pca[u.hukouProvince] && Object.keys(pca[u.hukouProvince])) || [];
+    const dists = (pca[u.hukouProvince] && pca[u.hukouProvince][u.hukouCity]) || [];
+    if(!pca[u.hukouProvince] || !cities.includes(u.hukouCity) || !dists.includes(u.hukouDistrict)){
+      alert('最终受益人「' + u.name + '」户籍地请从下拉建议中选择规范省/市/区名称');
+      return false;
+    }
+  }
   return true;
 }
 
 /* 法人信息变更时，勾选「同法人」的角色联动；有限合伙同步合伙人责任/执行事务 */
 ['legalName','legalMobile'].forEach(id=>{
   document.getElementById(id).addEventListener('input', ()=>{
-    ['dir','fin'].forEach(p=>{
-      if(document.getElementById(p + 'Same').checked) toggleSameLegal(p);
-    });
+    syncSameLegalCardsFromLegal();
     syncLegalAsUnlimitedExecPartner();
   });
 });
@@ -4241,6 +4903,7 @@ function saveDraft(){
       checkCache: STATE.checkCache || {},
       scopeManual: !!(document.getElementById('scope')?.dataset?.manual),
       supOn: isSupervisorOn(),
+      managerOn: isManagerOn(),
     };
     localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
   }catch(e){
@@ -4359,13 +5022,11 @@ function restoreDraft(){
     const selCount = document.getElementById('scopeSelCount');
     if(selCount) selCount.textContent = String(STATE.selectedScopes.length);
 
-    // 复选框「同法人」联动锁定态
-    ['dir','fin'].forEach(p=>{
-      const same = document.getElementById(p + 'Same');
-      if(same && same.checked) toggleSameLegal(p);
-    });
+    // 复选框「同法人」联动锁定态（卡片内勾选）
+    syncSameLegalCardsFromLegal();
 
     syncPersonnelByOrgForm();
+    if(typeof draft.managerOn === 'boolean') setManager(draft.managerOn ? 1 : 0);
     try{ refreshName(); }catch(e){}
     try{ updateZiCount(); }catch(e){}
 
@@ -4436,18 +5097,31 @@ function syncConfirm(){
   });
   document.getElementById('sumNp').textContent = npParts.length ? npParts.join('、') : '—';
   const hideBoard = hidesBoardRoles();
+  const dirCards = hideBoard ? [] : collectDirectorCards();
   document.getElementById('sumDir').textContent = hideBoard
     ? '—'
-    : (document.getElementById('dirName').value.trim() || '—');
+    : (dirCards.length
+      ? dirCards.map(d => d.name + (dirCards.length >= 2 && d.title ? `（${d.title}）` : '')).join('、')
+      : '—');
   const supOn = isSupervisorOn();
   document.getElementById('sumSup').textContent = hideBoard
     ? '—'
     : (supOn
     ? ((document.getElementById('supName').value.trim() || '—') + '（已设立）')
       : '不设立');
+  const sumMgrLine = document.getElementById('sumMgrLine');
+  if(sumMgrLine) sumMgrLine.style.display = hideBoard ? 'none' : '';
+  const managerOn = isManagerOn();
+  const mgrCards = managerOn ? collectManagerCards() : [];
+  document.getElementById('sumMgr').textContent = managerOn
+    ? ((mgrCards.map(m => m.name).filter(Boolean).join('、') || '—') + '（已设立）')
+    : '不设立';
   document.getElementById('sumFin').textContent = document.getElementById('finName').value.trim() || '—';
   document.getElementById('sumLia').textContent = document.getElementById('liaName').value.trim() || '—';
-  document.getElementById('sumUbo').textContent = document.getElementById('uboName').value.trim() || '—';
+  document.getElementById('sumUbo').textContent = (() => {
+    const names = collectUboCards().map(u => u.name).filter(Boolean);
+    return names.length ? names.join('、') : '—';
+  })();
   const tags = collectIdPeople().map(p => {
     const u = STATE.idUploads[p.personKey] || {};
     const ok = !!(u.frontFileId && u.backFileId);
@@ -4463,6 +5137,7 @@ function syncConfirm(){
   addNaturalPerson();
   syncPersonnelByOrgForm();
   bindGlobalMobileValidation();
+  ensureUboCards();
   bindOwnershipPctInputs();
   bindIdCardUploads();
   clearDraft(); // 刷新即清空，不恢复旧草稿

@@ -1,0 +1,32 @@
+日常用这两条就够：
+
+### 1. 启动后端（必开）
+
+```bat
+cd /d d:\工作\伽马账\伽马注册_RPA演示包
+.venv\Scripts\python.exe -m uvicorn backend.app:app --host 127.0.0.1 --port 8766 --log-level info
+```
+
+或一键脚本：
+
+```bat
+cd /d d:\工作\伽马账\伽马注册_RPA演示包
+run.bat
+```
+
+### 2. 外网隧道（可选，另开一个终端）
+
+```bat
+cloudflared tunnel --url http://127.0.0.1:8766
+```
+
+---
+
+**常用地址**
+- 产品页：http://127.0.0.1:8766/
+- 管理页：http://127.0.0.1:8766/admin
+- 健康检查：http://127.0.0.1:8766/health
+
+**说明**
+- 后端窗口不要关；隧道要外网访问时再开。
+- 当前代码默认无头；要看 Chrome 窗，把 `app.py` 里 `headless = True` 注释掉、启用 `headless = False` 后再重启。

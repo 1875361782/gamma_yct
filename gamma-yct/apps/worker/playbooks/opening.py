@@ -113,6 +113,8 @@ def _deep_click_radio_js(scope: Page | Frame, needle: str) -> dict[str, Any]:
                 """(needle) => {
                   const norm = (s) => (s || '').replace(/\\s+/g, '');
                   const n = norm(needle);
+                  const isGuideChild = n.includes('不需要材料辅导') || n.includes('需要材料辅导')
+                    || n.includes('无需登记机关对登记材料进行辅导');
                   const roots = [];
                   const walk = (root) => {
                     if (!root) return;
@@ -134,17 +136,21 @@ def _deep_click_radio_js(scope: Page | Frame, needle: str) -> dict[str, Any]:
                     for (const lab of nodes) {
                       const t = norm(lab.innerText || lab.textContent || '');
                       if (!t.includes(n)) continue;
-                      if (t.length > 80) continue;
+                      // 「不需要材料辅导（…长说明）」可达百余字，勿按 80 截断丢弃
+                      if (t.length > 220) continue;
+                      // 父级「全程网办」innerText 会吞掉子选项，点辅导子项时必须排除父级
+                      if (isGuideChild && (t.startsWith('全程网办') || t.startsWith('半程网办'))) continue;
                       const r = lab.getBoundingClientRect();
                       if (r.width < 8 || r.height < 8 || r.bottom < 0 || r.top > innerHeight) continue;
                       const disabled =
                         (lab.className || '').includes('is-disabled') ||
                         lab.getAttribute('aria-disabled') === 'true' ||
                         !!(lab.querySelector && lab.querySelector('input[disabled]'));
-                      cands.push({lab, len: t.length, y: r.y, disabled, t: t.slice(0, 40)});
+                      const starts = t.startsWith(n) ? 0 : 1;
+                      cands.push({lab, len: t.length, y: r.y, disabled, starts, t: t.slice(0, 40)});
                     }
                   }
-                  cands.sort((a, b) => a.len - b.len || a.y - b.y);
+                  cands.sort((a, b) => a.starts - b.starts || a.len - b.len || a.y - b.y);
                   const hit = cands.find(c => !c.disabled) || cands[0];
                   if (!hit) return {ok:false, reason:'not-found', cand: cands.length};
 
@@ -175,7 +181,6 @@ def _deep_click_radio_js(scope: Page | Frame, needle: str) -> dict[str, Any]:
                       else inp.checked = true;
                       inp.dispatchEvent(new Event('input', {bubbles:true}));
                       inp.dispatchEvent(new Event('change', {bubbles:true}));
-                      // ElementUI 常监听 click
                       fire(inp);
                     } catch (e) {}
                   }
@@ -202,6 +207,10 @@ def _deep_click_radio_js(scope: Page | Frame, needle: str) -> dict[str, Any]:
 def _click_radio(page: Page, needles: list[str]) -> bool:
     """点选办理方式等 radio：优先 Playwright 穿透定位，再 JS 深度点击。"""
     for needle in needles:
+        is_guide = any(
+            x in needle
+            for x in ("不需要材料辅导", "需要材料辅导", "无需登记机关对登记材料进行辅导")
+        )
         for scope in _all_scopes(page):
             # A) Playwright：label.el-radio / .el-radio
             for sel in (
@@ -226,11 +235,20 @@ def _click_radio(page: Page, needles: list[str]) -> bool:
                         except Exception:
                             pass
                         txt = " ".join((lab.inner_text(timeout=300) or "").split())
-                        if needle not in txt or len(txt) > 100:
+                        compact = txt.replace(" ", "")
+                        # 子选项含括号长说明，放宽到 220；优先以 needle 开头的最短文案
+                        if needle not in txt or len(txt) > 220:
                             continue
-                        if len(txt) < best_len:
+                        if is_guide and (
+                            compact.startswith("全程网办") or compact.startswith("半程网办")
+                        ):
+                            continue
+                        score = len(txt) + (
+                            0 if compact.startswith(needle.replace(" ", "")) else 50
+                        )
+                        if score < best_len:
                             best = lab
-                            best_len = len(txt)
+                            best_len = score
                     if best is None:
                         continue
                     try:
@@ -285,6 +303,17 @@ def _click_radio(page: Page, needles: list[str]) -> bool:
                     ).first
                     target = anc if _visible(anc, timeout=200) else loc
                     try:
+                        t_anc = " ".join((target.inner_text(timeout=250) or "").split())
+                        if is_guide and (
+                            t_anc.replace(" ", "").startswith("全程网办")
+                            or t_anc.replace(" ", "").startswith("半程网办")
+                        ):
+                            raise RuntimeError("skip-parent-guide")
+                    except RuntimeError:
+                        raise
+                    except Exception:
+                        pass
+                    try:
                         target.scroll_into_view_if_needed(timeout=1200)
                     except Exception:
                         pass
@@ -304,6 +333,8 @@ def _click_radio(page: Page, needles: list[str]) -> bool:
                     page.wait_for_timeout(350)
                     if _radio_checked(page, needle):
                         return True
+            except RuntimeError:
+                pass
             except Exception:
                 pass
 
@@ -311,18 +342,22 @@ def _click_radio(page: Page, needles: list[str]) -> bool:
             js = _deep_click_radio_js(scope, needle)
             if js.get("ok"):
                 page.wait_for_timeout(350)
-                if _radio_checked(page, needle) or js.get("checked"):
+                if _radio_checked(page, needle):
                     return True
+                # 不再信任 js.checked（可能点到父级误标）
     return False
 
 
 def _radio_checked(page: Page, needle: str) -> bool:
+    """是否已勾选：优先「文案以 needle 开头」的最短项，避免父级全程网办吞子文案误判。"""
     for scope in _all_scopes(page):
         try:
             js = scope.evaluate(
                 """(needle) => {
                   const norm = (s) => (s || '').replace(/\\s+/g, '');
                   const n = norm(needle);
+                  const isGuideChild = n.includes('不需要材料辅导') || n.includes('需要材料辅导')
+                    || n.includes('无需登记机关对登记材料进行辅导');
                   const roots = [];
                   const walk = (root) => {
                     if (!root) return;
@@ -335,20 +370,31 @@ def _radio_checked(page: Page, needle: str) -> bool:
                   walk(document);
                   const app = document.querySelector('wujie-app');
                   if (app && app.shadowRoot) walk(app.shadowRoot);
+                  const cands = [];
                   for (const root of roots) {
                     const nodes = root.querySelectorAll
                       ? root.querySelectorAll('label.el-radio, label, .el-radio, [role="radio"]')
                       : [];
                     for (const lab of nodes) {
                       const t = norm(lab.innerText || '');
-                      if (!t.includes(n) || t.length > 80) continue;
-                      if ((lab.className || '').includes('is-checked')) return true;
-                      const inp = lab.querySelector && lab.querySelector('input[type=radio]');
-                      if (inp && inp.checked) return true;
-                      if (lab.getAttribute && lab.getAttribute('aria-checked') === 'true') return true;
+                      if (!t.includes(n) || t.length > 220) continue;
+                      if (isGuideChild && (t.startsWith('全程网办') || t.startsWith('半程网办'))) continue;
+                      const checked =
+                        (lab.className || '').includes('is-checked') ||
+                        !!(lab.querySelector && lab.querySelector('input[type=radio]') &&
+                           lab.querySelector('input[type=radio]').checked) ||
+                        (lab.getAttribute && lab.getAttribute('aria-checked') === 'true');
+                      cands.push({
+                        starts: t.startsWith(n),
+                        len: t.length,
+                        checked,
+                      });
                     }
                   }
-                  return false;
+                  if (!cands.length) return false;
+                  cands.sort((a, b) => (b.starts - a.starts) || (a.len - b.len));
+                  const pool = cands.some(c => c.starts) ? cands.filter(c => c.starts) : cands;
+                  return !!pool[0].checked;
                 }""",
                 needle,
             )
@@ -357,17 +403,38 @@ def _radio_checked(page: Page, needle: str) -> bool:
         except Exception:
             pass
         try:
-            lab = scope.locator("label.el-radio, .el-radio, label").filter(
+            labs = scope.locator("label.el-radio, .el-radio, label").filter(
                 has_text=re.compile(re.escape(needle))
-            ).first
-            if not _visible(lab, timeout=350):
+            )
+            n = min(labs.count(), 12)
+            best = None
+            best_score = 10**9
+            needle_c = needle.replace(" ", "")
+            for i in range(n):
+                lab = labs.nth(i)
+                if not _visible(lab, timeout=200):
+                    continue
+                txt = " ".join((lab.inner_text(timeout=250) or "").split())
+                compact = txt.replace(" ", "")
+                if needle not in txt or len(txt) > 220:
+                    continue
+                if (
+                    ("不需要材料辅导" in needle or "需要材料辅导" in needle)
+                    and (compact.startswith("全程网办") or compact.startswith("半程网办"))
+                ):
+                    continue
+                score = len(txt) + (0 if compact.startswith(needle_c) else 80)
+                if score < best_score:
+                    best = lab
+                    best_score = score
+            if best is None:
                 continue
-            cls = lab.get_attribute("class") or ""
+            cls = best.get_attribute("class") or ""
             if "is-checked" in cls:
                 return True
-            if (lab.get_attribute("aria-checked") or "") == "true":
+            if (best.get_attribute("aria-checked") or "") == "true":
                 return True
-            inp = lab.locator("input[type='radio']").first
+            inp = best.locator("input[type='radio']").first
             if inp.count() > 0 and inp.is_checked():
                 return True
         except Exception:
@@ -426,7 +493,7 @@ def _wait_radio_enabled(page: Page, needle: str, timeout_sec: float = 8) -> bool
                         'label.el-radio, .el-radio, label, [role="radio"]'
                       )) {
                         const t = norm(lab.innerText || '');
-                        if (!t.includes(n) || t.length > 80) continue;
+                        if (!t.includes(n) || t.length > 220) continue;
                         if ((lab.className || '').includes('is-disabled')) return false;
                         const inp = lab.querySelector('input[type=radio]');
                         if (inp && inp.disabled) return false;
@@ -716,13 +783,24 @@ def run_opening_flow(case_id: str, page: Page, payload: dict[str, Any] | None = 
         result["radioProbeBefore"] = _probe_radios(page)
         result["fullOnlineEnabled"] = _wait_radio_enabled(page, "全程网办", timeout_sec=10)
         result["fullOnline"] = _ensure_radio(page, ["全程网办"])
-        page.wait_for_timeout(600)
+        page.wait_for_timeout(900)
+        guide_needles = ["不需要材料辅导", "无需登记机关对登记材料进行辅导"]
         if _option_present(page, "不需要材料辅导") or _option_present(
             page, "无需登记机关对登记材料进行辅导"
         ):
-            result["noMaterialGuide"] = _ensure_radio(
-                page, ["不需要材料辅导", "无需登记机关对登记材料进行辅导"]
-            )
+            # 子选项可能在点「全程网办」后延迟渲染
+            page.wait_for_timeout(800)
+            result["noMaterialGuide"] = _ensure_radio(page, guide_needles, retries=10)
+            if not result["noMaterialGuide"]:
+                # 再点一次全程网办展开子项后重试
+                _ensure_radio(page, ["全程网办"])
+                page.wait_for_timeout(900)
+                result["noMaterialGuideRetry"] = _ensure_radio(
+                    page, guide_needles, retries=8
+                )
+                result["noMaterialGuide"] = bool(
+                    result["noMaterialGuide"] or result["noMaterialGuideRetry"]
+                )
         else:
             result["noMaterialGuide"] = True
             result["noMaterialGuideSkipped"] = "option-absent"
@@ -731,6 +809,11 @@ def run_opening_flow(case_id: str, page: Page, payload: dict[str, Any] | None = 
         if not result["smartDocEnabled"] and result["fullOnline"]:
             _ensure_radio(page, ["全程网办"])
             page.wait_for_timeout(500)
+            if not result.get("noMaterialGuideSkipped"):
+                result["noMaterialGuide"] = bool(
+                    result.get("noMaterialGuide")
+                    or _ensure_radio(page, guide_needles, retries=4)
+                )
             result["smartDocEnabled"] = _wait_radio_enabled(page, "智慧文书", timeout_sec=8)
         result["smartDoc"] = _ensure_radio(page, ["智慧文书"])
         page.wait_for_timeout(300)
@@ -743,18 +826,34 @@ def run_opening_flow(case_id: str, page: Page, payload: dict[str, Any] | None = 
         if not result["fullOnline"] or not result["smartDoc"]:
             result["fullOnlineRetry"] = _ensure_radio(page, ["全程网办"])
             page.wait_for_timeout(400)
+            if not result.get("noMaterialGuideSkipped"):
+                result["noMaterialGuide"] = bool(
+                    result.get("noMaterialGuide")
+                    or _ensure_radio(page, guide_needles, retries=4)
+                )
             result["smartDocRetry"] = _ensure_radio(page, ["智慧文书"])
             result["fullOnline"] = bool(result["fullOnline"] or result["fullOnlineRetry"])
             result["smartDoc"] = bool(result["smartDoc"] or result["smartDocRetry"])
+        # 点下一步前再确认辅导子项（父级误判曾导致此处跳过）
+        if not result.get("noMaterialGuideSkipped") and not _radio_checked(
+            page, "不需要材料辅导"
+        ):
+            result["noMaterialGuideFinal"] = _ensure_radio(page, guide_needles, retries=6)
+            result["noMaterialGuide"] = bool(
+                result.get("noMaterialGuide") or result["noMaterialGuideFinal"]
+            )
         result["radioProbeAfter"] = _probe_radios(page)
         _shot(page, case_id, "opening-process-selected")
 
-        if not result["fullOnline"] or not result["smartDoc"]:
+        if not result["fullOnline"] or not result["smartDoc"] or (
+            not result.get("noMaterialGuide") and not result.get("noMaterialGuideSkipped")
+        ):
             result["error"] = "办理方式单选未生效"
             result["missing"] = [
                 k
                 for k, ok in (
                     ("全程网办", result["fullOnline"]),
+                    ("不需要材料辅导", result.get("noMaterialGuide") or result.get("noMaterialGuideSkipped")),
                     ("智慧文书", result["smartDoc"]),
                 )
                 if not ok
@@ -779,6 +878,9 @@ def run_opening_flow(case_id: str, page: Page, payload: dict[str, Any] | None = 
         )
         if not result["next1"] and _on_process_page(page):
             _ensure_radio(page, ["全程网办"])
+            page.wait_for_timeout(500)
+            if not result.get("noMaterialGuideSkipped"):
+                _ensure_radio(page, guide_needles, retries=6)
             _ensure_radio(page, ["智慧文书"])
             page.wait_for_timeout(400)
             result["next1Retry"] = _click_next_and_wait(
