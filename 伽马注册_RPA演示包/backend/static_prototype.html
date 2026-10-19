@@ -1,13 +1,14 @@
-<!-- 伽马注册 H5 原型 v2 · 8 屏两阶段
-     阶段 A: 登录 / 企业信息 / 人员信息 / 受益人证件 / 信息确认单 (①②③④⑤)
-     阶段 B: 扫码登录 QR / 进度跟踪 / 办理完成 (⑥⑦⑧)
+<!-- 伽马注册 H5 原型 v2
+     注册页、办理完成页独立（不计入步骤条）；首页=企业信息
+     阶段 A: 企业信息 / 人员信息 / 证件 / 信息确认单 (①②③④)
+     阶段 B: 扫码 / 进度 / 提交完成 / 支付宝 / 电子签名 (⑤–⑨)
      自包含 HTML + 内联 CSS + 原生 JS · 政务蓝设计系统 · 无外部依赖 -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>伽马注册 · 企业注册向导原型 v2</title>
+<title>伽马注册</title>
 <style>
 /* ============ 设计令牌（政务蓝 + Modern Minimal） ============ */
 :root{
@@ -809,8 +810,8 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
 }
 @media (min-width:960px){
   :root{ --page-pad:32px; --content-max:880px; }
-  .screen[data-screen="5"],
-  .screen[data-screen="6"]{ max-width:min(960px, 100%); }
+  .screen[data-screen="4"],
+  .screen[data-screen="5"]{ max-width:min(960px, 100%); }
 }
 @media (min-width:1280px){
   :root{ --content-max:960px; }
@@ -838,8 +839,8 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
   <!-- 滚动内容 -->
   <main class="scroll">
 
-    <!-- ===================== 屏 1：登录授权 ===================== -->
-    <section class="screen active" data-screen="0" data-phase="A">
+    <!-- ===================== 注册页（独立，不计入步骤条） ===================== -->
+    <section class="screen active" data-screen="auth" data-phase="AUTH">
       <h2 class="screen-title">欢迎使用伽马注册</h2>
       <p class="screen-desc">手机上的「企业开办」已为你打通政务通道，授权后即可一键采集与提交。</p>
 
@@ -869,9 +870,9 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
       </label>
     </section>
 
-    <!-- ===================== 屏 2：企业信息 1/4 ===================== -->
-    <section class="screen" data-screen="1" data-phase="A">
-      <h2 class="screen-title">企业信息 1/4</h2>
+    <!-- ===================== 首页：企业信息 1/4 ===================== -->
+    <section class="screen" data-screen="0" data-phase="A">
+      <h2 class="screen-title">企业信息</h2>
       <div class="card">
         <div class="field">
           <label>公司字号候选<span class="req">*</span></label>
@@ -892,11 +893,7 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
 
         <div class="field">
           <label for="industry">行业表述<span class="req">*</span></label>
-          <div class="suggest-wrap">
-            <input id="industry" type="text" placeholder="输入关键词，从规范词库选择" data-type="industry" autocomplete="off" />
-            <div class="suggest-list" id="industrySuggest"></div>
-          </div>
-          <p class="api-note" id="industryApiNote"></p>
+          <input id="industry" type="text" placeholder="请输入行业表述，如：科技" data-type="industry" autocomplete="off" />
         </div>
 
         <div class="field">
@@ -1029,7 +1026,7 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
     </section>
 
     <!-- ===================== 屏 3：人员信息 2/4 ===================== -->
-    <section class="screen" data-screen="2" data-phase="A">
+    <section class="screen" data-screen="1" data-phase="A">
       <h2 class="screen-title">人员信息 2/4</h2>
 
       <!-- 法人 -->
@@ -1128,8 +1125,8 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
     </section>
 
     <!-- ===================== 屏 4：受益人、证件 3/4 ===================== -->
-    <section class="screen" data-screen="3" data-phase="A">
-      <h2 class="screen-title">证件 3/4</h2>
+    <section class="screen" data-screen="2" data-phase="A">
+      <h2 class="screen-title">证件及相关文件 3/4</h2>
 
       <div class="card">
         <div class="field" style="margin-top:0;margin-bottom:0;">
@@ -1151,21 +1148,36 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
         </div>
       </div>
 
-      <div class="tip-box tip-orange">
+      <div class="tip-box tip-orange" style="margin-bottom:var(--space-md);">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         提示：同一人兼任多角色只需上传一套正反面；不同人员须各自上传，否则政务网会驳回。
+      </div>
+
+      <div class="card" id="addrProofBlock">
+        <div class="field" style="margin-top:0;margin-bottom:0;">
+          <label>住所使用相关文件<span class="req">*</span></label>
+          <div class="ocr-row" style="grid-template-columns:1fr;">
+            <div class="ocr-card" id="addrProofCard" role="button" tabindex="0">
+              <input type="file" id="addrProofInput" accept=".pdf,application/pdf" />
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span class="ocr-side-label">点击上传 PDF</span>
+              <span class="ocr-hint" style="font-size:10.5px;">仅支持 PDF，用于一网通办材料预览上传</span>
+            </div>
+          </div>
+          <p class="field-tip" style="margin-top:6px;">请上传住所使用相关证明文件（PDF）</p>
+        </div>
       </div>
     </section>
 
     <!-- ===================== 屏 5：信息确认单 ===================== -->
-    <section class="screen" data-screen="4" data-phase="A">
+    <section class="screen" data-screen="3" data-phase="A">
       <h2 class="screen-title">信息确认单</h2>
 
       <div class="card">
         <div class="sum-sec">
           <div class="sum-sec-h">
             企业信息
-            <button class="edit" onclick="go(1)">修改</button>
+            <button class="edit" onclick="go(0)">修改</button>
           </div>
           <div class="sum-line"><div class="k">公司名称</div><div class="v" id="sumName">—</div></div>
           <div class="sum-line"><div class="k">行业</div><div class="v" id="sumIndustry">—</div></div>
@@ -1179,7 +1191,7 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
         <div class="sum-sec">
           <div class="sum-sec-h">
             人员信息
-            <button class="edit" onclick="go(2)">修改</button>
+            <button class="edit" onclick="go(1)">修改</button>
           </div>
           <div class="sum-line"><div class="k">法人</div><div class="v" id="sumLegal">—</div></div>
           <div class="sum-line"><div class="k" id="sumNpLabel">自然人</div><div class="v" id="sumNp">—</div></div>
@@ -1193,10 +1205,11 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
 
         <div class="sum-sec">
           <div class="sum-sec-h">
-            证件影像
-            <button class="edit" onclick="go(3)">修改</button>
+            证件及相关文件
+            <button class="edit" onclick="go(2)">修改</button>
           </div>
           <div class="sum-line"><div class="k">身份证上传</div><div class="v"><span class="sum-tags" id="sumIdCards"><span>未上传</span></span></div></div>
+          <div class="sum-line"><div class="k">住所使用相关文件</div><div class="v" id="sumAddrProof">未上传</div></div>
           <div class="sum-line"><div class="k">实名核验</div><div class="v">承诺实报</div></div>
         </div>
       </div>
@@ -1204,8 +1217,8 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
     </section>
 
     <!-- ===================== 屏 6：扫码登录 ===================== -->
-    <!-- 方案 A：屏 6 内嵌 B 页（/qrlogin?sid）。RPA 在 B 页 bind 时由后端自动启动。 -->
-    <section class="screen" data-screen="5" data-phase="B">
+    <!-- 屏 6 由 #qrLive + REST 轮询 /api/automation/{sid} 驱动；隐藏 iframe /qrlogin 仅保留中继 bind。 -->
+    <section class="screen" data-screen="4" data-phase="B">
       <h2 class="screen-title">扫码登录</h2>
 
       <div class="tip-box tip-orange">
@@ -1230,7 +1243,7 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
     </section>
 
     <!-- ===================== 屏 7：进度跟踪 ===================== -->
-    <section class="screen" data-screen="6" data-phase="B">
+    <section class="screen" data-screen="5" data-phase="B">
       <h2 class="screen-title">进度跟踪</h2>
       <p class="screen-desc">自动填报流程运行中，预计填报5分钟，请耐心等待并保持当前页面打开。</p>
 
@@ -1245,12 +1258,12 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
           <div class="pipe-txt">版本通过<small>企业开办 V3.2 入口校验</small></div>
         </div>
         <div class="pipe-step" id="step3">
-          <div class="pipe-dot run"></div>
-          <div class="pipe-txt">自动填报中<small id="step3Tip">正在填写「名称信息」表</small></div>
+          <div class="pipe-dot done">✓</div>
+          <div class="pipe-txt">材料预览 - 提交<small>默认已完成</small></div>
         </div>
         <div class="pipe-step" id="step4">
-          <div class="pipe-dot wait">4</div>
-          <div class="pipe-txt">材料预览 - 提交<small>等待 RPA 完成最后一步</small></div>
+          <div class="pipe-dot run"></div>
+          <div class="pipe-txt">自动填报中<small id="step3Tip">正在填写「名称信息」表</small></div>
         </div>
       </div>
 
@@ -1275,37 +1288,83 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
       </button>
     </section>
 
-    <!-- ===================== 屏 8：办理完成 ===================== -->
-    <section class="screen" data-screen="7" data-phase="B">
-      <h2 class="screen-title">办理完成</h2>
-
+    <!-- ===================== 屏 8：提交完成（继续签名 / 后续手动） ===================== -->
+    <section class="screen" data-screen="6" data-phase="B">
       <div class="result-hero">
         <div class="result-badge">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
         </div>
         <h3>申请材料已提交</h3>
-        <p>共上传 <b>9</b> 个材料到审批处，提交成功</p>
+        <p>提交成功，可点击下方前往签名完成自动签名操作，也可选择后续手动完成签名，在流程结束后前往一网通办完成</p>
       </div>
 
-      <div class="next-steps">
-        <h4>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          接下来，电子签章（法人本人确认）：
-        </h4>
-        <ol>
-          <li>已在政务云脑电子签章</li>
-          <li>告知已对政务云脑完成签章</li>
-          <li>需要到政务现场签章</li>
-        </ol>
-      </div>
-
-      <button class="btn btn-primary btn-block" type="button" style="margin-top:var(--space-md);" onclick="alert('演示模式：已记录业务索引 YCT2026-08-05-XYZ，可在一网通办查询进度')">
-        查看业务索引
+      <button class="btn btn-primary btn-block" type="button" id="gotoSignBtn" style="margin-top:var(--space-md);">
+        继续完成签名
       </button>
+      <button class="btn btn-ghost btn-block" type="button" id="skipSignBtn" style="margin-top:var(--space-sm);">
+        后续手动完成签名
+      </button>
+    </section>
 
-      <div style="text-align:center; margin-top:var(--space-md); font-size:12px; color:var(--color-text-sub);">
-        电子签章已同步 · 后续可代理
+    <!-- ===================== 屏 9：支付宝登录扫码 ===================== -->
+    <section class="screen" data-screen="7" data-phase="B">
+      <h2 class="screen-title">支付宝登录</h2>
+      <p class="screen-desc">请使用手机支付宝扫描下方二维码，完成一网通办电子签名授权登录。</p>
+      <div class="tip-box tip-orange">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span>扫码成功后将自动进入电子签名步骤；若二维码超时请点「重试」。</span>
       </div>
+      <div class="gov-iframe-wrap">
+        <div class="qr-panel" id="signAlipayPanel">
+          <div class="qr-frame">
+            <div class="qr-placeholder" id="signAlipayPlaceholder">正在加载支付宝登录二维码…</div>
+            <img id="signAlipayQr" class="qr-live" alt="支付宝登录二维码" />
+          </div>
+          <div class="qr-status" id="signAlipayStatus">等待 RPA 同步二维码</div>
+        </div>
+        <div class="qr-actions">
+          <button class="btn btn-ghost" type="button" id="signAlipayCancelBtn">取消</button>
+          <button class="btn btn-primary" type="button" id="signAlipayRetryBtn">重试</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== 屏 10：电子签名人脸扫码 ===================== -->
+    <section class="screen" data-screen="8" data-phase="B">
+      <h2 class="screen-title">电子签名</h2>
+      <p class="screen-desc">请使用支付宝 / 微信扫描下方二维码，完成人脸认证以签署材料。</p>
+      <div class="tip-box tip-orange">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span>扫码并完成人脸认证后将进入办理完成页。</span>
+      </div>
+      <div class="gov-iframe-wrap">
+        <div class="qr-panel" id="signFacePanel">
+          <div class="qr-frame">
+            <div class="qr-placeholder" id="signFacePlaceholder">正在加载人脸认证二维码…</div>
+            <img id="signFaceQr" class="qr-live" alt="人脸认证二维码" />
+          </div>
+          <div class="qr-status" id="signFaceStatus">等待 RPA 同步二维码</div>
+        </div>
+        <div class="qr-actions">
+          <button class="btn btn-ghost" type="button" id="signFaceCancelBtn">取消</button>
+          <button class="btn btn-primary" type="button" id="signFaceRetryBtn">重试</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== 办理完成（独立页，不计入步骤条） ===================== -->
+    <section class="screen" data-screen="done" data-phase="DONE">
+      <h2 class="screen-title">办理完成</h2>
+      <div class="result-hero">
+        <div class="result-badge" id="doneBadge">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <h3 id="doneTitle">电子签名已完成</h3>
+        <p id="doneDesc">已办理完成，可前往一网通办查看进度。</p>
+      </div>
+      <button class="btn btn-primary btn-block" type="button" id="signDoneHomeBtn" style="margin-top:var(--space-md);">
+        返回首页
+      </button>
     </section>
 
   </main>
@@ -1332,19 +1391,34 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
 <script src="/static/cn-region.js"></script>
 <script>
 /* ============ 状态机 ============ */
-const TOTAL = 8;
-const PHASE_A_MAX = 4;        // 0..4 是阶段 A
+const TOTAL = 9;               // ①–⑨（办理完成页独立，不计入）
+const PHASE_A_MAX = 3;        // 0..3 是阶段 A（企业信息→确认单）；④⑤ 之间竖线
+const PHASE_SIGN_SEP = 6;     // ⑥⑦ 之后竖线：⑦⑧ 之间（提交完成 | 支付宝签名）
+const DEFAULT_CASE_ID = 'GM202608062231EF';
+const AUTOMATION_POLL_MS = 1500;
 const STATE = {
   step: 0,
+  onAuth: true,               // 注册独立页（不计入步骤条）
+  onDone: false,              // 办理完成独立页（不计入步骤条）
+  authed: false,
   refillTimes: 2,             // 兼容旧草稿字段
   pipeRunning: false,
-  sid: null,                  // 屏6 会话钥匙：B 页 bind 时由后端自动触发 RPA
-  sidMock: false,             // 屏6 是否走 mock（默认 false=真实政务网；?mock=1 切测试站）
+  sid: null,                  // 扫码页会话钥匙：B 页 bind 时由后端自动触发 RPA
+  sidMock: false,             // 扫码页是否走 mock（默认 false=真实政务网；?mock=1 切测试站）
   scannedDone: false,         // 扫码成功是否已处理（防止 postMessage 与轮询重复触发）
   fillCancelled: false,       // 用户取消填报后忽略残留 login 事件
-  caseId: 'GM202608062231EF',
+  signSid: null,              // 签名阶段会话
+  signPhase: '',              // alipay_qr | face_qr | done
+  signPollTimer: null,
+  signAlipayQr: null,
+  signFaceQr: null,
+  signQrLoadingAlipay: false, // 未拿到新码前显示加载中，勿展示旧码
+  signQrLoadingFace: false,
+  signStarting: false,        // 防止重复点「继续完成签名」打断衔接
+  caseId: DEFAULT_CASE_ID,
   // personKey -> { personKey, personName, roles, frontFileId, backFileId, frontName, backName, frontPreview, backPreview }
   idUploads: {},
+  addressProof: { fileId: '', fileName: '' },
   qrPollTimer: null,
   fillPollTimer: null,
   fillRetryCount: 0,          // 进度页「重试」次数；达 2 次后再失败则改联系客服
@@ -1373,14 +1447,15 @@ const STATE = {
 };
 
 const STEP_META = [
-  { num:'①', phase:'A', desc:'登录授权',           next:'登录 / 进入' },
-  { num:'②', phase:'A', desc:'采集：企业信息',     next:'下一步' },
-  { num:'③', phase:'A', desc:'采集：人员信息',     next:'下一步' },
-  { num:'④', phase:'A', desc:'采集：受益人与证件', next:'下一步' },
-  { num:'⑤', phase:'A', desc:'信息确认单',         next:'确认并建立' },
-  { num:'⑥', phase:'B', desc:'扫码协同页',         next:'等待扫码' },
-  { num:'⑦', phase:'B', desc:'进度跟踪页',         next:'等待 RPA' },
-  { num:'⑧', phase:'B', desc:'完成页',             next:'查看业务索引' },
+  { num:'①', phase:'A', desc:'采集：企业信息',     next:'下一步' },
+  { num:'②', phase:'A', desc:'采集：人员信息',     next:'下一步' },
+  { num:'③', phase:'A', desc:'采集：证件及相关文件', next:'下一步' },
+  { num:'④', phase:'A', desc:'信息确认单',         next:'确认并建立' },
+  { num:'⑤', phase:'B', desc:'扫码协同页',         next:'等待扫码' },
+  { num:'⑥', phase:'B', desc:'进度跟踪页',         next:'等待 RPA' },
+  { num:'⑦', phase:'B', desc:'提交完成',           next:'继续完成签名' },
+  { num:'⑧', phase:'B', desc:'支付宝登录',         next:'等待扫码' },
+  { num:'⑨', phase:'B', desc:'电子签名',           next:'等待扫码' },
 ];
 
 /* ============ 渲染步骤条 ============ */
@@ -1388,7 +1463,7 @@ function renderSteps(){
   const stepsEl = document.getElementById('steps');
   stepsEl.innerHTML = STEP_META.map((m, i)=>{
     const cls = i<STATE.step ? 'done' : i===STATE.step ? 'active' : 'future';
-    const sep = i===PHASE_A_MAX ? ' phase-sep' : '';
+    const sep = (i===PHASE_A_MAX || i===PHASE_SIGN_SEP) ? ' phase-sep' : '';
     return `<div class="step ${cls}${sep}" data-i="${i}">
       <span class="dot">${i+1}</span><span class="lbl">${m.num}</span>
     </div>`;
@@ -1396,32 +1471,81 @@ function renderSteps(){
   document.getElementById('progress').style.width = ((STATE.step+1)/TOTAL*100).toFixed(2)+'%';
 }
 
-/* ============ 切换屏幕 ============ */
+/* ============ 注册独立页 ============ */
+function setWizardChrome(visible){
+  const steps = document.getElementById('steps');
+  const track = document.querySelector('.progress-track');
+  if(steps) steps.style.display = visible ? '' : 'none';
+  if(track) track.style.display = visible ? '' : 'none';
+}
+
+function showAuth(){
+  STATE.onAuth = true;
+  STATE.onDone = false;
+  STATE.step = -1;
+  document.querySelectorAll('.screen').forEach(el=>el.classList.remove('active'));
+  const auth = document.querySelector('.screen[data-screen="auth"]');
+  if(auth) auth.classList.add('active');
+  setWizardChrome(false);
+  const back = document.getElementById('backBtn');
+  const next = document.getElementById('nextBtn');
+  if(back) back.classList.add('hidden');
+  if(next) next.textContent = '登录 / 进入';
+  document.getElementById('footer').style.display = '';
+  window.scrollTo(0,0);
+}
+
+function showDone(opts){
+  stopSignPolling();
+  STATE.onAuth = false;
+  STATE.onDone = true;
+  STATE.step = -1;
+  // 仅签名成功显示「电子签名已完成」；后续手动 / 签名途中取消文案相同
+  const signedOk = !(opts && (opts.cancelled || opts.skipped || opts.mode === 'cancelled' || opts.mode === 'skipped'));
+  const titleEl = document.getElementById('doneTitle');
+  const descEl = document.getElementById('doneDesc');
+  if(signedOk){
+    if(titleEl) titleEl.textContent = '电子签名已完成';
+    if(descEl) descEl.textContent = '已办理完成，可前往一网通办查看进度。';
+  }else{
+    if(titleEl) titleEl.textContent = '材料已提交';
+    if(descEl) descEl.textContent = '签名操作已取消，请前往一网通办手动完成签名操作';
+  }
+  document.querySelectorAll('.screen').forEach(el=>el.classList.remove('active'));
+  const done = document.querySelector('.screen[data-screen="done"]');
+  if(done) done.classList.add('active');
+  setWizardChrome(false);
+  document.getElementById('footer').style.display = 'none';
+  window.scrollTo(0,0);
+}
+
+/* ============ 切换屏幕（企业信息=首页 0） ============ */
 function go(i){
   if(i<0 || i>=TOTAL) return;
+  STATE.onAuth = false;
+  STATE.onDone = false;
+  STATE.authed = true;
   STATE.step = i;
   document.querySelectorAll('.screen').forEach(el=>el.classList.remove('active'));
   document.querySelector(`.screen[data-screen="${i}"]`).classList.add('active');
-  if(i===4) syncConfirm();   // 进入信息确认单 → 同步屏1 动态值
-  if(i===3) refreshIdPeopleUploads();  // 屏4：按当前人员去重渲染上传位
-  if(i===2){ ensureUboCards(); refreshUboNameOptions(); }
-  if(i===1) ensureNameScopeApis();     // 企业信息：拉 meta / 经营范围目录
+  setWizardChrome(true);
+  if(i===3) syncConfirm();
+  if(i===2){ refreshIdPeopleUploads(); bindAddrProofUpload(); refreshAddrProofCard(); }
+  if(i===1){ ensureUboCards(); refreshUboNameOptions(); }
+  if(i===0) ensureNameScopeApis();
 
   const meta = STEP_META[i];
-  // 底部按钮
   const back = document.getElementById('backBtn');
   const next = document.getElementById('nextBtn');
   if(i===0){ back.classList.add('hidden'); }
   else { back.classList.remove('hidden'); }
   next.textContent = meta.next;
 
-  // 特殊屏：底部按钮隐藏
-  if(i===5){
+  if(i===4){
     if(STATE.fillCancelled){
-      // 已取消则不允许挂载扫码页继续拉取，回到确认页
-      STATE.step = 4;
+      STATE.step = 3;
       document.querySelectorAll('.screen').forEach(el=>el.classList.remove('active'));
-      document.querySelector('.screen[data-screen="4"]').classList.add('active');
+      document.querySelector('.screen[data-screen="3"]').classList.add('active');
       document.getElementById('footer').style.display = '';
       renderSteps();
       return;
@@ -1429,14 +1553,14 @@ function go(i){
     const actions = document.getElementById('qrActions');
     if(actions) actions.style.display = '';
     document.getElementById('footer').style.display = 'none';
-    STATE.scannedDone = false;        // 重置扫码完成标记（支持回屏6 重新扫码）
+    STATE.scannedDone = false;
     STATE.lastQrData = null;
     STATE.qrReceivedAt = 0;
-    mountBPageFrame();   // 进屏6：挂载 B 页 iframe（/qrlogin?sid），RPA 在 bind 时由后端自动启动
-  }else if(i===6){
+    mountBPageFrame();
+  }else if(i===5 || i===6 || i===7 || i===8){
     document.getElementById('footer').style.display = 'none';
-  }else if(i===7){
-    document.getElementById('footer').style.display = 'none';
+    if(i===7) startSignAlipayPolling();
+    if(i===8) startSignFacePolling();
   }else{
     document.getElementById('footer').style.display = '';
   }
@@ -1446,15 +1570,36 @@ function go(i){
   scheduleSaveDraft();
 }
 
-function next(){
-  const i = STATE.step;
-  if(i===0){                                  // 0→1 登录校验
+async function next(){
+  if(STATE.onAuth || STATE.step < 0){
     if(!document.getElementById('agree').checked){ alert('请先勾选同意《用户授权协议》'); return; }
     if(!requireMobile(document.getElementById('phone').value, '手机号')) return;
     if(document.getElementById('code').value.length!==6){ alert('请填写 6 位验证码'); return; }
-    go(1); return;
+    const phone = document.getElementById('phone').value.trim();
+    const code = document.getElementById('code').value.trim();
+    try{
+      const origin = backendOriginForPrototype();
+      const headers = await authHeaders();
+      const res = await fetch(origin + '/api/auth/sms/verify', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ phone, code, token: STATE.apiToken }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if(!res.ok || !data.ok){
+        alert((data && data.error) || '验证码校验失败，请重试');
+        return;
+      }
+    }catch(err){
+      alert('验证码校验失败：' + ((err && err.message) || String(err)));
+      return;
+    }
+    STATE.authed = true;
+    STATE.authPhone = phone;
+    go(0); return;
   }
-  if(i===1){                                  // 1→2 企业信息校验
+  const i = STATE.step;
+  if(i===0){
     if(document.querySelectorAll('#nameChips .chip.zi.on').length < 1){ alert('请至少选择 / 生成一个字号候选'); return; }
     if(!document.getElementById('industry').value.trim()){ alert('请填写行业表述'); return; }
     if(!document.getElementById('orgForm').value){ alert('请选择组织形式'); return; }
@@ -1466,13 +1611,13 @@ function next(){
     }
     const bad = [...document.querySelectorAll('#nameChips .chip.zi.on')].find(c => c.dataset.status === 'unavailable');
     if(bad){ alert('已选字号「' + bad.dataset.zi + '」核名不合规，请取消勾选或更换字号'); return; }
+    go(1); return;
+  }
+  if(i===1){
+    if(!validatePersonnel()) return;
     go(2); return;
   }
-  if(i===2){                                  // 2→3 人员信息校验
-    if(!validatePersonnel()) return;
-    go(3); return;
-  }
-  if(i===3){                                  // 3→4 每位去重人员须双面齐全
+  if(i===2){
     refreshIdPeopleUploads();
     const missing = collectIdPeople().filter(p => {
       const u = STATE.idUploads[p.personKey] || {};
@@ -1482,22 +1627,29 @@ function next(){
       alert('请为以下人员上传身份证正反面：' + missing.map(p => p.personName + '（' + p.roles.join('、') + '）').join('、'));
       return;
     }
-    go(4); return;
+    if(!(STATE.addressProof && STATE.addressProof.fileId)){
+      alert('请上传住所使用相关文件（PDF）');
+      return;
+    }
+    go(3); return;
   }
-  if(i===4){ enterPhaseB(); return; }   // 5→6 进入阶段 B
-  if(i===5){ return; }                  // 扫码页无底部「下一步」，成功后自动进屏
-  if(i===7){ return; }                  // 完成页无 next
+  if(i===3){ enterPhaseB(); return; }
+  if(i===4){ return; }
+  if(i===6){ startSignatureFlow(); return; }
+  if(i>=7){ return; }
   go(i+1);
 }
 function back(){
+  if(STATE.onAuth || STATE.onDone) return;
   const i = STATE.step;
-  if(i===6){ go(5); return; }           // 进度页回到扫码页
-  if(i===7){ go(6); return; }           // 完成页回到进度页
+  if(i===5){ go(4); return; }
+  if(i===6){ go(5); return; }
+  if(i===7 || i===8){ go(6); return; }
   if(i<=0) return;
   go(i-1);
 }
 
-/* ============ 屏 5 → 6：进入阶段 B ============ */
+/* ============ 确认单 → 扫码：进入阶段 B ============ */
 /* ============ 一网通办住所：区县→街道级联 ============ */
 const SH_STREET_MAP = {
   '黄浦区': ['南京东路街道','外滩街道','半淞园街道','小东门街道','豫园街道','老西门街道','五里桥街道','打浦桥街道','淮海中路街道','瑞金二路街道'],
@@ -1882,6 +2034,7 @@ function buildCasePayload(){
       executivePartnerNames,
       licenseHolderNames,
     },
+    authPhone: STATE.authPhone || (document.getElementById('phone')?.value || '').trim() || '',
     beneficialOwner,
     beneficialOwners,
     attachments: {
@@ -1895,7 +2048,9 @@ function buildCasePayload(){
           backFileId: u.backFileId || '',
         };
       }),
-      addressProof: [],
+      addressProof: (STATE.addressProof && STATE.addressProof.fileId)
+        ? [STATE.addressProof.fileId]
+        : [],
       other: [],
     },
   };
@@ -1918,7 +2073,7 @@ async function syncCasePayloadToGamma(){
   const res = await fetch(origin + '/api/case-payload', {
     method: 'POST',
     headers,
-    body: JSON.stringify({ caseId: 'GM202608062231EF', payload, token: STATE.apiToken }),
+    body: JSON.stringify({ caseId: DEFAULT_CASE_ID, payload, token: STATE.apiToken }),
   });
   const data = await res.json().catch(() => ({}));
   if(!res.ok || !data.ok){
@@ -1936,38 +2091,24 @@ async function enterPhaseB(){
   try{
     const sync = await syncCasePayloadToGamma();
     console.log('[enterPhaseB] case synced', sync);
-    STATE.syncedCaseId = sync.caseId || 'GM202608062231EF';
+    STATE.syncedCaseId = sync.caseId || DEFAULT_CASE_ID;
   }catch(err){
     console.warn('[enterPhaseB] sync case failed', err);
     alert('写入 gamma-yct 案件失败：' + (err && err.message ? err.message : err));
     return; // 住所等关键字段未写入则禁止进入扫码/RPA
   }
   try{
-    const origin = backendOriginForPrototype();
-    const headers = await authHeaders();
-    const res = await fetch(origin + '/api/start-automation', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        caseId: STATE.syncedCaseId || 'GM202608062231EF',
-        sid: STATE.sid,
-        token: STATE.apiToken,
-      }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if(!res.ok || !data.ok){
-      throw new Error((data && (data.message || data.error)) || ('启动自动化失败 HTTP ' + res.status));
-    }
+    const data = await postStartAutomation(STATE.sid, STATE.syncedCaseId);
     console.log('[enterPhaseB] automation started', data);
   }catch(err){
     console.warn('[enterPhaseB] start automation failed', err);
     alert('启动后台填报失败：' + (err && err.message ? err.message : err) + '\n请确认已启动演示后端，然后重试「确认并建立」。');
     return; // 未启动自动化则不进扫码页，避免空等
   }
-  go(5);
+  go(4);
 }
 
-/* ============ 屏 6：挂载 B 页（iframe 内 /qrlogin?sid） ============ */
+/* ============ 扫码页：隐藏 iframe 中继 + #qrLive REST 轮询 ============ */
 function makeSid(){
   return 'sid-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
 }
@@ -2003,6 +2144,87 @@ async function authHeaders(extra){
   return Object.assign({ 'Content-Type': 'application/json', 'X-Gamma-Token': token }, extra || {});
 }
 
+function currentCaseId(fallback){
+  return String(fallback || STATE.syncedCaseId || STATE.caseId || DEFAULT_CASE_ID).trim() || DEFAULT_CASE_ID;
+}
+
+async function postStartAutomation(sid, caseId){
+  const origin = backendOriginForPrototype();
+  const headers = await authHeaders();
+  const res = await fetch(origin + '/api/start-automation', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      caseId: currentCaseId(caseId),
+      sid,
+      token: STATE.apiToken,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if(!res.ok || !data.ok){
+    throw new Error((data && (data.message || data.error)) || ('启动自动化失败 HTTP ' + res.status));
+  }
+  return data;
+}
+
+async function getAutomationStatus(sid){
+  const origin = backendOriginForPrototype();
+  const res = await fetch(origin + '/api/automation/' + encodeURIComponent(sid));
+  const data = await res.json().catch(() => ({}));
+  return { res, data };
+}
+
+/** 统一取消：awaitDone=true 时等待响应后再稍顿，避免重试时误杀新会话 */
+async function cancelAutomation(sid, caseId, awaitDone){
+  const origin = backendOriginForPrototype();
+  const cid = currentCaseId(caseId);
+  let headers = { 'Content-Type': 'application/json' };
+  if(awaitDone){
+    try{ headers = await authHeaders(); }catch(e){}
+  }else if(STATE.apiToken){
+    headers['X-Gamma-Token'] = STATE.apiToken;
+  }
+  const token = STATE.apiToken || '';
+  const opts = (payload) => ({
+    method: 'POST',
+    headers,
+    body: JSON.stringify(Object.assign({ token }, payload || {})),
+    keepalive: !awaitDone,
+  });
+  const tasks = [];
+  if(sid){
+    tasks.push(fetch(origin + '/api/automation/' + encodeURIComponent(sid) + '/cancel', opts({})).catch(() => {}));
+  }
+  tasks.push(fetch(origin + '/api/automation/cancel-case', opts({ caseId: cid })).catch(() => {}));
+  if(awaitDone){
+    await Promise.all(tasks);
+    await new Promise(r => setTimeout(r, 1000));
+  }
+}
+
+function startStatusPoll(timerKey, shouldContinue, onTick, onFetchError){
+  if(STATE[timerKey]){
+    clearInterval(STATE[timerKey]);
+    STATE[timerKey] = null;
+  }
+  const tick = async () => {
+    if(!shouldContinue()){
+      if(STATE[timerKey]){
+        clearInterval(STATE[timerKey]);
+        STATE[timerKey] = null;
+      }
+      return;
+    }
+    try{
+      await onTick();
+    }catch(err){
+      if(onFetchError) onFetchError(err);
+    }
+  };
+  tick();
+  STATE[timerKey] = setInterval(tick, AUTOMATION_POLL_MS);
+}
+
 function showLiveQr(dataUrl){
   const panel = document.getElementById('qrPanel');
   const img = document.getElementById('qrLive');
@@ -2032,16 +2254,12 @@ function startQrPolling(){
   if(STATE.fillCancelled) return;
   const sid = STATE.sid;
   if(!sid) return;
-  const origin = backendOriginForPrototype();
   const QR_TIMEOUT_MS = 90000;
-  const tick = async () => {
-    if(STATE.fillCancelled || STATE.step !== 5 || STATE.sid !== sid){
-      stopQrPolling();
-      return;
-    }
-    try{
-      const res = await fetch(origin + '/api/automation/' + encodeURIComponent(sid));
-      const data = await res.json().catch(() => ({}));
+  startStatusPoll(
+    'qrPollTimer',
+    () => !(STATE.fillCancelled || STATE.step !== 4 || STATE.sid !== sid),
+    async () => {
+      const { res, data } = await getAutomationStatus(sid);
       if(!res.ok || !data.ok){
         const st = document.getElementById('qrStatus');
         if(st && !document.getElementById('qrPanel')?.classList.contains('has-qr')){
@@ -2079,16 +2297,15 @@ function startQrPolling(){
         if(actions) actions.style.display = 'none';
         scannedOK();
       }
-    }catch(err){
+    },
+    () => {
       const st = document.getElementById('qrStatus');
       if(st && !document.getElementById('qrPanel')?.classList.contains('has-qr')){
         st.className = 'qr-status err';
         st.textContent = '二维码同步失败，请点击「重试」';
       }
     }
-  };
-  tick();
-  STATE.qrPollTimer = setInterval(tick, 1500);
+  );
 }
 
 function mountBPageFrame(){
@@ -2118,43 +2335,13 @@ function mountBPageFrame(){
 }
 
 function notifyCancelAutomation(sid, caseId){
-  const origin = backendOriginForPrototype();
-  const cid = (caseId || STATE.syncedCaseId || STATE.caseId || 'GM202608062231EF').trim();
-  // keepalive：离开页面/点取消后仍要发出；不要短超时打断关窗
-  const send = (url, payload) => {
-    const body = JSON.stringify(Object.assign({ token: STATE.apiToken || '' }, payload || {}));
-    const headers = { 'Content-Type': 'application/json' };
-    if (STATE.apiToken) headers['X-Gamma-Token'] = STATE.apiToken;
-    fetch(url, { method: 'POST', headers, body, keepalive: true }).catch(() => {});
-  };
-  if(sid){
-    send(origin + '/api/automation/' + encodeURIComponent(sid) + '/cancel', {});
-  }
-  send(origin + '/api/automation/cancel-case', { caseId: cid });
+  // fire-and-forget（keepalive），离开页/点取消后仍要发出
+  cancelAutomation(sid, caseId, false);
 }
 
 /** 重试前等待取消完成，避免新会话被上一轮 cancel 误杀 / 写成「用户取消」 */
 async function awaitCancelAutomation(sid, caseId){
-  const origin = backendOriginForPrototype();
-  const cid = (caseId || STATE.syncedCaseId || STATE.caseId || 'GM202608062231EF').trim();
-  let headers = { 'Content-Type': 'application/json' };
-  try{ headers = await authHeaders(); }catch(e){}
-  const token = STATE.apiToken || '';
-  const tasks = [];
-  if(sid){
-    tasks.push(fetch(origin + '/api/automation/' + encodeURIComponent(sid) + '/cancel', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ token }),
-    }).catch(() => {}));
-  }
-  tasks.push(fetch(origin + '/api/automation/cancel-case', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ token, caseId: cid }),
-  }).catch(() => {}));
-  await Promise.all(tasks);
-  await new Promise(r => setTimeout(r, 1000));
+  await cancelAutomation(sid, caseId, true);
 }
 
 function cancelQrLogin(){
@@ -2172,7 +2359,7 @@ function cancelQrLogin(){
   STATE.sid = '';
   STATE.lastQrData = null;
   STATE.qrReceivedAt = 0;
-  go(4);
+  go(3);
 }
 
 async function retryQrLogin(){
@@ -2185,28 +2372,14 @@ async function retryQrLogin(){
   stopQrPolling();
   showLiveQr('');
   const oldSid = STATE.sid;
-  const caseId = STATE.syncedCaseId || STATE.caseId || 'GM202608062231EF';
+  const caseId = currentCaseId();
   // 先等旧会话真正取消，再开新 sid，避免旧 cancel 误关新窗
   await awaitCancelAutomation(oldSid, caseId);
   STATE.sid = makeSid();
   STATE.lastQrData = null;
   STATE.qrReceivedAt = 0;
   try{
-    const origin = backendOriginForPrototype();
-    const headers = await authHeaders();
-    const res = await fetch(origin + '/api/start-automation', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        caseId,
-        sid: STATE.sid,
-        token: STATE.apiToken,
-      }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if(!res.ok || !data.ok){
-      throw new Error((data && (data.message || data.error)) || ('重试失败 HTTP ' + res.status));
-    }
+    await postStartAutomation(STATE.sid, caseId);
     mountBPageFrame();
   }catch(err){
     if(status){
@@ -2219,7 +2392,7 @@ async function retryQrLogin(){
   }
 }
 
-/* 监听 B 页（iframe）扫码成功 → 自动进屏 7 */
+/* 兼容隐藏 iframe /qrlogin 的 login_success postMessage；主路径由 #qrLive REST 轮询驱动 */
 window.addEventListener('message', function(ev){
   let d; try { d = ev.data; } catch (e) { return; }
   if (!d || typeof d !== 'object') return;
@@ -2230,15 +2403,13 @@ window.addEventListener('message', function(ev){
   }
 });
 
-/* 屏 6 二维码：方案 A 改为由 B 页 iframe（/qrlogin）实时展示 RPA 抓取的真实二维码，旧版本地假二维码 renderQR() 已弃用。 */
-
 /* ============ 屏 6 → 7：扫码成功，进入进度跟踪 ============ */
 function scannedOK(){
   if (STATE.fillCancelled) return;
   if (STATE.scannedDone) return;          // 防止 postMessage 与轮询重复触发
   STATE.scannedDone = true;
   stopQrPolling();
-  go(6);
+  go(5);
   STATE.pipeRunning = true;
   startFillProgressPolling();
 }
@@ -2260,8 +2431,9 @@ function resetPipeProgressUI(){
   const refillBtn = document.getElementById('gotoRefill');
   const note = document.getElementById('nameFailNote');
   const retryBtn = document.getElementById('retryFillBtn');
-  setPipeDot(document.getElementById('step3'), 'run');
-  setPipeDot(document.getElementById('step4'), 'wait', '4');
+  // step3=材料预览默认完成；step4=自动填报中
+  setPipeDot(document.getElementById('step3'), 'done', '✓');
+  setPipeDot(document.getElementById('step4'), 'run');
   if(tip3) tip3.textContent = '正在同步填报进度…';
   if(pendingTip) pendingTip.style.display = 'none';
   if(refillBtn) refillBtn.style.display = 'none';
@@ -2281,8 +2453,8 @@ function showNameFailUI(reason){
   const pendingText = document.getElementById('pendingTipText');
   const refillBtn = document.getElementById('gotoRefill');
   const note = document.getElementById('nameFailNote');
-  setPipeDot(document.getElementById('step3'), 'fail', '!');
-  setPipeDot(document.getElementById('step4'), 'wait', '4');
+  setPipeDot(document.getElementById('step3'), 'done', '✓');
+  setPipeDot(document.getElementById('step4'), 'fail', '!');
   const msg = reason || '核名不通过，请返回修改字号并重试';
   if(tip3) tip3.textContent = msg.indexOf('核名不通过') >= 0 ? msg : ('核名不通过：' + msg);
   if(pendingText) pendingText.textContent = '待办：核名不通过，请返回修改字号并重试';
@@ -2336,8 +2508,8 @@ function showFillRetryOrSupportUI(detail){
   const pendingText = document.getElementById('pendingTipText');
   const refillBtn = document.getElementById('gotoRefill');
   const note = document.getElementById('nameFailNote');
-  setPipeDot(document.getElementById('step3'), 'fail', '!');
-  setPipeDot(document.getElementById('step4'), 'wait', '4');
+  setPipeDot(document.getElementById('step3'), 'done', '✓');
+  setPipeDot(document.getElementById('step4'), 'fail', '!');
   if(tip3) tip3.textContent = '系统异常，请点击重试或返回上一页。';
   const needSupport = STATE.fillRetryCount >= 2;
   if(pendingText){
@@ -2368,15 +2540,20 @@ function startFillProgressPolling(){
     showFillRetryOrSupportUI('未关联自动化会话');
     return;
   }
-  const origin = backendOriginForPrototype();
   const MAX_POLL_FAILS = 3;
   let failStreak = 0;
 
-  const tick = async () => {
-    if(STATE.step !== 6 || STATE.sid !== sid){ stopFillProgressPolling(); return; }
-    try{
-      const res = await fetch(origin + '/api/automation/' + encodeURIComponent(sid));
-      const data = await res.json().catch(() => ({}));
+  startStatusPoll(
+    'fillPollTimer',
+    () => {
+      if(STATE.step !== 5 || STATE.sid !== sid){
+        stopFillProgressPolling();
+        return false;
+      }
+      return true;
+    },
+    async () => {
+      const { res, data } = await getAutomationStatus(sid);
       if(!res.ok || !data.ok){
         failStreak += 1;
         const tip3 = document.getElementById('step3Tip');
@@ -2402,7 +2579,6 @@ function startFillProgressPolling(){
         return;
       }
 
-      // 阶段自动重试 3 次仍失败：立即展示系统异常 + 重试/返回
       if(data.needsHuman){
         showFillRetryOrSupportUI(
           data.progress || data.customerMessage || data.reason || data.error || '系统异常'
@@ -2411,20 +2587,19 @@ function startFillProgressPolling(){
       }
 
       if(data.running || (!data.finished && !data.fillOk)){
-        setPipeDot(document.getElementById('step3'), 'run');
-        setPipeDot(document.getElementById('step4'), 'wait', '4');
+        setPipeDot(document.getElementById('step3'), 'done', '✓');
+        setPipeDot(document.getElementById('step4'), 'run');
       }
 
       if(data.fillOk && (data.finished || (data.stagesDone || []).length >= 4)){
         STATE.fillRetryCount = 0;
         stopFillProgressPolling();
         setPipeDot(document.getElementById('step3'), 'done', '✓');
-        setPipeDot(document.getElementById('step4'), 'run');
+        setPipeDot(document.getElementById('step4'), 'done', '✓');
         if(tip3) tip3.textContent = data.progress || '填报完成，正在整理结果…';
-  setTimeout(()=>{
-          if(STATE.step !== 6) return;
-          setPipeDot(document.getElementById('step4'), 'done', '✓');
-          setTimeout(()=> go(7), 500);
+        setTimeout(()=>{
+          if(STATE.step !== 5) return;
+          setTimeout(()=> go(6), 500);
         }, 700);
         return;
       }
@@ -2434,7 +2609,8 @@ function startFillProgressPolling(){
           data.error || data.reason || data.progress || '系统异常'
         );
       }
-    }catch(err){
+    },
+    () => {
       failStreak += 1;
       const tip3 = document.getElementById('step3Tip');
       if(tip3) tip3.textContent = `进度同步失败，正在重试（${failStreak}/${MAX_POLL_FAILS}）…`;
@@ -2442,11 +2618,371 @@ function startFillProgressPolling(){
         showFillRetryOrSupportUI('进度同步失败');
       }
     }
-  };
-
-  tick();
-  STATE.fillPollTimer = setInterval(tick, 1500);
+  );
 }
+
+/* ============ 签名流程：前往签名 → 支付宝扫码 → 人脸扫码 → 办理完成 ============ */
+function stopSignPolling(){
+  if(STATE.signPollTimer){
+    clearInterval(STATE.signPollTimer);
+    STATE.signPollTimer = null;
+  }
+}
+
+function showSignQr(kind, dataUrl){
+  const isAlipay = kind === 'alipay';
+  const panel = document.getElementById(isAlipay ? 'signAlipayPanel' : 'signFacePanel');
+  const img = document.getElementById(isAlipay ? 'signAlipayQr' : 'signFaceQr');
+  const ph = document.getElementById(isAlipay ? 'signAlipayPlaceholder' : 'signFacePlaceholder');
+  const status = document.getElementById(isAlipay ? 'signAlipayStatus' : 'signFaceStatus');
+  if(!panel || !img) return;
+  if(!dataUrl){
+    // 加载中：清掉旧码，只显示占位
+    panel.classList.remove('has-qr');
+    img.removeAttribute('src');
+    if(isAlipay){
+      STATE.signAlipayQr = null;
+      STATE.signQrLoadingAlipay = true;
+    }else{
+      STATE.signFaceQr = null;
+      STATE.signQrLoadingFace = true;
+    }
+    if(ph){
+      ph.style.display = '';
+      ph.textContent = isAlipay ? '正在加载支付宝登录二维码…' : '正在加载人脸认证二维码…';
+    }
+    if(status){
+      status.className = 'qr-status';
+      status.textContent = '加载中…';
+    }
+    return;
+  }
+  const src = dataUrl.startsWith('data:') ? dataUrl : ('data:image/png;base64,' + dataUrl);
+  img.src = src;
+  panel.classList.add('has-qr');
+  if(ph) ph.style.display = 'none';
+  if(status){
+    status.className = 'qr-status ok';
+    status.textContent = isAlipay ? '请使用支付宝扫码' : '请使用支付宝 / 微信扫码完成人脸认证';
+  }
+  if(isAlipay){
+    STATE.signAlipayQr = dataUrl;
+    STATE.signQrLoadingAlipay = false;
+  }else{
+    STATE.signFaceQr = dataUrl;
+    STATE.signQrLoadingFace = false;
+  }
+}
+
+async function startSignatureFlow(){
+  // 页面未超时前，稍晚点「继续完成签名」也应能接上挂起会话；防重复点击打断
+  if(STATE.signStarting) return;
+  STATE.signStarting = true;
+  const caseId = currentCaseId();
+  stopSignPolling();
+  STATE.signPhase = '';
+  STATE.signAlipayQr = null;
+  STATE.signFaceQr = null;
+  // 复用填报 sid，便于挂起唤醒与取消同一案件；若无则新建
+  if(!STATE.sid) STATE.sid = makeSid();
+  STATE.signSid = STATE.sid;
+  showSignQr('alipay', '');
+  showSignQr('face', '');
+  // 先进入支付宝扫码页展示加载中，再请求后端（可重试）
+  go(7);
+  const statusEl = document.getElementById('signAlipayStatus');
+  if(statusEl){
+    statusEl.className = 'qr-status';
+    statusEl.textContent = '正在启动电子签名…';
+  }
+  const origin = backendOriginForPrototype();
+  let lastErr = '';
+  try{
+    for(let attempt = 1; attempt <= 6; attempt++){
+      try{
+        const headers = await authHeaders();
+        const res = await fetch(origin + '/api/start-signature', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            caseId,
+            sid: STATE.signSid,
+            token: STATE.apiToken,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if(!res.ok || !data.ok || data.started === false){
+          lastErr = (data && (data.message || data.error)) || ('启动签名失败 HTTP ' + res.status);
+          if(statusEl){
+            statusEl.className = 'qr-status';
+            statusEl.textContent = `启动中（${attempt}/6）：` + lastErr;
+          }
+          // 挂起尚未就绪时多等一会再试（用户稍晚点继续签名）
+          await new Promise(r => setTimeout(r, 900 * attempt));
+          continue;
+        }
+        if(statusEl){
+          statusEl.className = 'qr-status';
+          statusEl.textContent = '签名流程已启动，正在加载二维码…';
+        }
+        STATE.signQrLoadingAlipay = true;
+        startSignAlipayPolling();
+        return;
+      }catch(err){
+        lastErr = (err && err.message) ? err.message : String(err);
+        await new Promise(r => setTimeout(r, 900 * attempt));
+      }
+    }
+    alert('启动电子签名失败：' + lastErr);
+    if(statusEl){
+      statusEl.className = 'qr-status err';
+      statusEl.textContent = '启动失败：' + lastErr + '（可返回上一页后重新点继续签名）';
+    }
+  }finally{
+    STATE.signStarting = false;
+  }
+}
+
+function startSignAlipayPolling(){
+  stopSignPolling();
+  const sid = STATE.signSid || STATE.sid;
+  if(!sid) return;
+  startStatusPoll(
+    'signPollTimer',
+    () => {
+      if(STATE.step !== 7 || (STATE.signSid || STATE.sid) !== sid){
+        stopSignPolling();
+        return false;
+      }
+      return true;
+    },
+    async () => {
+      const { res, data } = await getAutomationStatus(sid);
+      if(!res.ok || !data.ok){
+        const st = document.getElementById('signAlipayStatus');
+        if(st && !document.getElementById('signAlipayPanel')?.classList.contains('has-qr')){
+          st.className = 'qr-status';
+          st.textContent = (data && data.error) ? ('等待中：' + data.error) : '等待签名自动化就绪…';
+        }
+        return;
+      }
+      if(data.progress){
+        const st = document.getElementById('signAlipayStatus');
+        if(st && !document.getElementById('signAlipayPanel')?.classList.contains('has-qr')){
+          st.textContent = data.progress;
+        }
+      }
+      const kind = String(data.qrKind || '');
+      // 仅接受支付宝码；加载中且后端已清空时绝不回显旧码
+      if(data.hasQr && data.qr && kind === 'alipay'){
+        if(data.qr !== STATE.signAlipayQr) showSignQr('alipay', data.qr);
+      }else if(STATE.signQrLoadingAlipay && !data.hasQr){
+        const stLoad = document.getElementById('signAlipayStatus');
+        if(stLoad && !document.getElementById('signAlipayPanel')?.classList.contains('has-qr')){
+          stLoad.className = 'qr-status';
+          stLoad.textContent = data.progress || '正在加载二维码…';
+        }
+      }
+      const phase = String(data.signPhase || '');
+      const st = String(data.caseStatus || '');
+      STATE.signPhase = phase || STATE.signPhase;
+      if(
+        phase === 'alipay_scanned' ||
+        phase === 'face_qr' ||
+        phase === 'done' ||
+        st === 'awaiting_sign_face_qr' ||
+        st === 'sign_done' ||
+        (kind === 'face' && data.hasQr)
+      ){
+        stopSignPolling();
+        const stEl = document.getElementById('signAlipayStatus');
+        if(stEl){ stEl.className = 'qr-status ok'; stEl.textContent = '扫码成功，进入电子签名…'; }
+        showSignQr('face', '');
+        setTimeout(()=> { if(STATE.step === 7) go(8); }, 400);
+        return;
+      }
+      if(data.finished && !data.signDone && data.error && !data.running){
+        const stEl = document.getElementById('signAlipayStatus');
+        if(stEl){
+          stEl.className = 'qr-status err';
+          stEl.textContent = '签名失败：' + data.error + '（可点重试获取二维码）';
+        }
+      }
+    },
+    () => {
+      const st = document.getElementById('signAlipayStatus');
+      if(st && !document.getElementById('signAlipayPanel')?.classList.contains('has-qr')){
+        st.className = 'qr-status err';
+        st.textContent = '二维码同步失败，请点击「重试」';
+      }
+    }
+  );
+}
+
+function startSignFacePolling(){
+  stopSignPolling();
+  const sid = STATE.signSid || STATE.sid;
+  if(!sid) return;
+  if(!STATE.signFaceQr) showSignQr('face', '');
+  startStatusPoll(
+    'signPollTimer',
+    () => {
+      if(STATE.step !== 8 || (STATE.signSid || STATE.sid) !== sid){
+        stopSignPolling();
+        return false;
+      }
+      return true;
+    },
+    async () => {
+      const { res, data } = await getAutomationStatus(sid);
+      if(!res.ok || !data.ok){
+        const st = document.getElementById('signFaceStatus');
+        if(st && !document.getElementById('signFacePanel')?.classList.contains('has-qr')){
+          st.className = 'qr-status';
+          st.textContent = (data && data.error) ? ('等待中：' + data.error) : '正在加载人脸二维码…';
+        }
+        return;
+      }
+      if(data.progress){
+        const st = document.getElementById('signFaceStatus');
+        if(st && !document.getElementById('signFacePanel')?.classList.contains('has-qr')){
+          st.textContent = data.progress;
+        }
+      }
+      const kind = String(data.qrKind || '');
+      if(data.hasQr && data.qr && kind === 'face'){
+        if(data.qr !== STATE.signFaceQr) showSignQr('face', data.qr);
+      }else if(STATE.signQrLoadingFace && !data.hasQr){
+        const stLoad = document.getElementById('signFaceStatus');
+        if(stLoad && !document.getElementById('signFacePanel')?.classList.contains('has-qr')){
+          stLoad.className = 'qr-status';
+          stLoad.textContent = data.progress || '正在加载二维码…';
+        }
+      }
+      const phase = String(data.signPhase || '');
+      const st = String(data.caseStatus || '');
+      STATE.signPhase = phase || STATE.signPhase;
+      if(data.signDone || phase === 'done' || st === 'sign_done'){
+        stopSignPolling();
+        const stEl = document.getElementById('signFaceStatus');
+        if(stEl){ stEl.className = 'qr-status ok'; stEl.textContent = '签名完成，正在进入办理完成页…'; }
+        setTimeout(()=> { if(STATE.step === 8) showDone(); }, 500);
+        return;
+      }
+      if(data.finished && !data.signDone && data.error && !data.running){
+        const err = String(data.error || '');
+        if(/target page|has been closed|browser has been closed/i.test(err)){
+          stopSignPolling();
+          const stEl = document.getElementById('signFaceStatus');
+          if(stEl){ stEl.className = 'qr-status ok'; stEl.textContent = '签名完成，正在进入办理完成页…'; }
+          setTimeout(()=> { if(STATE.step === 8) showDone(); }, 500);
+          return;
+        }
+        const stEl = document.getElementById('signFaceStatus');
+        if(stEl){
+          stEl.className = 'qr-status err';
+          stEl.textContent = '签名失败：' + data.error + '（可点重试获取二维码）';
+        }
+      }
+    },
+    () => {
+      const st = document.getElementById('signFaceStatus');
+      if(st && !document.getElementById('signFacePanel')?.classList.contains('has-qr')){
+        st.className = 'qr-status err';
+        st.textContent = '二维码同步失败，请点击「重试」';
+      }
+    }
+  );
+}
+
+function cancelSignFlow(){
+  // 仅取消签名：停止轮询并通知后端结束签名 RPA，然后进入完成页提示手动签名
+  stopSignPolling();
+  const sid = STATE.signSid || STATE.sid;
+  const caseId = STATE.syncedCaseId || STATE.caseId || '';
+  notifyCancelAutomation(sid, caseId);
+  showSignQr('alipay', '');
+  showSignQr('face', '');
+  STATE.signSid = null;
+  STATE.signPhase = '';
+  STATE.signStarting = false;
+  showDone({ cancelled: true });
+}
+
+async function retrySignQrOnly(kind){
+  // 第8/9页重试：只刷新当前阶段二维码，不重跑整段签名流程
+  const isAlipay = kind === 'alipay';
+  const sid = STATE.signSid || STATE.sid;
+  const caseId = currentCaseId();
+  if(!sid){
+    alert('签名会话已失效，请返回后重新点「继续完成签名」');
+    return;
+  }
+  showSignQr(kind, '');
+  const statusEl = document.getElementById(isAlipay ? 'signAlipayStatus' : 'signFaceStatus');
+  if(statusEl){
+    statusEl.className = 'qr-status';
+    statusEl.textContent = '正在重新获取二维码…';
+  }
+  try{
+    const origin = backendOriginForPrototype();
+    const headers = await authHeaders();
+    const res = await fetch(origin + '/api/refresh-sign-qr', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        caseId,
+        sid,
+        kind: isAlipay ? 'alipay' : 'face',
+        token: STATE.apiToken,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok || !data.ok){
+      if(statusEl){
+        statusEl.className = 'qr-status err';
+        statusEl.textContent = (data && data.error) || '刷新二维码失败，请稍后再试';
+      }
+      return;
+    }
+  }catch(err){
+    if(statusEl){
+      statusEl.className = 'qr-status err';
+      statusEl.textContent = '刷新二维码失败：' + ((err && err.message) || String(err));
+    }
+    return;
+  }
+  // 继续当前页轮询，等新码推送
+  if(isAlipay){
+    if(STATE.step !== 7) go(7);
+    else startSignAlipayPolling();
+  }else{
+    if(STATE.step !== 8) go(8);
+    else startSignFacePolling();
+  }
+}
+
+document.getElementById('gotoSignBtn')?.addEventListener('click', ()=> startSignatureFlow());
+document.getElementById('skipSignBtn')?.addEventListener('click', ()=>{
+  stopSignPolling();
+  STATE.signSid = null;
+  STATE.signPhase = '';
+  STATE.signStarting = false;
+  showDone({ skipped: true });
+});
+document.getElementById('signDoneHomeBtn')?.addEventListener('click', ()=>{
+  stopSignPolling();
+  STATE.signSid = null;
+  STATE.signPhase = '';
+  STATE.signStarting = false;
+  STATE.sid = '';
+  STATE.onDone = false;
+  go(0);
+});
+document.getElementById('signAlipayCancelBtn')?.addEventListener('click', ()=> cancelSignFlow());
+document.getElementById('signFaceCancelBtn')?.addEventListener('click', ()=> cancelSignFlow());
+document.getElementById('signAlipayRetryBtn')?.addEventListener('click', ()=> retrySignQrOnly('alipay'));
+document.getElementById('signFaceRetryBtn')?.addEventListener('click', ()=> retrySignQrOnly('face'));
 
 /* ============ 屏 6：取消 / 重试 ============ */
 document.getElementById('qrCancelBtn').addEventListener('click', ()=> cancelQrLogin());
@@ -2465,10 +3001,10 @@ document.getElementById('gotoRefill').addEventListener('click', ()=>{
     notifyCancelAutomation(sid, caseId);
   }
   STATE.sid = '';
-  go(1);
+  go(0);
 });
 
-/* ============ 屏 7：取消填报并返回上一页 ============ */
+/* ============ 进度页：取消填报并返回上一页 ============ */
 async function cancelFillAndBack(){
   stopFillProgressPolling();
   stopQrPolling();
@@ -2484,7 +3020,7 @@ async function cancelFillAndBack(){
   if(frame) frame.src = 'about:blank';
   showLiveQr('');
   STATE.sid = '';
-  go(4);
+  go(3);
 }
 document.getElementById('cancelFillBtn').onclick = function(e){
   e.preventDefault();
@@ -2525,29 +3061,15 @@ async function retryFillFromProgress(){
 
   try{
     try{ await syncCasePayloadToGamma(); }catch(e){ console.warn('[retryFill] sync', e); }
-    const origin = backendOriginForPrototype();
-    const headers = await authHeaders();
-    const res = await fetch(origin + '/api/start-automation', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        caseId: STATE.syncedCaseId || STATE.caseId || 'GM202608062231EF',
-        sid: STATE.sid,
-        token: STATE.apiToken,
-      }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if(!res.ok || !data.ok){
-      throw new Error((data && (data.message || data.error)) || ('启动自动化失败 HTTP ' + res.status));
-    }
-    go(5);
+    await postStartAutomation(STATE.sid, STATE.syncedCaseId || STATE.caseId);
+    go(4);
   }catch(err){
     alert('重新开启填报失败：' + (err && err.message ? err.message : err));
     showFillRetryOrSupportUI(err && err.message ? err.message : '重新开启失败');
   }finally{
     if(retryBtn){
       retryBtn.disabled = false;
-      updateRetryFillBtn(STATE.step === 6);
+      updateRetryFillBtn(STATE.step === 5);
     }
   }
 }
@@ -3109,6 +3631,90 @@ function refreshIdPeopleUploads(){
   });
 }
 
+function refreshAddrProofCard(){
+  const card = document.getElementById('addrProofCard');
+  if(!card) return;
+  const ap = STATE.addressProof || {};
+  const done = !!ap.fileId;
+  card.classList.toggle('done', done);
+  const label = card.querySelector('.ocr-side-label');
+  const hint = card.querySelector('.ocr-hint');
+  const nameEl = card.querySelector('.ocr-name');
+  if(done){
+    if(label) label.textContent = '住所使用相关文件 · 已上传';
+    if(hint) hint.textContent = '';
+    if(nameEl) nameEl.textContent = ap.fileName || ap.fileId;
+    else {
+      const span = document.createElement('span');
+      span.className = 'ocr-name';
+      span.textContent = ap.fileName || ap.fileId;
+      card.appendChild(span);
+    }
+  } else {
+    if(label) label.textContent = '点击上传 PDF';
+    if(hint) hint.textContent = '仅支持 PDF，用于一网通办材料预览上传';
+    if(nameEl) nameEl.remove();
+  }
+}
+
+async function onAddrProofSelected(input){
+  const file = input && input.files && input.files[0];
+  if(!file){ alert('未选择文件'); return; }
+  const name = file.name || '';
+  if(!/\.pdf$/i.test(name) && !/application\/pdf/i.test(file.type || '')){
+    alert('住所使用相关文件仅支持 PDF 格式');
+    input.value = '';
+    return;
+  }
+  if(file.size > 20 * 1024 * 1024){
+    alert('PDF 不超过 20MB');
+    input.value = '';
+    return;
+  }
+  const card = document.getElementById('addrProofCard');
+  if(card) card.classList.add('uploading');
+  try{
+    const fd = new FormData();
+    fd.append('file', file, name);
+    const origin = backendOriginForPrototype();
+    const caseId = currentCaseId();
+    const url = origin + '/api/cases/' + encodeURIComponent(caseId) + '/address-proof';
+    const res = await fetch(url, { method: 'POST', body: fd });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok || !data.ok){
+      throw new Error((data && data.error) || ('上传失败 HTTP ' + res.status));
+    }
+    STATE.addressProof = {
+      fileId: data.fileId || '',
+      fileName: data.fileName || name,
+    };
+    refreshAddrProofCard();
+  }catch(err){
+    alert('住所文件上传失败：' + (err && err.message ? err.message : err));
+    input.value = '';
+  }finally{
+    if(card) card.classList.remove('uploading');
+  }
+}
+
+function bindAddrProofUpload(){
+  const card = document.getElementById('addrProofCard');
+  const input = document.getElementById('addrProofInput');
+  if(!card || !input || card.dataset.bound === '1') return;
+  card.dataset.bound = '1';
+  const openPicker = (e) => {
+    if(e.target === input) return;
+    e.preventDefault();
+    input.click();
+  };
+  card.addEventListener('click', openPicker);
+  card.addEventListener('keydown', (e) => {
+    if(e.key === 'Enter' || e.key === ' '){ openPicker(e); }
+  });
+  input.addEventListener('change', () => onAddrProofSelected(input));
+  refreshAddrProofCard();
+}
+
 async function onPersonIdSelected(personKey, side, input){
   const people = collectIdPeople();
   const person = people.find(p => p.personKey === personKey);
@@ -3140,7 +3746,7 @@ async function onPersonIdSelected(personKey, side, input){
     fd.append('personName', person.personName);
     fd.append('roles', JSON.stringify(person.roles));
     const origin = backendOriginForPrototype();
-    const caseId = STATE.caseId || STATE.syncedCaseId || 'GM202608062231EF';
+    const caseId = currentCaseId();
     const url = origin + '/api/cases/' + encodeURIComponent(caseId) + '/id-card';
     let res;
     try{
@@ -3522,6 +4128,7 @@ function requireRole(prefix, label){
 }
 document.addEventListener('DOMContentLoaded', () => {
   try{ ensureRoleListsSeeded(); }catch(e){}
+  try{ bindAddrProofUpload(); }catch(e){}
 });
 const NP_POLITICAL_OPTS = [
   '中共党员','中共预备党员','共青团员','民革会员','民盟盟员','民建会员','民进会员',
@@ -4110,20 +4717,64 @@ document.getElementById('phone').addEventListener('input', e=>{
   else { h.className='hint ok show'; h.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>格式正确'; }
 });
 
-let codeTimer = 60;
-document.getElementById('getCode').addEventListener('click', e=>{
+let codeTimer = 0;
+let codeTimerHandle = null;
+function startCodeCooldown(sec){
+  const b = document.getElementById('getCode');
+  if(!b) return;
+  if(codeTimerHandle){ clearTimeout(codeTimerHandle); codeTimerHandle = null; }
+  codeTimer = Math.max(1, Number(sec) || 60);
+  b.disabled = true;
+  const tick = ()=>{
+    if(codeTimer<=0){
+      b.disabled = false;
+      b.textContent = '获取验证码';
+      codeTimerHandle = null;
+      return;
+    }
+    b.textContent = codeTimer + 's 后重发';
+    codeTimer--;
+    codeTimerHandle = setTimeout(tick, 1000);
+  };
+  tick();
+}
+document.getElementById('getCode').addEventListener('click', async e=>{
   const phone = document.getElementById('phone').value;
   if(!/^1\d{10}$/.test(phone)){ alert('请先填写有效的手机号'); return; }
   const b = e.target;
+  if(b.disabled) return;
   b.disabled = true;
-  codeTimer = 60;
-  const tick = ()=>{
-    if(codeTimer<=0){ b.disabled=false; b.textContent='获取验证码'; return; }
-    b.textContent = codeTimer + 's 后重发';
-    codeTimer--;
-    setTimeout(tick, 1000);
-  };
-  tick();
+  b.textContent = '发送中…';
+  const hint = document.querySelector('.hint[data-for="code"]');
+  try{
+    const origin = backendOriginForPrototype();
+    const headers = await authHeaders();
+    const res = await fetch(origin + '/api/auth/sms/send', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ phone, token: STATE.apiToken }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok || !data.ok){
+      b.disabled = false;
+      b.textContent = '获取验证码';
+      const wait = Number(data.retryAfter) || 0;
+      if(wait > 0) startCodeCooldown(wait);
+      alert((data && data.error) || '发送失败，请稍后重试');
+      return;
+    }
+    startCodeCooldown(Number(data.retryAfter) || 60);
+    if(hint){
+      hint.className = 'hint ok show';
+      hint.textContent = data.demo
+        ? '演示模式：请查看服务端日志中的验证码'
+        : '验证码已发送，请查收短信';
+    }
+  }catch(err){
+    b.disabled = false;
+    b.textContent = '获取验证码';
+    alert('发送失败：' + ((err && err.message) || String(err)));
+  }
 });
 
 /* ============ 屏 1：核名 / 经营范围（api.gamaz.cn） ============ */
@@ -4776,40 +5427,7 @@ async function genZiCandidates(){
 }
 document.getElementById('aiGenZi').addEventListener('click', ()=> genZiCandidates());
 
-document.getElementById('industry').addEventListener('input', ()=>{
-  clearTimeout(STATE.industryTimer);
-  STATE.industryTimer = setTimeout(async ()=>{
-    const kw = document.getElementById('industry').value.trim();
-    const box = document.getElementById('industrySuggest');
-    if(!kw){ box.classList.remove('show'); box.innerHTML=''; refreshName(); return; }
-    const data = await gamazFetch('/api/name_check/industry', { query: { kw, limit: 20 } });
-    if(!data || data.code !== 1){
-      box.classList.remove('show');
-      refreshName();
-      return;
-    }
-    const list = (data.data && data.data.list) || [];
-    if(!list.length){ box.classList.remove('show'); box.innerHTML=''; refreshName(); return; }
-    box.innerHTML = list.map(it =>
-      `<div class="suggest-item" data-name="${String(it.name||'').replace(/"/g,'&quot;')}"><span class="code">${it.code||''}</span>${it.name||''}</div>`
-    ).join('');
-    box.classList.add('show');
-    box.querySelectorAll('.suggest-item').forEach(item=>{
-      item.addEventListener('click', ()=>{
-        document.getElementById('industry').value = item.dataset.name || '';
-        box.classList.remove('show');
-        box.innerHTML = '';
-        refreshName();
-      });
-    });
-    refreshName();
-  }, 280);
-});
-document.addEventListener('click', (e)=>{
-  const box = document.getElementById('industrySuggest');
-  if(!box) return;
-  if(!e.target.closest('.suggest-wrap')) box.classList.remove('show');
-});
+document.getElementById('industry').addEventListener('input', ()=> refreshName());
 document.getElementById('orgForm').addEventListener('change', ()=>{
   syncPersonnelByOrgForm();
   refreshName();
@@ -4832,8 +5450,8 @@ let _restoringDraft = false;
 function stableDraftStep(step){
   const n = Number(step) || 0;
   // 扫码/进度/完成会话重启后已失效，落回确认页
-  if(n >= 5) return 4;
-  return Math.max(0, Math.min(4, n));
+  if(n >= 4) return 3;
+  return Math.max(0, Math.min(3, n));
 }
 
 function collectDraftFields(){
@@ -4900,6 +5518,10 @@ function saveDraft(){
       nameDistrict: STATE.nameDistrict || '上海',
       refillTimes: STATE.refillTimes,
       idUploads: slimIdUploads(STATE.idUploads),
+      addressProof: {
+        fileId: (STATE.addressProof && STATE.addressProof.fileId) || '',
+        fileName: (STATE.addressProof && STATE.addressProof.fileName) || '',
+      },
       checkCache: STATE.checkCache || {},
       scopeManual: !!(document.getElementById('scope')?.dataset?.manual),
       supOn: isSupervisorOn(),
@@ -5016,6 +5638,8 @@ function restoreDraft(){
     STATE.nameDistrict = draft.nameDistrict || '上海';
     if(typeof draft.refillTimes === 'number') STATE.refillTimes = draft.refillTimes;
     STATE.idUploads = draft.idUploads || {};
+    STATE.addressProof = draft.addressProof || { fileId: '', fileName: '' };
+    try{ refreshAddrProofCard(); }catch(e){}
     STATE.checkCache = draft.checkCache || {};
     const scopeEl = document.getElementById('scope');
     if(scopeEl && draft.scopeManual) scopeEl.dataset.manual = '1';
@@ -5128,6 +5752,11 @@ function syncConfirm(){
     return `<span>${p.personName}·${ok ? '已齐' : '待传'}（${p.roles.join('/')}）</span>`;
   });
   document.getElementById('sumIdCards').innerHTML = tags.length ? tags.join('') : '<span>未上传</span>';
+  const sumAp = document.getElementById('sumAddrProof');
+  if(sumAp){
+    const ap = STATE.addressProof || {};
+    sumAp.textContent = ap.fileId ? ('已上传' + (ap.fileName ? '（' + ap.fileName + '）' : '')) : '未上传';
+  }
 }
 
 /* ============ 初始化 ============ */
@@ -5146,7 +5775,8 @@ function syncConfirm(){
   ensureNameScopeApis().then(()=>{
     if(!(document.querySelectorAll('#nameChips .chip.zi').length)) genZiCandidates();
   });
-  go(restoredStep == null ? 0 : restoredStep);
+  if(restoredStep == null){ showAuth(); }
+  else { go(restoredStep); }
 })();
 </script>
 </body>

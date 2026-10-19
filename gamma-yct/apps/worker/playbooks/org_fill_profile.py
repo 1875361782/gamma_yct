@@ -16,6 +16,7 @@ def profile_for(payload: dict[str, Any]) -> dict[str, Any]:
     p: dict[str, Any] = {
         "orgForm": org,
         "agent_types": ["法定代表人"],
+        # 无区县时的兜底；有区县时 basic_info 优先选「{区}市场监督管理局」
         "authority_options": [
             "上海市市场监督管理局",
             "上海市市场监督局",

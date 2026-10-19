@@ -24,8 +24,8 @@ from fastapi.responses import JSONResponse, FileResponse
 from .sessions import SessionManager
 from .rpa.browser import Listener
 from .protocol import (
-    msg_bound, msg_qr_update, msg_qr_refreshing,
-    msg_login_success, msg_login_failed, msg_error, msg_pong,
+    msg_bound, msg_qr_update,
+    msg_login_success, msg_error, msg_pong,
     msg_step, msg_screenshot,
 )
 from .relay import relay_hub
@@ -35,6 +35,28 @@ from . import gamaz_proxy
 # ---------- 配置 ----------
 BACKEND_DIR = Path(__file__).resolve().parent
 MOCK_GOV_DIR = BACKEND_DIR / "mock_gov"
+
+
+def _load_dotenv_file(path: Path) -> None:
+    """轻量加载 backend/.env（不覆盖已有环境变量）。"""
+    if not path.is_file():
+        return
+    try:
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip().strip("'").strip('"')
+            if key and key not in os.environ:
+                os.environ[key] = val
+    except Exception:
+        pass
+
+
+_load_dotenv_file(BACKEND_DIR / ".env")
+_load_dotenv_file(BACKEND_DIR.parent / ".env")
 
 # 真实场景：从上海企业登记在线门户开始
 REAL_PORTAL_URL = "https://yct.sh.gov.cn/portal_yct/"
@@ -200,13 +222,47 @@ async def acquire(request: Request):
 async def api_bootstrap():
     """产品页加载时领取短时 API token（外网访问写接口用）。"""
     token, expires = _mint_session_token()
+    from .sms import build_sms_sender
+
     return {
         "ok": True,
         "token": token,
         "expiresAt": int(expires),
         "authRequired": True,
         "sharedTokenConfigured": bool(GAMMA_API_TOKEN),
+        "smsConfigured": build_sms_sender() is not None,
     }
+
+
+@app.post("/api/auth/sms/send")
+async def api_sms_send(request: Request, body: dict):
+    """注册页：发送短信验证码。"""
+    denied = _require_api_token(request, body)
+    if denied is not None:
+        return denied
+    from . import sms_auth
+
+    phone = str((body or {}).get("phone") or "").strip()
+    result = await asyncio.to_thread(sms_auth.send_login_code, phone)
+    status = 200 if result.get("ok") else 400
+    if result.get("code") == "rate_limited":
+        status = 429
+    return JSONResponse(result, status_code=status)
+
+
+@app.post("/api/auth/sms/verify")
+async def api_sms_verify(request: Request, body: dict):
+    """注册页：校验短信验证码（进入企业信息前）。"""
+    denied = _require_api_token(request, body)
+    if denied is not None:
+        return denied
+    from . import sms_auth
+
+    phone = str((body or {}).get("phone") or "").strip()
+    code = str((body or {}).get("code") or "").strip()
+    result = await asyncio.to_thread(sms_auth.verify_login_code, phone, code)
+    status = 200 if result.get("ok") else 400
+    return JSONResponse(result, status_code=status)
 
 
 @app.get("/qrlogin", include_in_schema=False)
@@ -248,7 +304,8 @@ async def health():
 
 
 REPO_ROOT = BACKEND_DIR.parents[1]  # …/伽马账（backend → 演示包 → 仓库根）
-GAMMA_CASES_DIR = REPO_ROOT / "gamma-yct" / "data" / "cases"
+GAMMA_ROOT = REPO_ROOT / "gamma-yct"
+GAMMA_CASES_DIR = GAMMA_ROOT / "data" / "cases"
 DEFAULT_CASE_ID = "GM202608062231EF"
 
 _STAGE_FILES = [
@@ -258,6 +315,47 @@ _STAGE_FILES = [
     ("personnel", "fill-personnel-result.json", "人员信息"),
     ("opening", "fill-opening-result.json", "企业开办"),
 ]
+
+FILL_OK_STATUSES = frozenset(
+    {
+        "ready_for_user_submit",
+        "name_next_reached",
+        "signing",
+        "awaiting_alipay_qr",
+        "awaiting_sign_face_qr",
+        "sign_done",
+    }
+)
+PAST_QR_STATUSES = frozenset(
+    {
+        "logged_in",
+        "name_checking",
+        "name_failed",
+        "human_confirmation_required",
+        "name_next_reached",
+        "filling_establishment",
+        "choosing_process",
+        "filling_addons",
+        "ready_for_user_submit",
+        "signing",
+        "awaiting_alipay_qr",
+        "awaiting_sign_face_qr",
+        "sign_done",
+        "need_human",
+        "offline_required",
+        "failed",
+    }
+)
+
+
+def _ensure_gamma_path() -> str:
+    """把 gamma-yct 挂到 sys.path，返回其绝对路径字符串。"""
+    import sys
+
+    root = str(GAMMA_ROOT)
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    return root
 
 
 def _read_json_file(path: Path) -> dict:
@@ -270,6 +368,28 @@ def _read_json_file(path: Path) -> dict:
     return {}
 
 
+def _case_bucket(row: dict[str, Any]) -> str:
+    """运维看板状态分桶。"""
+    st = str(row.get("caseStatus") or "")
+    if row.get("running"):
+        return "running"
+    if row.get("nameFailed") or st == "name_failed":
+        return "name_failed"
+    if row.get("needsHuman"):
+        return "need_human"
+    if st == "sign_done" or row.get("signDone"):
+        return "sign_done"
+    if st in ("ready_for_user_submit", "awaiting_alipay_qr", "awaiting_sign_face_qr", "signing"):
+        return "fill_done"
+    if st in ("failed", "cancelled") or (row.get("finished") and row.get("error") and not row.get("fillOk")):
+        return "failed"
+    if st in ("draft", ""):
+        return "draft"
+    if row.get("fillOk") or row.get("stage") == "done":
+        return "fill_done"
+    return "in_progress"
+
+
 def _case_summary(case_id: str, job=None) -> dict[str, Any]:
     """汇总单个案件的提交信息与 RPA 进度（供管理页）。"""
     case_id = (case_id or "").strip()
@@ -279,11 +399,20 @@ def _case_summary(case_id: str, job=None) -> dict[str, Any]:
     name = payload.get("name") if isinstance(payload.get("name"), dict) else {}
     reg = payload.get("registration") if isinstance(payload.get("registration"), dict) else {}
     contact = payload.get("contact") if isinstance(payload.get("contact"), dict) else {}
+    company = payload.get("company") if isinstance(payload.get("company"), dict) else {}
+    personnel = payload.get("personnel") if isinstance(payload.get("personnel"), dict) else {}
+    legal = (
+        personnel.get("legalRepresentative")
+        if isinstance(personnel.get("legalRepresentative"), dict)
+        else {}
+    )
+    addr = reg.get("address") if isinstance(reg.get("address"), dict) else {}
 
     case_status = str(meta.get("status") or "")
     customer_message = str(meta.get("customerMessage") or "")
     reason = str(meta.get("reason") or "")
     updated_at = str(meta.get("updatedAt") or meta.get("createdAt") or "")
+    created_at = str(meta.get("createdAt") or "")
 
     stages_done: list[str] = []
     if case_dir and case_dir.exists():
@@ -323,29 +452,64 @@ def _case_summary(case_id: str, job=None) -> dict[str, Any]:
     name_failed = case_status == "name_failed" or any(
         k in reason for k in ("比对未通过", "名称未通过", "生僻字")
     )
+    if name_failed:
+        progress = customer_message or reason or "核名不通过，请返回修改字号并重试"
+        if "核名不通过" not in progress and "生僻字" not in progress:
+            progress = "核名不通过：" + progress
+
     trade = str(name.get("tradeName") or "").strip()
     preview = str(name.get("fullNamePreview") or "").strip()
     if not preview and trade:
         preview = f"上海{trade}{name.get('industry') or ''}{name.get('orgForm') or ''}"
 
+    legal_name = str(legal.get("name") or "").strip()
+    legal_mobile = str(legal.get("mobile") or legal.get("phone") or "").strip()
+    contact_phone = str(
+        contact.get("mobile")
+        or contact.get("phone")
+        or payload.get("authPhone")
+        or meta.get("authPhone")
+        or legal_mobile
+        or ""
+    ).strip()
+
     mtime = 0.0
+    ctime = 0.0
     if case_dir and case_dir.exists():
         try:
-            mtime = (case_dir / "meta.json").stat().st_mtime if (case_dir / "meta.json").exists() else case_dir.stat().st_mtime
+            meta_path = case_dir / "meta.json"
+            if meta_path.exists():
+                mtime = meta_path.stat().st_mtime
+                ctime = meta_path.stat().st_ctime
+            else:
+                mtime = case_dir.stat().st_mtime
+                ctime = case_dir.stat().st_ctime
         except Exception:
             mtime = 0.0
     if job and getattr(job, "started_at", None):
         mtime = max(mtime, float(job.started_at))
 
-    return {
+    fill_ok = bool(job and job.ok) or case_status in FILL_OK_STATUSES
+    if name_failed:
+        fill_ok = False
+    sign_done = case_status == "sign_done" or (
+        bool(job) and getattr(job, "sign_phase", None) == "done" and bool(job.ok)
+    )
+
+    row = {
         "caseId": case_id,
         "sid": getattr(job, "sid", "") if job else "",
         "tradeName": trade,
         "companyName": preview,
         "orgForm": str(name.get("orgForm") or ""),
         "industry": str(name.get("industry") or ""),
-        "district": str(reg.get("district") or (reg.get("address") or {}).get("district") or ""),
-        "contactPhone": str(contact.get("mobile") or contact.get("phone") or ""),
+        "district": str(reg.get("district") or addr.get("district") or ""),
+        "addressDetail": str(addr.get("detail") or ""),
+        "capital": company.get("registeredCapital"),
+        "legalName": legal_name,
+        "legalMobile": legal_mobile,
+        "contactPhone": contact_phone,
+        "authPhone": str(payload.get("authPhone") or meta.get("authPhone") or "").strip(),
         "caseStatus": case_status,
         "progress": progress,
         "customerMessage": customer_message,
@@ -357,15 +521,61 @@ def _case_summary(case_id: str, job=None) -> dict[str, Any]:
         "loggedIn": logged_in,
         "hasQr": has_qr,
         "finished": bool(finished) if job else bool(case_status and case_status not in ("draft",)),
-        "fillOk": bool(job and job.ok) if job else case_status in ("ready_for_user_submit", "name_next_reached"),
+        "fillOk": fill_ok,
+        "signDone": sign_done,
         "nameFailed": name_failed,
-        "needsHuman": (not name_failed) and case_status in ("need_human", "human_confirmation_required"),
-        "error": (job.error if job else None) or (reason if name_failed or case_status == "failed" else None),
+        "needsHuman": (not name_failed)
+        and case_status in ("need_human", "human_confirmation_required"),
+        "error": (job.error if job else None)
+        or (reason if name_failed or case_status == "failed" else None),
         "updatedAt": updated_at,
+        "createdAt": created_at,
         "startedAt": float(job.started_at) if job else None,
         "mtime": mtime,
+        "ctime": ctime,
         "source": "relay" if job else "case",
+        "signPhase": getattr(job, "sign_phase", None) if job else None,
     }
+    row["bucket"] = _case_bucket(row)
+    return row
+
+
+def _build_daily_series(rows: list[dict[str, Any]], days: int = 14) -> list[dict[str, Any]]:
+    """按本地日历日统计提交量（用 ctime/mtime）。"""
+    import datetime as _dt
+
+    today = _dt.date.today()
+    buckets: dict[str, dict[str, int]] = {}
+    for i in range(days - 1, -1, -1):
+        d = today - _dt.timedelta(days=i)
+        key = d.isoformat()
+        buckets[key] = {
+            "date": key,
+            "label": f"{d.month}/{d.day}",
+            "total": 0,
+            "fill_done": 0,
+            "sign_done": 0,
+            "failed": 0,
+            "running": 0,
+        }
+
+    for row in rows:
+        ts = float(row.get("ctime") or row.get("mtime") or 0)
+        if ts <= 0:
+            continue
+        try:
+            d = _dt.datetime.fromtimestamp(ts).date().isoformat()
+        except Exception:
+            continue
+        if d not in buckets:
+            continue
+        buckets[d]["total"] += 1
+        b = str(row.get("bucket") or "")
+        if b in ("fill_done", "sign_done", "failed", "running"):
+            buckets[d][b] += 1
+        elif b in ("name_failed", "need_human"):
+            buckets[d]["failed"] += 1
+    return list(buckets.values())
 
 
 def _deep_merge(base: dict, patch: dict) -> dict:
@@ -593,6 +803,54 @@ def _patch_id_card_attachment(
     return target
 
 
+@app.post("/api/cases/{case_id}/address-proof")
+async def upload_address_proof(
+    case_id: str,
+    file: UploadFile = File(...),
+):
+    """上传住所使用相关文件（PDF），写入案件 uploads 并回填 payload.attachments.addressProof。"""
+    case_id = (case_id or DEFAULT_CASE_ID).strip() or DEFAULT_CASE_ID
+    content = await file.read()
+    if not content:
+        return JSONResponse({"ok": False, "error": "empty file"}, status_code=400)
+    if len(content) > 20 * 1024 * 1024:
+        return JSONResponse({"ok": False, "error": "PDF 不能超过 20MB"}, status_code=400)
+    name = file.filename or "address_proof.pdf"
+    lower = name.lower()
+    ctype = (file.content_type or "").lower()
+    if not (lower.endswith(".pdf") or "pdf" in ctype):
+        return JSONResponse({"ok": False, "error": "仅支持 PDF"}, status_code=400)
+    if not lower.endswith(".pdf"):
+        name = re.sub(r"\.[^.]+$", "", name) + ".pdf"
+    file_id = _save_case_upload(case_id, name, content)
+    payload_path = GAMMA_CASES_DIR / case_id / "payload.json"
+    payload: dict = {}
+    if payload_path.exists():
+        try:
+            payload = json.loads(payload_path.read_text(encoding="utf-8"))
+        except Exception:
+            payload = {}
+    att = payload.setdefault("attachments", {})
+    if not isinstance(att, dict):
+        att = {}
+        payload["attachments"] = att
+    proofs = att.get("addressProof")
+    if not isinstance(proofs, list):
+        proofs = []
+    if file_id not in proofs:
+        proofs = [file_id] + [x for x in proofs if x != file_id]
+    att["addressProof"] = proofs
+    payload_path.parent.mkdir(parents=True, exist_ok=True)
+    payload_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {
+        "ok": True,
+        "caseId": case_id,
+        "fileId": file_id,
+        "fileName": name,
+        "size": len(content),
+    }
+
+
 @app.post("/api/cases/{case_id}/id-card")
 async def upload_id_card(
     case_id: str,
@@ -773,14 +1031,18 @@ async def sync_case_payload(request: Request, body: dict):
     base_cards = ((base.get("attachments") or {}).get("idCards") or [])
     patch_cards = ((patch.get("attachments") or {}).get("idCards") or [])
     merged.setdefault("attachments", {})["idCards"] = _merge_id_cards(base_cards, patch_cards)
+    base_proof = ((base.get("attachments") or {}).get("addressProof") or [])
+    patch_proof = ((patch.get("attachments") or {}).get("addressProof") or [])
+    if isinstance(patch_proof, list) and any(str(x or "").strip() for x in patch_proof):
+        merged.setdefault("attachments", {})["addressProof"] = [
+            str(x).strip() for x in patch_proof if str(x or "").strip()
+        ]
+    elif isinstance(base_proof, list) and base_proof:
+        merged.setdefault("attachments", {})["addressProof"] = base_proof
 
     # 尽量用 gamma-yct schema 校验结构（不强制业务 validate_payload）
     try:
-        import sys
-
-        gamma_root = str(REPO_ROOT / "gamma-yct")
-        if gamma_root not in sys.path:
-            sys.path.insert(0, gamma_root)
+        _ensure_gamma_path()
         from apps.api.payload import CasePayload
 
         merged = CasePayload.model_validate(merged).model_dump()
@@ -880,17 +1142,11 @@ async def start_automation(request: Request, body: dict):
             status_code=400,
         )
 
-    gamma_root = str(REPO_ROOT / "gamma-yct")
-    # 外网产品面：强制无头，用户看不到抓码/填报浏览器
-    # headless = True
-    # 本地调试可见 Chrome 时改用下面一行，并注释掉上面一行：
+    # 外网产品面：强制无头（headless=True）；本地调试可见 Chrome 时改为 False
     headless = False
+    gamma_root = _ensure_gamma_path()
     # 重试前清掉上一轮 cancel / 残留 Chrome，避免新会话被误杀或复用已登录 profile
     try:
-        import sys
-
-        if gamma_root not in sys.path:
-            sys.path.insert(0, gamma_root)
         from apps.api import store as gamma_store
         from apps.worker.run_fill_session import abort_fill_browser
 
@@ -906,13 +1162,134 @@ async def start_automation(request: Request, body: dict):
         "caseId": case_id,
         "sid": sid,
         "started": started,
-        "mode": "relay_headless",
-        "headless": True,
-        "message": ("已启动后台无头填报" if started else "同 sid 填报已在运行"),
-        # 可见窗调试文案（headless=False 时改用）：
-        # "mode": "relay_visible",
-        # "headless": False,
-        # "message": ("已启动可见窗填报" if started else "同 sid 填报已在运行"),
+        "mode": "relay_visible" if not headless else "relay_headless",
+        "headless": headless,
+        "message": (
+            ("已启动可见窗填报" if not headless else "已启动后台无头填报")
+            if started
+            else "同 sid 填报已在运行"
+        ),
+    }
+
+
+@app.post("/api/start-signature")
+async def start_signature(request: Request, body: dict):
+    """在填报保留的浏览器上启动电子签名，二维码中继到 sid。"""
+    denied = _require_api_token(request, body)
+    if denied is not None:
+        return denied
+    case_id = str(body.get("caseId") or DEFAULT_CASE_ID).strip() or DEFAULT_CASE_ID
+    sid = str(body.get("sid") or "").strip()
+    if not sid:
+        return JSONResponse({"ok": False, "error": "sid required"}, status_code=400)
+
+    gamma_root = _ensure_gamma_path()
+    try:
+        from apps.api import store as gamma_store
+        from apps.worker.run_fill_session import (
+            get_active_browser,
+            has_parked_sign_session,
+            wait_until_sign_park_ready,
+        )
+
+        # 清除误置的取消标记，避免稍晚点「继续签名」被当成取消
+        gamma_store.consume_cancel(case_id)
+
+        # 填报结束 → park 入等有空窗；页面未超时前应能接上，多等一会
+        for _ in range(20):
+            if has_parked_sign_session(case_id) or get_active_browser(case_id) is not None:
+                break
+            await asyncio.sleep(0.25)
+        if get_active_browser(case_id) is not None and not has_parked_sign_session(case_id):
+            await asyncio.to_thread(
+                lambda: wait_until_sign_park_ready(case_id, timeout_sec=12.0)
+            )
+
+        meta_path = GAMMA_CASES_DIR / case_id / "meta.json"
+        st = ""
+        if meta_path.exists():
+            try:
+                st = str(json.loads(meta_path.read_text(encoding="utf-8")).get("status") or "")
+            except Exception:
+                st = ""
+        ready_like = st in {
+            "ready_for_user_submit",
+            "signing",
+            "awaiting_alipay_qr",
+            "awaiting_sign_face_qr",
+            "name_next_reached",
+            "sign_done",
+        }
+        if (
+            not has_parked_sign_session(case_id)
+            and get_active_browser(case_id) is None
+            and not ready_like
+        ):
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": "无可用签名会话，请先完成自动填报后再点「继续完成签名」",
+                },
+                status_code=409,
+            )
+    except Exception as e:
+        return JSONResponse(
+            {"ok": False, "error": f"签名环境检查失败：{e}"},
+            status_code=500,
+        )
+
+    await relay_hub.ensure_job(sid, case_id)
+    relay_hub.clear_qr(sid)
+    started = relay_hub.start_sign_thread(sid, case_id, gamma_root)
+    if not started:
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "无法启动电子签名：填报线程仍占用浏览器且未挂起，请稍候再试",
+            },
+            status_code=409,
+        )
+    return {
+        "ok": True,
+        "caseId": case_id,
+        "sid": sid,
+        "started": True,
+        "mode": "sign",
+        "message": "已启动电子签名",
+    }
+
+
+@app.post("/api/refresh-sign-qr")
+async def refresh_sign_qr(request: Request, body: dict):
+    """第8/9页「重试」：仅重新抓取当前阶段二维码，不重跑签名流程。"""
+    denied = _require_api_token(request, body)
+    if denied is not None:
+        return denied
+    case_id = str(body.get("caseId") or DEFAULT_CASE_ID).strip() or DEFAULT_CASE_ID
+    sid = str(body.get("sid") or "").strip()
+    kind = str(body.get("kind") or "alipay").strip().lower() or "alipay"
+    if kind not in ("alipay", "face"):
+        kind = "alipay"
+    if not sid:
+        return JSONResponse({"ok": False, "error": "sid required"}, status_code=400)
+
+    _ensure_gamma_path()
+    try:
+        from apps.worker.run_fill_session import request_sign_qr_refresh
+
+        relay_hub.clear_qr(sid)
+        request_sign_qr_refresh(case_id, kind)
+    except Exception as e:
+        return JSONResponse(
+            {"ok": False, "error": f"刷新二维码失败：{e}"},
+            status_code=500,
+        )
+    return {
+        "ok": True,
+        "caseId": case_id,
+        "sid": sid,
+        "kind": kind,
+        "message": "已请求重新获取二维码",
     }
 
 
@@ -922,92 +1299,30 @@ async def automation_status(sid: str):
     if job is None:
         return JSONResponse({"ok": False, "error": "unknown sid"}, status_code=404)
 
-    progress = "等待填报进度…"
-    case_status = ""
-    customer_message = ""
-    reason = ""
-    name_failed = False
-    stage = "pending"
-    stages_done: list[str] = []
+    summary = _case_summary(job.case_id or "", job)
+    case_status = str(summary.get("caseStatus") or "")
+    customer_message = str(summary.get("customerMessage") or "")
+    reason = str(summary.get("reason") or "")
+    name_failed = bool(summary.get("nameFailed"))
+    needs_human = bool(summary.get("needsHuman"))
+    stage = str(summary.get("stage") or "pending")
+    stages_done = list(summary.get("stagesDone") or [])
+    progress = str(summary.get("progress") or "等待填报进度…")
+    fill_ok = bool(summary.get("fillOk"))
+    sign_done = bool(summary.get("signDone"))
+    sign_phase = str(summary.get("signPhase") or "") or (job.sign_phase or "")
+    if not sign_phase:
+        if case_status == "awaiting_alipay_qr":
+            sign_phase = "alipay_qr"
+        elif case_status == "awaiting_sign_face_qr":
+            sign_phase = "face_qr"
+        elif case_status == "sign_done":
+            sign_phase = "done"
+        elif case_status == "signing":
+            sign_phase = "signing"
 
-    case_id = (job.case_id or "").strip()
-    if case_id:
-        case_dir = GAMMA_CASES_DIR / case_id
-        meta_path = case_dir / "meta.json"
-        if meta_path.exists():
-            try:
-                meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                case_status = str(meta.get("status") or "")
-                customer_message = str(meta.get("customerMessage") or "")
-                reason = str(meta.get("reason") or "")
-            except Exception:
-                pass
-
-        stage_files = [
-            ("name", "fill-name-result.json", "名称信息"),
-            ("basic", "fill-basic-info-result.json", "基本信息"),
-            ("capital", "fill-capital-result.json", "出资情况"),
-            ("personnel", "fill-personnel-result.json", "人员信息"),
-            ("opening", "fill-opening-result.json", "企业开办"),
-        ]
-        for key, fname, _label in stage_files:
-            if (case_dir / fname).exists():
-                stages_done.append(key)
-
-        stage = "done" if len(stages_done) >= len(stage_files) else "pending"
-        for key, fname, label in stage_files:
-            if key not in stages_done:
-                stage = key
-                if not customer_message:
-                    progress = f"正在填写「{label}」表"
-                break
-
-        if customer_message:
-            progress = customer_message
-        elif job.logged_in and stage == "pending" and not stages_done:
-            progress = "登录成功，正在进入名称申报…"
-        elif not job.logged_in and bool(job.thread and job.thread.is_alive()):
-            progress = "等待扫码登录…"
-        elif not progress:
-            progress = "正在同步填报进度…"
-
-        name_failed = case_status == "name_failed" or (
-            "比对未通过" in reason or "名称未通过" in reason or "生僻字" in reason
-        )
-        if name_failed:
-            progress = customer_message or reason or "核名不通过，请返回修改字号并重试"
-            if "核名不通过" not in progress and "生僻字" not in progress:
-                progress = "核名不通过：" + progress
-
-    needs_human = (not name_failed) and case_status in {
-        "need_human",
-        "human_confirmation_required",
-    }
-
-    fill_ok = bool(job.ok) or case_status in {
-        "ready_for_user_submit",
-        "name_next_reached",
-    }
-    # 核名失败不算填报成功
-    if name_failed:
-        fill_ok = False
-
-    # 案件已过扫码阶段时，即使 job.logged_in 因调度丢失未置位，也视为已登录（驱动演示页跳进度）
-    past_qr_statuses = {
-        "logged_in",
-        "name_checking",
-        "name_failed",
-        "human_confirmation_required",
-        "name_next_reached",
-        "filling_establishment",
-        "choosing_process",
-        "filling_addons",
-        "ready_for_user_submit",
-        "need_human",
-        "offline_required",
-        "failed",
-    }
-    logged_in = bool(job.logged_in) or case_status in past_qr_statuses
+    # 案件已过扫码阶段时，即使 job.logged_in 因调度丢失未置位，也视为已登录
+    logged_in = bool(job.logged_in) or case_status in PAST_QR_STATUSES
 
     return {
         "ok": True,
@@ -1015,6 +1330,9 @@ async def automation_status(sid: str):
         "caseId": job.case_id,
         "hasQr": bool(job.qr_b64),
         "qr": job.qr_b64 if job.qr_b64 else None,
+        "qrKind": job.qr_kind or None,
+        "signPhase": sign_phase or None,
+        "signDone": sign_done,
         "loggedIn": logged_in,
         "finished": job.finished,
         "fillOk": fill_ok,
@@ -1031,28 +1349,23 @@ async def automation_status(sid: str):
     }
 
 
-@app.get("/api/admin/tasks")
-async def admin_list_tasks(request: Request, limit: int = 50):
-    """管理页：用户提交任务 + RPA 进度列表。"""
-    denied = _require_admin(request)
-    if denied is not None:
-        return denied
-    limit = max(1, min(int(limit or 50), 200))
-
+async def _admin_collect_rows(limit: int = 200) -> list[dict[str, Any]]:
     jobs = await relay_hub.list_jobs()
     by_case: dict[str, Any] = {}
     rows: list[dict[str, Any]] = []
 
     for job in jobs:
-        cid = (job.case_id or "").strip() or f"_sid_{job.sid}"
         row = _case_summary(job.case_id or "", job)
         rows.append(row)
         if job.case_id:
             by_case[job.case_id] = row
 
-    # 补充磁盘上近期案件（无活跃 relay 也展示）
     try:
-        case_dirs = [d for d in GAMMA_CASES_DIR.iterdir() if d.is_dir() and not d.name.startswith("_")]
+        case_dirs = [
+            d
+            for d in GAMMA_CASES_DIR.iterdir()
+            if d.is_dir() and not d.name.startswith("_")
+        ]
         case_dirs.sort(key=lambda d: d.stat().st_mtime, reverse=True)
     except Exception:
         case_dirs = []
@@ -1065,14 +1378,89 @@ async def admin_list_tasks(request: Request, limit: int = 50):
         rows.append(_case_summary(d.name, None))
 
     rows.sort(key=lambda r: float(r.get("mtime") or 0), reverse=True)
-    rows = rows[:limit]
-    running_n = sum(1 for r in rows if r.get("running"))
+    return rows[: max(1, min(int(limit or 200), 500))]
+
+
+@app.get("/api/admin/dashboard")
+async def admin_dashboard(request: Request, limit: int = 120, days: int = 14):
+    """运维看板：KPI、近 N 日提交趋势、实时任务与用户信息。"""
+    denied = _require_admin(request)
+    if denied is not None:
+        return denied
+    limit = max(1, min(int(limit or 120), 300))
+    days = max(7, min(int(days or 14), 30))
+
+    # 趋势用更大样本；列表仍按 limit 截断
+    all_rows = await _admin_collect_rows(500)
+    tasks = all_rows[:limit]
+
+    import datetime as _dt
+
+    today = _dt.date.today()
+    today_ts0 = _dt.datetime.combine(today, _dt.time.min).timestamp()
+
+    def _is_today(row: dict[str, Any]) -> bool:
+        ts = float(row.get("ctime") or row.get("mtime") or 0)
+        return ts >= today_ts0
+
+    today_rows = [r for r in all_rows if _is_today(r)]
+    counts = {
+        "total": len(all_rows),
+        "today": len(today_rows),
+        "running": sum(1 for r in all_rows if r.get("bucket") == "running"),
+        "fill_done": sum(1 for r in all_rows if r.get("bucket") == "fill_done"),
+        "sign_done": sum(1 for r in all_rows if r.get("bucket") == "sign_done"),
+        "failed": sum(1 for r in all_rows if r.get("bucket") == "failed"),
+        "name_failed": sum(1 for r in all_rows if r.get("bucket") == "name_failed"),
+        "need_human": sum(1 for r in all_rows if r.get("bucket") == "need_human"),
+        "in_progress": sum(1 for r in all_rows if r.get("bucket") == "in_progress"),
+        "today_sign_done": sum(1 for r in today_rows if r.get("bucket") == "sign_done"),
+        "today_failed": sum(
+            1 for r in today_rows if r.get("bucket") in ("failed", "name_failed")
+        ),
+    }
+
+    # 最近活跃用户（按手机号聚合）
+    users: dict[str, dict[str, Any]] = {}
+    for r in all_rows:
+        phone = str(r.get("contactPhone") or r.get("authPhone") or r.get("legalMobile") or "").strip()
+        if not phone:
+            continue
+        u = users.get(phone) or {
+            "phone": phone,
+            "legalName": "",
+            "cases": 0,
+            "lastCaseId": "",
+            "lastCompany": "",
+            "lastStatus": "",
+            "lastMtime": 0.0,
+        }
+        u["cases"] += 1
+        mt = float(r.get("mtime") or 0)
+        if mt >= float(u.get("lastMtime") or 0):
+            u["lastMtime"] = mt
+            u["lastCaseId"] = r.get("caseId") or ""
+            u["lastCompany"] = r.get("companyName") or r.get("tradeName") or ""
+            u["lastStatus"] = r.get("caseStatus") or ""
+            u["legalName"] = r.get("legalName") or u.get("legalName") or ""
+        users[phone] = u
+    user_list = sorted(
+        users.values(), key=lambda x: float(x.get("lastMtime") or 0), reverse=True
+    )[:40]
+
     return {
         "ok": True,
-        "tasks": rows,
-        "total": len(rows),
-        "running": running_n,
         "serverTime": time.time(),
+        "counts": counts,
+        "daily": _build_daily_series(all_rows, days=days),
+        "tasks": tasks,
+        "users": user_list,
+        "alerts": [
+            r
+            for r in tasks
+            if r.get("bucket") in ("need_human", "failed", "name_failed")
+            or r.get("running")
+        ][:20],
     }
 
 
@@ -1091,12 +1479,9 @@ async def resume_automation(sid: str):
             status_code=409,
         )
 
-    import sys
     from datetime import datetime
 
-    gamma_root = str(REPO_ROOT / "gamma-yct")
-    if gamma_root not in sys.path:
-        sys.path.insert(0, gamma_root)
+    _ensure_gamma_path()
     try:
         from apps.api import store as gamma_store
 
@@ -1131,11 +1516,7 @@ async def cancel_automation(sid: str, request: Request):
 
     # 无论 job 是否还在，都按案件号强制关 Chrome（解决取消未命中会话时窗口残留）
     try:
-        import sys
-
-        gamma_root = str(REPO_ROOT / "gamma-yct")
-        if gamma_root not in sys.path:
-            sys.path.insert(0, gamma_root)
+        _ensure_gamma_path()
         from apps.worker.run_fill_session import abort_fill_browser
 
         if not case_id:
@@ -1167,11 +1548,7 @@ async def cancel_automation_by_case(request: Request, body: dict):
     except Exception:
         pass
 
-    import sys
-
-    gamma_root = str(REPO_ROOT / "gamma-yct")
-    if gamma_root not in sys.path:
-        sys.path.insert(0, gamma_root)
+    _ensure_gamma_path()
     from apps.api import store as gamma_store
     from apps.worker.run_fill_session import abort_fill_browser
 

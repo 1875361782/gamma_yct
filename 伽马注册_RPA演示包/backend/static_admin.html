@@ -3,87 +3,188 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>伽马注册 · 任务管理</title>
+<title>伽马注册 · 运维看板</title>
 <style>
   :root{
-    --bg:#f4f6f9; --card:#fff; --text:#0b2e66; --sub:#5a6b85;
-    --line:#e5e7eb; --ok:#059669; --warn:#d97706; --err:#dc2626;
-    --run:#2563eb; --soft:#e8f0fe;
+    --bg:#0f172a; --panel:#111827; --card:#1e293b; --card2:#243044;
+    --text:#e2e8f0; --sub:#94a3b8; --line:#334155;
+    --ok:#34d399; --warn:#fbbf24; --err:#f87171; --run:#60a5fa;
+    --accent:#3b82f6; --soft:#1e3a5f;
   }
   *{box-sizing:border-box}
   body{
-    margin:0; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
-    background:var(--bg); color:var(--text); padding:20px;
+    margin:0; font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    background:radial-gradient(1200px 600px at 10% -10%, #1e3a5f 0%, transparent 50%),
+               radial-gradient(900px 500px at 100% 0%, #0f3d3e 0%, transparent 45%),
+               var(--bg);
+    color:var(--text); min-height:100vh;
   }
-  .wrap{max-width:1180px; margin:0 auto;}
-  h1{font-size:22px; margin:0 0 4px;}
-  .sub{color:var(--sub); font-size:13px; margin:0 0 16px; line-height:1.5;}
-  .bar{
-    display:flex; flex-wrap:wrap; gap:10px; align-items:center;
-    background:var(--card); border:1px solid var(--line); border-radius:12px;
-    padding:12px 14px; margin-bottom:14px;
+  .wrap{max-width:1280px; margin:0 auto; padding:20px 18px 40px;}
+  header.top{
+    display:flex; flex-wrap:wrap; gap:12px 18px; align-items:flex-end;
+    justify-content:space-between; margin-bottom:18px;
   }
-  .bar input[type=password], .bar input[type=text]{
+  .brand h1{margin:0; font-size:22px; font-weight:700; letter-spacing:.02em;}
+  .brand p{margin:4px 0 0; color:var(--sub); font-size:13px; line-height:1.45;}
+  .controls{
+    display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+  }
+  .controls input[type=password]{
     height:36px; border:1px solid var(--line); border-radius:8px;
-    padding:0 10px; min-width:180px; font-size:13px;
+    padding:0 10px; min-width:170px; font-size:13px;
+    background:var(--card); color:var(--text);
   }
-  .bar button{
+  .controls button{
     height:36px; border:none; border-radius:8px; padding:0 14px;
-    background:#1e5fd9; color:#fff; font-weight:600; cursor:pointer; font-size:13px;
+    background:var(--accent); color:#fff; font-weight:600; cursor:pointer; font-size:13px;
   }
-  .bar button.ghost{background:var(--soft); color:#1e5fd9;}
-  .stat{font-size:13px; color:var(--sub);}
-  .stat b{color:var(--text);}
-  .err{color:var(--err); font-size:13px; margin:0 0 10px;}
+  .controls button.ghost{background:var(--soft); color:#93c5fd;}
+  .controls label{font-size:12px; color:var(--sub); display:flex; gap:6px; align-items:center;}
+  .live{
+    display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--sub);
+  }
+  .live i{
+    width:8px; height:8px; border-radius:50%; background:var(--ok);
+    box-shadow:0 0 0 0 rgba(52,211,153,.6); animation:pulse 1.6s infinite;
+  }
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(52,211,153,.55)}
+    70%{box-shadow:0 0 0 8px rgba(52,211,153,0)}
+    100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}
+  }
+  .err-banner{
+    background:rgba(248,113,113,.12); border:1px solid rgba(248,113,113,.35);
+    color:#fecaca; padding:10px 12px; border-radius:10px; margin-bottom:14px; font-size:13px;
+  }
+  .kpis{
+    display:grid; grid-template-columns:repeat(6, minmax(0,1fr)); gap:10px; margin-bottom:14px;
+  }
+  @media (max-width:1100px){ .kpis{grid-template-columns:repeat(3,1fr);} }
+  @media (max-width:640px){ .kpis{grid-template-columns:repeat(2,1fr);} }
+  .kpi{
+    background:linear-gradient(180deg, var(--card) 0%, var(--card2) 100%);
+    border:1px solid var(--line); border-radius:14px; padding:14px 14px 12px;
+  }
+  .kpi .lab{font-size:12px; color:var(--sub); margin-bottom:6px;}
+  .kpi .num{font-size:28px; font-weight:700; letter-spacing:-.02em; line-height:1.1;}
+  .kpi .hint{font-size:11px; color:var(--sub); margin-top:6px;}
+  .kpi.run .num{color:var(--run);}
+  .kpi.ok .num{color:var(--ok);}
+  .kpi.warn .num{color:var(--warn);}
+  .kpi.err .num{color:var(--err);}
+  .grid{
+    display:grid; grid-template-columns:1.4fr 1fr; gap:12px; margin-bottom:12px;
+  }
+  @media (max-width:960px){ .grid{grid-template-columns:1fr;} }
+  .panel{
+    background:rgba(30,41,59,.85); border:1px solid var(--line);
+    border-radius:14px; padding:14px 14px 12px; backdrop-filter:blur(6px);
+  }
+  .panel h2{
+    margin:0 0 12px; font-size:14px; font-weight:650; color:#cbd5e1;
+    display:flex; justify-content:space-between; align-items:center; gap:8px;
+  }
+  .panel h2 span{font-weight:500; color:var(--sub); font-size:12px;}
+  .chart{
+    display:flex; align-items:flex-end; gap:6px; height:160px; padding:4px 2px 0;
+  }
+  .bar-col{flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; min-width:0;}
+  .bar-stack{
+    width:100%; max-width:28px; height:130px; display:flex; flex-direction:column-reverse;
+    border-radius:6px 6px 2px 2px; overflow:hidden; background:rgba(15,23,42,.5);
+  }
+  .seg{width:100%; min-height:0;}
+  .seg.total{background:#334155;}
+  .seg.fill{background:#3b82f6;}
+  .seg.sign{background:#34d399;}
+  .seg.fail{background:#f87171;}
+  .bar-lab{font-size:10px; color:var(--sub); white-space:nowrap;}
+  .legend{display:flex; flex-wrap:wrap; gap:10px 14px; margin-top:10px; font-size:11px; color:var(--sub);}
+  .legend i{display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:4px;}
   table{
-    width:100%; border-collapse:separate; border-spacing:0;
-    background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden;
+    width:100%; border-collapse:separate; border-spacing:0; font-size:13px;
   }
   th, td{
-    text-align:left; padding:10px 12px; font-size:13px;
-    border-bottom:1px solid var(--line); vertical-align:top;
+    text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:top;
   }
-  th{background:#f8fafc; color:var(--sub); font-weight:600; white-space:nowrap;}
+  th{color:var(--sub); font-weight:600; font-size:12px; white-space:nowrap;}
   tr:last-child td{border-bottom:none;}
   .mono{font-family:ui-monospace,Consolas,monospace; font-size:12px;}
   .muted{color:var(--sub);}
   .pill{
     display:inline-block; font-size:11px; font-weight:700;
-    padding:2px 8px; border-radius:99px; background:#eef2ff; color:#3730a3;
+    padding:2px 8px; border-radius:99px; background:#334155; color:#e2e8f0;
   }
-  .pill.run{background:#dbeafe; color:#1d4ed8;}
-  .pill.ok{background:#d1fae5; color:#047857;}
-  .pill.warn{background:#ffedd5; color:#c2410c;}
-  .pill.err{background:#fee2e2; color:#b91c1c;}
-  .pill.idle{background:#f3f4f6; color:#4b5563;}
-  .prog{max-width:280px; line-height:1.45;}
-  .empty{padding:40px; text-align:center; color:var(--sub);}
-  @media (max-width:800px){
-    table, thead, tbody, th, td, tr{display:block;}
-    thead{display:none;}
-    tr{border-bottom:1px solid var(--line); padding:10px 0;}
-    td{border:none; padding:4px 12px;}
-    td::before{content:attr(data-label); display:block; color:var(--sub); font-size:11px;}
-  }
+  .pill.run{background:rgba(96,165,250,.2); color:#93c5fd;}
+  .pill.ok{background:rgba(52,211,153,.18); color:#6ee7b7;}
+  .pill.warn{background:rgba(251,191,36,.18); color:#fcd34d;}
+  .pill.err{background:rgba(248,113,113,.18); color:#fca5a5;}
+  .pill.idle{background:#1f2937; color:#94a3b8;}
+  .scroll{max-height:420px; overflow:auto;}
+  .scroll-sm{max-height:280px; overflow:auto;}
+  .empty{padding:28px; text-align:center; color:var(--sub); font-size:13px;}
+  .prog{max-width:260px; line-height:1.45;}
+  .two-col{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  @media (max-width:960px){ .two-col{grid-template-columns:1fr;} }
+  footer.foot{margin-top:16px; color:var(--sub); font-size:12px;}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>任务与 RPA 进度</h1>
-  <p class="sub">查看用户提交的案件、扫码/填报状态与当前进度。本机默认可访问；公网需配置 <code>GAMMA_ADMIN_TOKEN</code>。</p>
+  <header class="top">
+    <div class="brand">
+      <h1>伽马注册 · 运维看板</h1>
+      <p>实时监控每日提交、RPA 进度与用户信息。本机默认可访问；公网需配置 <code>GAMMA_ADMIN_TOKEN</code>。</p>
+    </div>
+    <div class="controls">
+      <span class="live" id="liveBadge"><i></i>实时</span>
+      <input id="adminToken" type="password" placeholder="管理口令（公网必填）" autocomplete="off" />
+      <button type="button" id="btnSave">保存口令</button>
+      <button type="button" class="ghost" id="btnRefresh">立即刷新</button>
+      <label><input type="checkbox" id="autoRefresh" checked /> 每 3 秒刷新</label>
+    </div>
+  </header>
 
-  <div class="bar">
-    <input id="adminToken" type="password" placeholder="管理口令（公网必填）" autocomplete="off" />
-    <button type="button" id="btnSave">保存口令</button>
-    <button type="button" class="ghost" id="btnRefresh">立即刷新</button>
-    <label class="stat"><input type="checkbox" id="autoRefresh" checked /> 每 2 秒自动刷新</label>
-    <span class="stat" id="summary">—</span>
-  </div>
-  <p class="err" id="errBox" hidden></p>
+  <div class="err-banner" id="errBox" hidden></div>
 
-  <div id="tableWrap">
-    <div class="empty">加载中…</div>
-  </div>
+  <section class="kpis" id="kpis">
+    <div class="kpi"><div class="lab">今日提交</div><div class="num" id="kToday">—</div><div class="hint" id="kTodayHint">—</div></div>
+    <div class="kpi run"><div class="lab">运行中</div><div class="num" id="kRun">—</div><div class="hint">RPA 进行中</div></div>
+    <div class="kpi ok"><div class="lab">填报完成</div><div class="num" id="kFill">—</div><div class="hint">待签名 / 已提交材料</div></div>
+    <div class="kpi ok"><div class="lab">签名完成</div><div class="num" id="kSign">—</div><div class="hint" id="kSignHint">—</div></div>
+    <div class="kpi warn"><div class="lab">需人工</div><div class="num" id="kHuman">—</div><div class="hint">含核名失败</div></div>
+    <div class="kpi err"><div class="lab">失败</div><div class="num" id="kFail">—</div><div class="hint" id="kFailHint">—</div></div>
+  </section>
+
+  <section class="grid">
+    <div class="panel">
+      <h2>近 14 日提交趋势 <span id="chartMax">—</span></h2>
+      <div class="chart" id="chart"></div>
+      <div class="legend">
+        <span><i class="seg fill" style="background:#3b82f6"></i>填报完成</span>
+        <span><i class="seg sign" style="background:#34d399"></i>签名完成</span>
+        <span><i class="seg fail" style="background:#f87171"></i>失败</span>
+        <span><i class="seg total" style="background:#64748b"></i>其他</span>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>关注事项 <span id="alertCount">0</span></h2>
+      <div class="scroll-sm" id="alerts"><div class="empty">暂无告警</div></div>
+    </div>
+  </section>
+
+  <section class="two-col">
+    <div class="panel">
+      <h2>实时任务 <span id="taskCount">—</span></h2>
+      <div class="scroll" id="taskWrap"><div class="empty">加载中…</div></div>
+    </div>
+    <div class="panel">
+      <h2>用户信息 <span id="userCount">—</span></h2>
+      <div class="scroll" id="userWrap"><div class="empty">加载中…</div></div>
+    </div>
+  </section>
+
+  <footer class="foot" id="footerMeta">—</footer>
 </div>
 
 <script>
@@ -91,8 +192,6 @@
   const TOKEN_KEY = 'gamma_admin_token';
   const tokenEl = document.getElementById('adminToken');
   const errBox = document.getElementById('errBox');
-  const summary = document.getElementById('summary');
-  const wrap = document.getElementById('tableWrap');
   const autoEl = document.getElementById('autoRefresh');
   let timer = null;
 
@@ -110,62 +209,163 @@
     const d = new Date((ts < 1e12 ? ts * 1000 : ts));
     if(isNaN(d.getTime())) return String(ts);
     const p = n => String(n).padStart(2,'0');
-    return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
-  }
-
-  function statusPill(row){
-    if(row.running) return '<span class="pill run">运行中</span>';
-    if(row.nameFailed) return '<span class="pill err">核名失败</span>';
-    if(row.needsHuman) return '<span class="pill warn">需人工</span>';
-    if(row.fillOk || row.stage === 'done') return '<span class="pill ok">完成</span>';
-    if(row.finished && row.error) return '<span class="pill err">失败</span>';
-    if(row.hasQr && !row.loggedIn) return '<span class="pill run">待扫码</span>';
-    return '<span class="pill idle">'+(row.caseStatus || '草稿')+'</span>';
-  }
-
-  function render(data){
-    const tasks = data.tasks || [];
-    summary.innerHTML = '共 <b>'+tasks.length+'</b> 条 · 运行中 <b>'+(data.running||0)+'</b> · 更新 '+fmtTime(data.serverTime);
-    if(!tasks.length){
-      wrap.innerHTML = '<div class="empty">暂无任务。用户在产品页提交并启动填报后会出现在这里。</div>';
-      return;
-    }
-    let html = '<table><thead><tr>'
-      +'<th>时间</th><th>案件 / 会话</th><th>企业</th><th>状态</th><th>阶段</th><th>进度</th>'
-      +'</tr></thead><tbody>';
-    for(const row of tasks){
-      const name = row.companyName || row.tradeName || '—';
-      const sub = [row.orgForm, row.industry, row.district].filter(Boolean).join(' · ');
-      html += '<tr>'
-        +'<td data-label="时间" class="mono">'+fmtTime(row.mtime || row.startedAt)+'</td>'
-        +'<td data-label="案件"><div class="mono">'+(row.caseId||'—')+'</div>'
-        +(row.sid ? '<div class="muted mono">'+row.sid+'</div>' : '')
-        +'</td>'
-        +'<td data-label="企业"><div>'+escapeHtml(name)+'</div>'
-        +(sub ? '<div class="muted">'+escapeHtml(sub)+'</div>' : '')
-        +(row.contactPhone ? '<div class="muted">'+escapeHtml(row.contactPhone)+'</div>' : '')
-        +'</td>'
-        +'<td data-label="状态">'+statusPill(row)+'</td>'
-        +'<td data-label="阶段">'+(row.stageLabel || row.stage || '—')
-        +'<div class="muted">'+((row.stagesDone||[]).length ? (row.stagesDone||[]).join(' → ') : '—')
-        +'</div></td>'
-        +'<td data-label="进度" class="prog">'+escapeHtml(row.progress || '—')
-        +(row.error ? '<div class="muted" style="color:var(--err)">'+escapeHtml(row.error)+'</div>' : '')
-        +'</td>'
-        +'</tr>';
-    }
-    html += '</tbody></table>';
-    wrap.innerHTML = html;
+    return p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
   }
 
   function escapeHtml(s){
     return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
+  function statusPill(row){
+    const b = row.bucket || '';
+    if(b === 'running' || row.running) return '<span class="pill run">运行中</span>';
+    if(b === 'name_failed' || row.nameFailed) return '<span class="pill err">核名失败</span>';
+    if(b === 'need_human' || row.needsHuman) return '<span class="pill warn">需人工</span>';
+    if(b === 'sign_done' || row.signDone) return '<span class="pill ok">签名完成</span>';
+    if(b === 'fill_done' || row.fillOk) return '<span class="pill ok">填报完成</span>';
+    if(b === 'failed') return '<span class="pill err">失败</span>';
+    if(row.hasQr && !row.loggedIn) return '<span class="pill run">待扫码</span>';
+    return '<span class="pill idle">'+(row.caseStatus || '进行中')+'</span>';
+  }
+
+  function renderChart(daily){
+    const el = document.getElementById('chart');
+    const maxHint = document.getElementById('chartMax');
+    const list = daily || [];
+    const max = Math.max(1, ...list.map(d => Number(d.total)||0));
+    maxHint.textContent = '峰值 ' + max + ' 单/日';
+    if(!list.length){
+      el.innerHTML = '<div class="empty">暂无趋势数据</div>';
+      return;
+    }
+    el.innerHTML = list.map(d => {
+      const total = Number(d.total)||0;
+      const fill = Number(d.fill_done)||0;
+      const sign = Number(d.sign_done)||0;
+      const fail = Number(d.failed)||0;
+      const other = Math.max(0, total - fill - sign - fail);
+      const h = (n) => total ? Math.round((n/max)*130) : 0;
+      return '<div class="bar-col" title="'+escapeHtml(d.date)+'：共 '+total+'">'
+        +'<div class="bar-stack">'
+        +'<div class="seg fill" style="height:'+h(fill)+'px"></div>'
+        +'<div class="seg sign" style="height:'+h(sign)+'px"></div>'
+        +'<div class="seg fail" style="height:'+h(fail)+'px"></div>'
+        +'<div class="seg total" style="height:'+h(other)+'px"></div>'
+        +'</div>'
+        +'<div class="bar-lab">'+escapeHtml(d.label||'')+'</div>'
+        +'</div>';
+    }).join('');
+  }
+
+  function renderAlerts(alerts){
+    const el = document.getElementById('alerts');
+    document.getElementById('alertCount').textContent = String((alerts||[]).length);
+    if(!alerts || !alerts.length){
+      el.innerHTML = '<div class="empty">暂无需关注事项</div>';
+      return;
+    }
+    let html = '<table><thead><tr><th>状态</th><th>企业 / 用户</th><th>进度</th></tr></thead><tbody>';
+    for(const row of alerts){
+      html += '<tr>'
+        +'<td>'+statusPill(row)+'</td>'
+        +'<td><div>'+escapeHtml(row.companyName || row.tradeName || '—')+'</div>'
+        +'<div class="muted mono">'+escapeHtml(row.caseId||'')+'</div>'
+        +(row.contactPhone ? '<div class="muted">'+escapeHtml(row.contactPhone)+'</div>' : '')
+        +'</td>'
+        +'<td class="prog">'+escapeHtml(row.progress || '—')
+        +(row.error ? '<div class="muted" style="color:var(--err)">'+escapeHtml(row.error)+'</div>' : '')
+        +'</td></tr>';
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  }
+
+  function renderTasks(tasks){
+    const el = document.getElementById('taskWrap');
+    document.getElementById('taskCount').textContent = '共 ' + (tasks||[]).length + ' 条';
+    if(!tasks || !tasks.length){
+      el.innerHTML = '<div class="empty">暂无任务</div>';
+      return;
+    }
+    let html = '<table><thead><tr>'
+      +'<th>时间</th><th>案件</th><th>企业 / 人员</th><th>状态</th><th>阶段</th><th>进度</th>'
+      +'</tr></thead><tbody>';
+    for(const row of tasks){
+      const people = [
+        row.legalName ? ('法人 '+row.legalName) : '',
+        row.contactPhone || row.legalMobile || ''
+      ].filter(Boolean).join(' · ');
+      const sub = [row.orgForm, row.industry, row.district].filter(Boolean).join(' · ');
+      html += '<tr>'
+        +'<td class="mono">'+fmtTime(row.mtime || row.startedAt)+'</td>'
+        +'<td><div class="mono">'+escapeHtml(row.caseId||'—')+'</div>'
+        +(row.sid ? '<div class="muted mono">'+escapeHtml(row.sid)+'</div>' : '')
+        +'</td>'
+        +'<td><div>'+escapeHtml(row.companyName || row.tradeName || '—')+'</div>'
+        +(sub ? '<div class="muted">'+escapeHtml(sub)+'</div>' : '')
+        +(people ? '<div class="muted">'+escapeHtml(people)+'</div>' : '')
+        +'</td>'
+        +'<td>'+statusPill(row)+'</td>'
+        +'<td>'+escapeHtml(row.stageLabel || row.stage || '—')
+        +'<div class="muted">'+escapeHtml(((row.stagesDone||[]).join(' → ')) || '—')+'</div></td>'
+        +'<td class="prog">'+escapeHtml(row.progress || '—')
+        +(row.error ? '<div class="muted" style="color:var(--err)">'+escapeHtml(row.error)+'</div>' : '')
+        +'</td></tr>';
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  }
+
+  function renderUsers(users){
+    const el = document.getElementById('userWrap');
+    document.getElementById('userCount').textContent = '共 ' + (users||[]).length + ' 人';
+    if(!users || !users.length){
+      el.innerHTML = '<div class="empty">暂无用户手机号（提交 payload 后会出现）</div>';
+      return;
+    }
+    let html = '<table><thead><tr><th>手机号</th><th>姓名</th><th>案件数</th><th>最近企业</th><th>最近状态</th><th>活跃</th></tr></thead><tbody>';
+    for(const u of users){
+      html += '<tr>'
+        +'<td class="mono">'+escapeHtml(u.phone||'—')+'</td>'
+        +'<td>'+escapeHtml(u.legalName||'—')+'</td>'
+        +'<td>'+(u.cases||0)+'</td>'
+        +'<td><div>'+escapeHtml(u.lastCompany||'—')+'</div>'
+        +'<div class="muted mono">'+escapeHtml(u.lastCaseId||'')+'</div></td>'
+        +'<td class="muted">'+escapeHtml(u.lastStatus||'—')+'</td>'
+        +'<td class="mono">'+fmtTime(u.lastMtime)+'</td>'
+        +'</tr>';
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  }
+
+  function render(data){
+    const c = data.counts || {};
+    document.getElementById('kToday').textContent = c.today ?? '—';
+    document.getElementById('kTodayHint').textContent = '历史累计 ' + (c.total ?? 0) + ' 单';
+    document.getElementById('kRun').textContent = c.running ?? '—';
+    document.getElementById('kFill').textContent = c.fill_done ?? '—';
+    document.getElementById('kSign').textContent = c.sign_done ?? '—';
+    document.getElementById('kSignHint').textContent = '今日完成签名 ' + (c.today_sign_done ?? 0);
+    document.getElementById('kHuman').textContent = (c.need_human||0) + (c.name_failed||0);
+    document.getElementById('kFail').textContent = c.failed ?? '—';
+    document.getElementById('kFailHint').textContent = '今日失败 ' + (c.today_failed ?? 0);
+
+    renderChart(data.daily || []);
+    renderAlerts(data.alerts || []);
+    renderTasks(data.tasks || []);
+    renderUsers(data.users || []);
+    document.getElementById('footerMeta').textContent =
+      '更新于 ' + fmtTime(data.serverTime) + ' · 样本 ' + (c.total||0) + ' 案 · 自动刷新 ' + (autoEl.checked ? '开' : '关');
+  }
+
   async function load(){
     errBox.hidden = true;
     try{
-      const res = await fetch('/api/admin/tasks?limit=80', { headers: headers(), cache: 'no-store' });
+      const res = await fetch('/api/admin/dashboard?limit=120&days=14', {
+        headers: headers(),
+        cache: 'no-store',
+      });
       const data = await res.json().catch(() => ({}));
       if(!res.ok || !data.ok){
         throw new Error(data.message || data.error || ('HTTP '+res.status));
@@ -179,7 +379,7 @@
 
   function schedule(){
     if(timer){ clearInterval(timer); timer = null; }
-    if(autoEl.checked) timer = setInterval(load, 2000);
+    if(autoEl.checked) timer = setInterval(load, 3000);
   }
 
   document.getElementById('btnSave').onclick = ()=>{

@@ -1271,20 +1271,30 @@ def _district_from_payload(payload: dict[str, Any]) -> str:
 
 
 def _authority_candidates(payload: dict[str, Any]) -> list[str]:
-    """申请机关固定优先上海市市场监督(管理)局，再回落区局。"""
+    """申请机关按前端所选区县选对应市场监督管理局，不再固定市局。"""
     from apps.worker.playbooks.org_fill_profile import profile_for
 
     profile = profile_for(payload)
-    out: list[str] = list(profile.get("authority_options") or [])
+    out: list[str] = []
     reg = payload.get("registration") or {}
     explicit = str(reg.get("authority") or "").strip()
-    if explicit and explicit not in out:
-        out.append(explicit)
     district = _district_from_payload(payload)
+
+    def _add(name: str) -> None:
+        name = (name or "").strip()
+        if name and name not in out:
+            out.append(name)
+
+    # 1) payload 已写好的机关（前端：{区县}市场监督管理局）
+    _add(explicit)
+    # 2) 按区县拼装
     if district:
-        for x in (f"{district}市场监督管理局", f"{district}市场监管局", district):
-            if x not in out:
-                out.append(x)
+        _add(f"{district}市场监督管理局")
+        _add(f"{district}市场监管局")
+        _add(district)
+    # 3) 仅作兜底：市局（无区县时）
+    for x in profile.get("authority_options") or []:
+        _add(str(x or ""))
     return out
 
 
@@ -1693,52 +1703,82 @@ def _click_open_address_field(page: Page, frame: Frame) -> bool:
 
 
 def _close_address_dialog(page: Page) -> bool:
-    """关闭已打开的住所弹窗（取消/关闭），便于重试时重新打开。"""
+    """关闭已打开的住所弹窗（优先右上角叉），便于卡住后重开重试。"""
     dialog = _find_address_dialog(page)
     if dialog is None:
         return True
     try:
+        # 1) 右上角关闭（卡住时 footer 常只有「确定」）
+        for sel in (
+            ".el-dialog__headerbtn",
+            "button.el-dialog__headerbtn",
+            ".el-dialog__close",
+            "[aria-label='Close']",
+            "[aria-label='关闭']",
+        ):
+            close = dialog.locator(sel).first
+            if _visible(close, timeout=250):
+                try:
+                    close.click(timeout=2000, force=True)
+                except Exception:
+                    try:
+                        close.click(timeout=2000)
+                    except Exception:
+                        continue
+                page.wait_for_timeout(500)
+                if _find_address_dialog(page) is None:
+                    return True
+        # 2) footer 取消/关闭
         footer = dialog.locator(".el-dialog__footer").first
-        if _visible(footer, timeout=400):
+        if _visible(footer, timeout=300):
             for name in ("取消", "关闭"):
                 btn = footer.locator("button").filter(
                     has_text=re.compile(rf"^\s*{name}\s*$")
                 ).first
-                if _visible(btn, timeout=300):
+                if _visible(btn, timeout=250):
                     try:
-                        btn.click(timeout=2500)
-                    except Exception:
                         btn.click(timeout=2500, force=True)
+                    except Exception:
+                        btn.click(timeout=2500)
                     page.wait_for_timeout(500)
                     if _find_address_dialog(page) is None:
                         return True
-        # 右上角叉
-        close = dialog.locator(".el-dialog__headerbtn, button.el-dialog__headerbtn").first
-        if _visible(close, timeout=300):
-            close.click(timeout=2000, force=True)
-            page.wait_for_timeout(500)
-            if _find_address_dialog(page) is None:
-                return True
     except Exception:
         pass
-    # 禁止 Escape（会误关其它层）；JS 点取消
+    # 禁止 Escape（会误关其它层）；JS 点叉/取消
     try:
         dialog.evaluate(
             """(root) => {
+              const x = root.querySelector(
+                '.el-dialog__headerbtn, .el-dialog__close, button.el-dialog__headerbtn'
+              );
+              if (x) { x.click(); return true; }
               const foot = root.querySelector('.el-dialog__footer') || root;
               const btn = [...foot.querySelectorAll('button')].find(b => {
                 const t = (b.innerText || '').replace(/\\s+/g, '');
                 return t === '取消' || t === '关闭';
               });
               if (btn) { btn.click(); return true; }
-              const x = root.querySelector('.el-dialog__headerbtn');
-              if (x) { x.click(); return true; }
               return false;
             }"""
         )
         page.wait_for_timeout(500)
     except Exception:
         pass
+    # 遮罩层偶发残留：再扫全页右上角叉
+    if _find_address_dialog(page) is not None:
+        try:
+            for scope in _all_scopes(page):
+                x = scope.locator(
+                    ".el-dialog__wrapper:visible .el-dialog__headerbtn, "
+                    ".el-overlay-dialog:visible .el-dialog__headerbtn"
+                ).first
+                if _visible(x, timeout=200):
+                    x.click(timeout=1500, force=True)
+                    page.wait_for_timeout(400)
+                    break
+        except Exception:
+            pass
     return _find_address_dialog(page) is None
 
 
@@ -2572,11 +2612,49 @@ def _read_address_unit(dialog, suffix: str) -> str:
 def _fill_address_dialog(
     page: Page, frame: Frame, payload: dict[str, Any], case_id: str
 ) -> dict[str, Any]:
+    """住所填报：失败或卡住时关弹窗（右上角叉）后最多再试 2 次。"""
+    rounds: list[dict[str, Any]] = []
+    last: dict[str, Any] = {"opened": False, "ok": False}
+    for attempt in range(3):
+        if attempt > 0:
+            closed = _close_address_dialog(page)
+            page.wait_for_timeout(700)
+            _shot(page, case_id, f"address-stuck-closed-{attempt}")
+            rounds.append({"attempt": attempt, "closedBeforeRetry": closed})
+        last = _fill_address_dialog_once(page, frame, payload, case_id)
+        last["attempt"] = attempt + 1
+        rounds.append(
+            {
+                "attempt": attempt + 1,
+                "ok": bool(last.get("ok")),
+                "complete": bool(last.get("complete")),
+                "error": last.get("error"),
+                "district": last.get("district"),
+                "street": last.get("street"),
+                "road": last.get("road"),
+            }
+        )
+        if last.get("ok"):
+            last["retryRounds"] = rounds
+            return last
+        # 未成功：关掉卡住的弹窗，再重开重试
+        _close_address_dialog(page)
+        page.wait_for_timeout(600)
+    last["retryRounds"] = rounds
+    last["retriedAfterStuck"] = True
+    if not last.get("error"):
+        last["error"] = "住所填报多次重试仍失败"
+    return last
+
+
+def _fill_address_dialog_once(
+    page: Page, frame: Frame, payload: dict[str, Any], case_id: str
+) -> dict[str, Any]:
     reg = payload.get("registration") or {}
     addr = reg.get("address") or {}
     result: dict[str, Any] = {"opened": False, "ok": False}
 
-    # 重试时先关掉半成品弹窗再打开，避免区县/街道级联卡死
+    # 每次尝试先关掉半成品弹窗再打开，避免区县/街道级联卡死
     dialog = _ensure_address_dialog(page, frame, retries=4, fresh=True)
     if dialog is None:
         result["error"] = "住所填报弹窗未出现"

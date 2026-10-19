@@ -1497,9 +1497,7 @@ def _select_org_form_two_step(
 
 
 def _choose_first_industry_suggestion(frame: Frame, industry: str) -> tuple[bool, str]:
-    """点击第一条包含行业表述的自动完成项（如第一个「科技」）。必须点选，不能只靠手输。"""
-    if not industry:
-        return False, "industry_empty"
+    """点选行业下拉/自动完成的第一项（前端手输后，填报时固定选首项）。"""
     page = frame.page
     try:
         scopes: list[Any] = [frame, page]
@@ -1517,48 +1515,40 @@ def _choose_first_industry_suggestion(frame: Frame, industry: str) -> tuple[bool
             ".el-scrollbar__view li",
             ".el-popper li",
         )
-        # 多等一会儿让建议出来
-        for _wait in range(8):
+        for _wait in range(10):
             for scope in scopes:
-                prefer = scope.get_by_text("主营行业", exact=False)
-                for i in range(min(prefer.count(), 12)):
-                    item = prefer.nth(i)
-                    if not _visible(item):
-                        continue
-                    text = " ".join((item.inner_text(timeout=400) or "").split())
-                    if industry in text:
+                for sel in list_selectors:
+                    items = scope.locator(sel)
+                    n = min(items.count(), 20)
+                    for i in range(n):
+                        item = items.nth(i)
+                        if not _visible(item):
+                            continue
+                        text = " ".join((item.inner_text(timeout=400) or "").split())
+                        if not text or "请选择" in text:
+                            continue
                         try:
                             item.click(timeout=3000, force=True)
                         except Exception:
                             box = item.bounding_box()
                             if box:
                                 page.mouse.click(box["x"] + 20, box["y"] + 10)
+                            else:
+                                continue
                         page.wait_for_timeout(400)
-                        return True, text
-                for sel in list_selectors:
-                    items = scope.locator(sel)
-                    for i in range(min(items.count(), 20)):
-                        item = items.nth(i)
-                        if not _visible(item):
-                            continue
-                        text = " ".join((item.inner_text(timeout=400) or "").split())
-                        if industry in text:
-                            try:
-                                item.click(timeout=3000, force=True)
-                            except Exception:
-                                box = item.bounding_box()
-                                if box:
-                                    page.mouse.click(box["x"] + 20, box["y"] + 10)
-                            page.wait_for_timeout(400)
-                            return True, text
-            # 回退：点「科技 (」前缀
-            for scope in scopes:
-                loc = scope.get_by_text(f"{industry} (", exact=False).first
-                if _visible(loc):
-                    loc.click(timeout=3000, force=True)
-                    page.wait_for_timeout(400)
-                    return True, industry
+                        return True, text or (industry or "first")
             page.wait_for_timeout(350)
+        # 键盘兜底：下箭头 + 回车选第一项
+        try:
+            box = frame.get_by_placeholder("请输入行业表述", exact=False).first
+            if _visible(box):
+                box.press("ArrowDown")
+                page.wait_for_timeout(250)
+                box.press("Enter")
+                page.wait_for_timeout(400)
+                return True, (industry or "") + "(keyboard-first)"
+        except Exception:
+            pass
         return False, "industry_suggestion_missing"
     except Exception as exc:
         return False, f"industry_suggestion_error:{exc}"
@@ -2619,5 +2609,5 @@ def run_fill_pipeline(case_id: str, page: Page) -> None:
         case_id,
         statuses.READY_FOR_USER_SUBMIT,
         result=base_result,
-        customer_message="自动填报已完成（材料预览）。请本人核对材料后提交并完成电子签名（不代提交/签名）",
+        customer_message="自动填报已完成（已进入进度跟踪页）。请继续完成电子签名",
     )

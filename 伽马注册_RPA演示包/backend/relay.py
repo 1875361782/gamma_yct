@@ -28,6 +28,8 @@ class RelayJob:
     sid: str
     case_id: str
     qr_b64: Optional[str] = None
+    qr_kind: Optional[str] = None  # login | alipay | face
+    sign_phase: Optional[str] = None  # alipay_qr | alipay_scanned | face_qr | done
     logged_in: bool = False
     started_at: float = field(default_factory=time.time)
     finished: bool = False
@@ -111,22 +113,60 @@ class RelayHub:
             return
         asyncio.run_coroutine_threadsafe(coro, loop)
 
-    def push_qr(self, sid: str, qr_b64: str) -> None:
+    def push_qr(self, sid: str, qr_b64: str, kind: Optional[str] = None) -> None:
         # 同步写入，避免事件循环调度失败时轮询一直拿不到二维码
         job = self._jobs.get(sid)
         if job and qr_b64:
             job.qr_b64 = qr_b64
+            if kind:
+                job.qr_kind = kind
 
         async def _do():
             async with self._lock:
                 j = self._jobs.get(sid)
                 if j and qr_b64:
                     j.qr_b64 = qr_b64
+                    if kind:
+                        j.qr_kind = kind
             from .protocol import msg_qr_update, msg_step
 
             await self._broadcast(sid, "qr", msg_qr_update(qr_b64))
             await self._broadcast(
                 sid, "step", msg_step("qr_captured", "二维码已同步到演示页")
+            )
+
+        self._schedule(_do())
+
+    def clear_qr(self, sid: str) -> None:
+        """进入加载态时清掉旧二维码，避免前端继续展示上一张码。"""
+        job = self._jobs.get(sid)
+        if job:
+            job.qr_b64 = None
+            job.qr_kind = None
+
+        async def _do():
+            async with self._lock:
+                j = self._jobs.get(sid)
+                if j:
+                    j.qr_b64 = None
+                    j.qr_kind = None
+
+        self._schedule(_do())
+
+    def push_sign_phase(self, sid: str, phase: str) -> None:
+        job = self._jobs.get(sid)
+        if job:
+            job.sign_phase = phase
+
+        async def _do():
+            async with self._lock:
+                j = self._jobs.get(sid)
+                if j:
+                    j.sign_phase = phase
+            from .protocol import msg_step
+
+            await self._broadcast(
+                sid, "step", msg_step("sign_phase", f"签名阶段：{phase}")
             )
 
         self._schedule(_do())
@@ -194,6 +234,8 @@ class RelayHub:
                 def on_login():
                     self.push_login(sid)
 
+                from apps.worker.run_fill_session import park_await_sign
+
                 result = run_fill_session(
                     case_id,
                     headless=headless,
@@ -201,9 +243,29 @@ class RelayHub:
                     on_login=on_login,
                     max_rounds=2,
                 )
+                # 先通知前端填报结束，再挂起同线程等待「前往签名」
                 self.mark_finished(sid, bool(result.get("ok")), result.get("reason"))
                 if not result.get("ok") and result.get("reason"):
                     self.push_error(sid, str(result.get("reason")))
+
+                if result.get("ok") and result.get("keepBrowserOpen"):
+                    sign_result = park_await_sign(case_id, timeout_sec=7200)
+                    if sign_result is not None:
+                        self.mark_finished(
+                            sid,
+                            bool(sign_result.get("ok")),
+                            sign_result.get("reason") or sign_result.get("error"),
+                        )
+                        if sign_result.get("ok"):
+                            self.push_sign_phase(sid, "done")
+                        elif sign_result.get("reason") or sign_result.get("error"):
+                            self.push_error(
+                                sid,
+                                str(
+                                    sign_result.get("reason")
+                                    or sign_result.get("error")
+                                ),
+                            )
             except Exception as e:
                 logger.exception("fill session failed sid=%s", sid)
                 self.mark_finished(sid, False, str(e))
@@ -216,6 +278,103 @@ class RelayHub:
         job.ok = None
         job.error = None
         job.logged_in = False
+        job.qr_kind = None
+        job.sign_phase = None
+        t.start()
+        return True
+
+    def start_sign_thread(
+        self, sid: str, case_id: str, gamma_root: str
+    ) -> bool:
+        """优先唤醒挂起的填报线程跑签名；若无挂起则用同一 profile 重绑启动。"""
+        import sys
+
+        if gamma_root not in sys.path:
+            sys.path.insert(0, gamma_root)
+        from apps.worker.run_fill_session import (
+            has_parked_sign_session,
+            request_parked_sign,
+            run_sign_session_rebind,
+            wait_until_sign_park_ready,
+        )
+
+        job = self._jobs.get(sid)
+        if job is None:
+            job = RelayJob(sid=sid, case_id=case_id)
+            self._jobs[sid] = job
+
+        def on_qr(uri: str, kind: str = "alipay"):
+            if uri:
+                self.push_qr(sid, uri, kind=kind)
+
+        def on_phase(phase: str):
+            self.push_sign_phase(sid, phase)
+
+        # 已在签名中（用户重复点继续签名）：直接复用，勿重启打断衔接
+        phase_now = str(job.sign_phase or "")
+        if (
+            job.thread
+            and job.thread.is_alive()
+            and phase_now
+            and phase_now not in ("", "done")
+            and not job.finished
+        ):
+            self.clear_qr(sid)
+            return True
+
+        job.case_id = case_id
+        job.finished = False
+        job.ok = None
+        job.error = None
+        self.clear_qr(sid)
+        job.sign_phase = "start"
+
+        # 1) 同线程挂起唤醒（最佳）；填报刚结束可能有短空窗，先等就绪
+        if job.thread and job.thread.is_alive() and not has_parked_sign_session(case_id):
+            wait_until_sign_park_ready(case_id, timeout_sec=15.0)
+        if has_parked_sign_session(case_id):
+            if request_parked_sign(case_id, on_qr=on_qr, on_phase=on_phase):
+                return True
+
+        # 2) 回退：新线程 + 同一 Chrome profile 重开（挂起丢失时仍可签名）
+        if job.thread and job.thread.is_alive():
+            # 再给挂起一点时间（用户稍晚点「继续签名」仍应接上）
+            if wait_until_sign_park_ready(case_id, timeout_sec=8.0):
+                if request_parked_sign(case_id, on_qr=on_qr, on_phase=on_phase):
+                    return True
+            logger.warning(
+                "sign fallback skipped: fill thread still alive without park sid=%s",
+                sid,
+            )
+            return False
+
+        def _worker():
+            try:
+                result = run_sign_session_rebind(
+                    case_id,
+                    on_qr=on_qr,
+                    on_phase=on_phase,
+                    headless=False,
+                    close_browser=True,
+                )
+                self.mark_finished(
+                    sid,
+                    bool(result.get("ok")),
+                    result.get("reason") or result.get("error"),
+                )
+                if result.get("ok"):
+                    self.push_sign_phase(sid, "done")
+                elif result.get("reason") or result.get("error"):
+                    self.push_error(
+                        sid, str(result.get("reason") or result.get("error"))
+                    )
+            except Exception as e:
+                logger.exception("sign rebind failed sid=%s", sid)
+                self.mark_finished(sid, False, str(e))
+                self.push_error(sid, str(e))
+
+        t = threading.Thread(target=_worker, name=f"sign-rebind-{sid}", daemon=True)
+        job.thread = t
         t.start()
         return True
 
