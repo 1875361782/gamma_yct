@@ -1,0 +1,7 @@
+# 一期：用公网 IP 提供 HTTP（把 :80 绑定到本机）
+:80 {
+	reverse_proxy 127.0.0.1:8766
+	request_body {
+		max_size 30MB
+	}
+}

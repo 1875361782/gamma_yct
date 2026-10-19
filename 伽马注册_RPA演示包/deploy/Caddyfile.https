@@ -1,0 +1,8 @@
+# 后续：换成真实域名；Caddy 自动申请/续期 Let's Encrypt
+# 安全组需放行 80 与 443
+banli.example.com {
+	reverse_proxy 127.0.0.1:8766
+	request_body {
+		max_size 30MB
+	}
+}

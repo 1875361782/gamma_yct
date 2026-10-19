@@ -29,4 +29,5 @@ cloudflared tunnel --url http://127.0.0.1:8766
 
 **说明**
 - 后端窗口不要关；隧道要外网访问时再开。
-- 当前代码默认无头；要看 Chrome 窗，把 `app.py` 里 `headless = True` 注释掉、启用 `headless = False` 后再重启。
+- 无头由环境变量控制：生产 `GAMMA_HEADLESS=1`（默认）；本机看窗在 `backend\.env` 设 `GAMMA_HEADLESS=0` 后重启。
+- 阿里云 Windows 部署：见 `伽马注册_RPA演示包\docs\ALIYUN_WINDOWS_DEPLOY.md` 与 `deploy\`。
