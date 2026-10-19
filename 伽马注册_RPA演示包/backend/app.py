@@ -63,22 +63,13 @@ REAL_PORTAL_URL = "https://yct.sh.gov.cn/portal_yct/"
 # mock 场景：直接进入 mock 登录页（保留旧 mock 用于离线验证）
 MOCK_GOV_URL = "/mock/index.html"
 
-def _env_flag(name: str, *, default: bool = False) -> bool:
-    raw = (os.environ.get(name) or "").strip().lower()
-    if not raw:
-        return default
-    return raw in ("1", "true", "yes", "on")
-
-
 # 外网简易鉴权：环境变量 GAMMA_API_TOKEN 为共享口令（可选）；
 # 无论是否配置，页面都会通过 /api/bootstrap 领取短时 session token。
 GAMMA_API_TOKEN = (os.environ.get("GAMMA_API_TOKEN") or "").strip()
 # 本机调试才允许打开 A 页监控：GAMMA_ALLOW_MONITOR=1 或来自 localhost
-GAMMA_ALLOW_MONITOR = _env_flag("GAMMA_ALLOW_MONITOR", default=False)
+GAMMA_ALLOW_MONITOR = (os.environ.get("GAMMA_ALLOW_MONITOR") or "").strip() in ("1", "true", "TRUE", "yes")
 # 管理页口令：未设置时仅本机可调 /api/admin/*；设置后公网也可凭 X-Gamma-Admin-Token 访问
 GAMMA_ADMIN_TOKEN = (os.environ.get("GAMMA_ADMIN_TOKEN") or "").strip()
-# 生产默认无头；本机要看 Chrome 窗时在 .env 设 GAMMA_HEADLESS=0
-GAMMA_HEADLESS = _env_flag("GAMMA_HEADLESS", default=True)
 _BOOTSTRAP_SECRET = (os.environ.get("GAMMA_BOOTSTRAP_SECRET") or secrets.token_hex(16)).encode("utf-8")
 _SESSION_TOKENS: dict[str, float] = {}  # token -> expires_at epoch
 _SESSION_TOKEN_TTL_SEC = 4 * 3600
@@ -304,12 +295,11 @@ async def health():
             "qrlogin": "http://localhost:8766/qrlogin",
             "acquire": "local-only unless GAMMA_ALLOW_MONITOR=1",
         },
-        "headless": GAMMA_HEADLESS,
-        "headless_forced": GAMMA_HEADLESS,
+        # 外网产品面强制无头；本地可见调试时改为 False
+        "headless_forced": True,
         "cases_static_exposed": False,
         "admin_token_configured": bool(GAMMA_ADMIN_TOKEN),
         "public_tunnel_doc": "docs/PUBLIC_TUNNEL.md",
-        "deploy_doc": "docs/ALIYUN_WINDOWS_DEPLOY.md",
     }
 
 
@@ -1135,7 +1125,7 @@ async def sync_case_payload(request: Request, body: dict):
 async def start_automation(request: Request, body: dict):
     """同步案件后启动后台填报，二维码中继到 sid。
 
-    无头由环境变量 GAMMA_HEADLESS 控制（默认 True；本机调试设 0）。
+    外网产品面强制无头；本地可见调试时改为 headless=False，并改用下方「可见窗」返回文案。
     """
     denied = _require_api_token(request, body)
     if denied is not None:
@@ -1152,7 +1142,8 @@ async def start_automation(request: Request, body: dict):
             status_code=400,
         )
 
-    headless = GAMMA_HEADLESS
+    # 外网产品面：强制无头（headless=True）；本地调试可见 Chrome 时改为 False
+    headless = False
     gamma_root = _ensure_gamma_path()
     # 重试前清掉上一轮 cancel / 残留 Chrome，避免新会话被误杀或复用已登录 profile
     try:

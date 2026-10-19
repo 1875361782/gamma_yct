@@ -894,7 +894,7 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
         <div class="field">
           <label for="industry">行业表述<span class="req">*</span></label>
           <input id="industry" type="text" placeholder="请输入行业表述，如：科技" data-type="industry" autocomplete="off" />
-        </div>
+          </div>
 
         <div class="field">
           <label for="orgForm">组织形式<span class="req">*</span></label>
@@ -1313,13 +1313,13 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
       <div class="tip-box tip-orange">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         <span>扫码成功后将自动进入电子签名步骤；若二维码超时请点「重试」。</span>
-      </div>
+        </div>
       <div class="gov-iframe-wrap">
         <div class="qr-panel" id="signAlipayPanel">
           <div class="qr-frame">
             <div class="qr-placeholder" id="signAlipayPlaceholder">正在加载支付宝登录二维码…</div>
             <img id="signAlipayQr" class="qr-live" alt="支付宝登录二维码" />
-          </div>
+        </div>
           <div class="qr-status" id="signAlipayStatus">等待 RPA 同步二维码</div>
         </div>
         <div class="qr-actions">
@@ -1546,7 +1546,7 @@ function go(i){
       STATE.step = 3;
       document.querySelectorAll('.screen').forEach(el=>el.classList.remove('active'));
       document.querySelector('.screen[data-screen="3"]').classList.add('active');
-      document.getElementById('footer').style.display = '';
+    document.getElementById('footer').style.display = '';
       renderSteps();
       return;
     }
@@ -2597,7 +2597,7 @@ function startFillProgressPolling(){
         setPipeDot(document.getElementById('step3'), 'done', '✓');
         setPipeDot(document.getElementById('step4'), 'done', '✓');
         if(tip3) tip3.textContent = data.progress || '填报完成，正在整理结果…';
-        setTimeout(()=>{
+  setTimeout(()=>{
           if(STATE.step !== 5) return;
           setTimeout(()=> go(6), 500);
         }, 700);
