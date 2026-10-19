@@ -19,6 +19,8 @@ __MACOSX/
 # Env & secrets
 .env
 .env.*
+!.env.example
+!**/.env.example
 *.pem
 
 # Logs / temp
