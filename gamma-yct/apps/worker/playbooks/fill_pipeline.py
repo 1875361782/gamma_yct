@@ -163,8 +163,156 @@ def _click_text(scope: Page | Frame, texts: Iterable[str], exact: bool = False) 
     return False
 
 
+def _select_first_pinyin_option(page: Page, frame: Frame | None = None) -> bool:
+    """字号含多音字时的「名称拼音选择」弹层：默认点选第一项。
+
+    官网常见文案：名称拼音选择(必须选择一项拼音)，选项如 ga1 ma3 chuang4 zao4。
+    """
+    scopes: list[Any] = []
+    if frame is not None:
+        scopes.append(frame)
+    scopes.append(page)
+    try:
+        for fr in page.frames:
+            if fr not in scopes:
+                scopes.append(fr)
+    except Exception:
+        pass
+
+    pinyin_label_re = re.compile(
+        r"(名称拼音选择|必须选择一项拼音|拼音选择|请选择.*拼音)",
+        re.I,
+    )
+    # 声调拼音：ga1 / jia1 ma3 ...
+    tone_re = re.compile(r"[a-zA-Z]+\d")
+
+    clicked = False
+    for scope in scopes:
+        try:
+            # 先看是否出现拼音选择层
+            has_dlg = False
+            try:
+                txt = scope.locator("body").inner_text(timeout=400) or ""
+                if pinyin_label_re.search(txt):
+                    has_dlg = True
+            except Exception:
+                pass
+            if not has_dlg:
+                try:
+                    if scope.get_by_text(pinyin_label_re).count() > 0:
+                        has_dlg = True
+                except Exception:
+                    pass
+            if not has_dlg:
+                # 仍尝试点 nameFontsizePopper / 含声调的 radio（兼容旧生僻字层）
+                pass
+
+            # 1) 优先：弹层内第一个 radio
+            for box_sel in (
+                ".nameFontsizePopper",
+                ".el-popover",
+                ".el-popper",
+                ".el-dialog",
+                ".el-message-box",
+                "[class*='pinyin']",
+                "[class*='Pinyin']",
+                "[class*='Fontsize']",
+            ):
+                try:
+                    box = scope.locator(box_sel).filter(has_text=pinyin_label_re).first
+                    if box.count() == 0:
+                        box = scope.locator(box_sel).first
+                    if box.count() == 0:
+                        continue
+                    radios = box.locator("label.el-radio, .el-radio")
+                    n = min(radios.count(), 8)
+                    if n <= 0:
+                        continue
+                    # 有声调文案的优先；否则点第一项
+                    pick = None
+                    for i in range(n):
+                        r = radios.nth(i)
+                        try:
+                            t = (r.inner_text(timeout=300) or "").strip()
+                        except Exception:
+                            t = ""
+                        if tone_re.search(t):
+                            pick = r
+                            break
+                    if pick is None:
+                        pick = radios.first
+                    try:
+                        pick.click(timeout=2500)
+                    except Exception:
+                        pick.click(timeout=2000, force=True)
+                    clicked = True
+                    break
+                except Exception:
+                    continue
+            if clicked:
+                break
+
+            # 2) 全局：第一个带声调数字的 radio
+            try:
+                radios = scope.locator("label.el-radio, .el-radio")
+                n = min(radios.count(), 20)
+                for i in range(n):
+                    r = radios.nth(i)
+                    try:
+                        if not r.is_visible(timeout=200):
+                            continue
+                        t = (r.inner_text(timeout=300) or "").strip()
+                    except Exception:
+                        continue
+                    if tone_re.search(t) or (has_dlg and i == 0):
+                        try:
+                            r.click(timeout=2500)
+                        except Exception:
+                            r.click(timeout=2000, force=True)
+                        clicked = True
+                        break
+            except Exception:
+                pass
+            if clicked:
+                break
+        except Exception:
+            continue
+
+    if clicked:
+        try:
+            page.wait_for_timeout(350)
+        except Exception:
+            pass
+        # 若有「确定」一并点掉（部分版本需确认）
+        for scope in scopes:
+            try:
+                ok = scope.locator("button, .el-button").filter(
+                    has_text=re.compile(r"^\s*确\s*定\s*$")
+                ).first
+                if ok.count() > 0 and ok.is_visible(timeout=300):
+                    # 只在拼音层附近点，避免误关其它框
+                    parent_txt = ""
+                    try:
+                        parent_txt = ok.evaluate(
+                            "el => (el.closest('.el-dialog,.el-popover,.el-popper,.el-message-box')||el.parentElement||el).innerText||''"
+                        )
+                    except Exception:
+                        parent_txt = ""
+                    if "拼音" in str(parent_txt) or pinyin_label_re.search(str(parent_txt)):
+                        ok.click(timeout=2000)
+                        break
+            except Exception:
+                continue
+    return clicked
+
+
 def _click_name_next(frame: Frame, page: Page, next_text: str = "下一步") -> bool:
     """点核名页「下一步」（iframe 优先，主文档兜底；force / JS 兜底）。"""
+    # 多音字弹层未关时先默认选第一项，否则下一步无效
+    for _ in range(3):
+        if not _select_first_pinyin_option(page, frame):
+            break
+        page.wait_for_timeout(250)
     scopes: list[Any] = [frame, page]
     try:
         for fr in page.frames:
@@ -964,8 +1112,11 @@ def _fill_trade_name_complete(
                 except Exception:
                     pass
             page.wait_for_timeout(450 + attempt * 250)
+            # 多音字：默认选第一项拼音
+            _select_first_pinyin_option(page, frame)
             cur = _read_trade_input(frame, trade_ph)
             if trade in cur or cur == trade:
+                _select_first_pinyin_option(page, frame)
                 return True
             # 再清一次后只慢速 type
             box = _main_trade_input(frame, trade_ph) or box
@@ -983,14 +1134,19 @@ def _fill_trade_name_complete(
             except Exception:
                 pass
             page.wait_for_timeout(400)
+            _select_first_pinyin_option(page, frame)
             cur = _read_trade_input(frame, trade_ph)
             if trade in cur or cur == trade:
+                _select_first_pinyin_option(page, frame)
                 return True
         except Exception:
             _dismiss_residual_masks(page, frame)
             page.wait_for_timeout(300)
             continue
-    return trade in _read_trade_input(frame, trade_ph)
+    ok = trade in _read_trade_input(frame, trade_ph)
+    if ok:
+        _select_first_pinyin_option(page, frame)
+    return ok
 
 
 def _wait_candidates_contain_trade(
@@ -1870,19 +2026,11 @@ def _run_name_declaration(case_id: str, page: Page, name_sel: dict[str, Any], pa
             break
         page.wait_for_timeout(400)
 
-    # 生僻字拼音
-    try:
-        py = frame.locator("label.el-radio").filter(has_text=re.compile(r"sheng\d", re.I)).first
-        if _visible(py):
-            py.click(timeout=3000)
-            page.wait_for_timeout(300)
-        else:
-            # 隐藏 popper 内也可点
-            py2 = frame.locator(".nameFontsizePopper label.el-radio").first
-            if py2.count() > 0:
-                py2.click(timeout=3000, force=True)
-    except Exception:
-        pass
+    # 多音字 / 生僻字拼音：默认选第一项（如 ga1 ma3… / jia1…）
+    for _ in range(4):
+        if not _select_first_pinyin_option(page, frame):
+            break
+        page.wait_for_timeout(300)
 
     # 选企业名称：先确认候选含完整字号（官网易在首字后刷出残缺项）
     name_suffixes = _org_name_suffixes(org)

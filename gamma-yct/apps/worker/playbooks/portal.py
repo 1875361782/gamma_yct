@@ -84,6 +84,82 @@ def _is_business_choice_layer(page: Page, close_btn) -> bool:
         return False
 
 
+def _page_text_snip(page: Page, limit: int = 800) -> str:
+    try:
+        return (page.locator("body").inner_text(timeout=1200) or "")[:limit]
+    except Exception:
+        return ""
+
+
+def is_gov_jump_error_page(page: Page) -> bool:
+    """政务网 jumpEtregNew / SSO 跳转失败页（站点自身 500，非本系统）。"""
+    url = (page.url or "").lower()
+    body = _page_text_snip(page)
+    if "500服务器内部错误" in body or "服务器内部错误" in body:
+        return True
+    if "jumpetregnew" in url and (
+        "500" in body or "错误" in body or "信息提示" in body or len(body.strip()) < 40
+    ):
+        # jump 页几乎空白或仅错误标题
+        if "扫码" not in body and "随申办" not in body and "退出" not in body:
+            return True
+    return False
+
+
+def recover_from_gov_jump_error(page: Page, case_id: str, *, reason: str = "") -> Page:
+    """从 jumpEtregNew 500 回收：关掉坏页，回到门户首页。"""
+    _shot(page, case_id, "gov-jump-500")
+    try:
+        store.set_status(
+            case_id,
+            statuses.LOGGING_IN,
+            customer_message="政务网跳转页异常（站点 500），正在自动重试…",
+            reason=reason or "jumpEtregNew 500",
+        )
+    except Exception:
+        pass
+
+    # 关掉明显错误标签，保留至少一个上下文页
+    try:
+        ctx = page.context
+        bad = []
+        for p in list(ctx.pages):
+            try:
+                if is_gov_jump_error_page(p):
+                    bad.append(p)
+            except Exception:
+                continue
+        keep = None
+        for p in list(ctx.pages):
+            if p not in bad:
+                keep = p
+                break
+        for p in bad:
+            if keep is None or p == keep:
+                continue
+            try:
+                p.close()
+            except Exception:
+                pass
+        if keep is not None:
+            page = keep
+            try:
+                page.bring_to_front()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    try:
+        page.goto(config.YCT_PORTAL_URL, wait_until="domcontentloaded", timeout=90000)
+    except Exception:
+        pass
+    time.sleep(1.5)
+    dismiss_portal_overlays(page)
+    _shot(page, case_id, "gov-jump-recovered-portal")
+    return page
+
+
 def dismiss_portal_overlays(page: Page) -> None:
     """关闭门户政策解读等弹层；保留「请选择业务办理」。"""
     for _ in range(5):
@@ -280,28 +356,51 @@ def _click_enterprise(page: Page) -> bool:
 
 
 def click_kaiban_then_enterprise(page: Page, case_id: str) -> None:
-    dismiss_portal_overlays(page)
-    page.wait_for_timeout(600)
-    if not _click_kaiban(page):
-        _shot(page, case_id, "kaiban-missing")
-        raise RuntimeError("未找到门户「开办」入口")
-    time.sleep(1.2)
-    _shot(page, case_id, "portal-after-kaiban")
-    # 此处不要 dismiss：业务选择层正是下一步要点的「企业」
+    last_err = ""
+    for attempt in range(1, 4):
+        dismiss_portal_overlays(page)
+        page.wait_for_timeout(600)
+        if not _click_kaiban(page):
+            _shot(page, case_id, "kaiban-missing")
+            raise RuntimeError("未找到门户「开办」入口")
+        time.sleep(1.2)
+        _shot(page, case_id, "portal-after-kaiban")
+        # 此处不要 dismiss：业务选择层正是下一步要点的「企业」
 
-    if not _click_enterprise(page):
-        _shot(page, case_id, "enterprise-missing")
-        raise RuntimeError("未找到「开办」后的「企业」入口（含 kbLst4 iframe）")
-    time.sleep(1.5)
-    _shot(page, case_id, "portal-after-enterprise")
-    # 首次进入常弹出告知书，挡住扫码；点掉后再等登录页
-    for _ in range(4):
-        if looks_logged_in(page):
-            break
-        if not _handle_blocking_notice(page):
-            break
-        time.sleep(0.6)
-    _shot(page, case_id, "portal-after-enterprise-notice")
+        if not _click_enterprise(page):
+            _shot(page, case_id, "enterprise-missing")
+            raise RuntimeError("未找到「开办」后的「企业」入口（含 kbLst4 iframe）")
+        time.sleep(1.8)
+        _shot(page, case_id, "portal-after-enterprise")
+
+        # 点「企业」后常落到 jumpEtregNew；政务网偶发 500，自动回门户重试
+        hit_err = False
+        for p in _active_pages(page):
+            if is_gov_jump_error_page(p):
+                hit_err = True
+                last_err = p.url or "jumpEtregNew"
+                page = recover_from_gov_jump_error(
+                    p, case_id, reason=f"attempt={attempt} url={last_err}"
+                )
+                break
+        if hit_err:
+            time.sleep(1.2 + attempt * 0.8)
+            continue
+
+        # 首次进入常弹出告知书，挡住扫码；点掉后再等登录页
+        for _ in range(4):
+            if looks_logged_in(page):
+                break
+            if not _handle_blocking_notice(page):
+                break
+            time.sleep(0.6)
+        _shot(page, case_id, "portal-after-enterprise-notice")
+        return
+
+    raise RuntimeError(
+        "政务网跳转页连续失败（jumpEtregNew 500）。请稍后重试扫码办理；"
+        f"末次地址：{last_err or 'unknown'}"
+    )
 
 
 def _active_pages(page: Page) -> list[Page]:
@@ -466,6 +565,16 @@ def wait_qr_login(
         for p in _active_pages(page):
             if store.is_cancelled(case_id):
                 raise RuntimeError("cancelled")
+            if is_gov_jump_error_page(p):
+                page = recover_from_gov_jump_error(p, case_id, reason="qr-wait-jump-500")
+                try:
+                    click_kaiban_then_enterprise(page, case_id)
+                    clicked2, page = _click_scan_login(page)
+                    if clicked2:
+                        _shot(page, case_id, "qr-login-shown-after-jump-retry")
+                except Exception:
+                    pass
+                continue
             if looks_logged_in(p):
                 try:
                     p.bring_to_front()
@@ -803,6 +912,11 @@ def open_name_declaration_from_portal(page: Page, case_id: str) -> Page:
         body = page.locator("body").inner_text(timeout=1500)
     except Exception:
         pass
+
+    if is_gov_jump_error_page(page):
+        page = recover_from_gov_jump_error(page, case_id, reason="open-name-jump-500")
+        url = page.url or ""
+        body = _page_text_snip(page)
 
     if "我已知晓上述内容" not in body and "不涉及前置审批" not in body:
         # 登录后回到门户时，再点一次开办→企业

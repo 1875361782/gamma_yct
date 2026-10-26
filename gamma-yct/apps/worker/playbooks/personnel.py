@@ -5957,13 +5957,19 @@ def run_personnel_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dic
             return _handoff_personnel_to_opening(
                 case_id, page, result, reason="opening-without-personnel-frame"
             )
-        _click_text_any(page, ["下一步"], exact=True)
-        page.wait_for_timeout(2000)
-        if _on_opening_process_page(page):
-            return _handoff_personnel_to_opening(
-                case_id, page, result, reason="next-landed-opening"
-            )
-        frame = _frame_personnel(page, timeout_ms=30000)
+        # 出资页「下一步」偶发未生效：多试几次再等人员帧
+        for _ in range(4):
+            _click_text_any(page, ["下一步"], exact=True)
+            page.wait_for_timeout(1500)
+            if _on_opening_process_page(page):
+                return _handoff_personnel_to_opening(
+                    case_id, page, result, reason="next-landed-opening"
+                )
+            frame = _frame_personnel(page, timeout_ms=8000)
+            if frame is not None:
+                break
+        if frame is None:
+            frame = _frame_personnel(page, timeout_ms=25000)
     if frame is None:
         if _on_opening_process_page(page):
             return _handoff_personnel_to_opening(

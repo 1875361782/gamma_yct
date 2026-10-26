@@ -556,6 +556,9 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
 /* ============ 屏幕5 确认单 ============ */
 .sum-sec{margin-bottom:var(--space-md);}
 .sum-sec-h{display:flex; align-items:center; gap:8px; font-size:13px; font-weight:700; color:var(--color-text-sub); margin-bottom:8px;}
+.sum-sub{margin:8px 0 14px; padding:10px 12px; background:#f8fafc; border-radius:10px;}
+.sum-sub-h{font-size:13px; font-weight:700; color:var(--color-text); margin-bottom:4px;}
+.sum-sub .sum-line .k{width:110px;}
 .sum-sec .edit{
   margin-left:auto; font-size:12px; font-weight:600; color:var(--color-primary);
   background:none; border:none; cursor:pointer; font-family:var(--font); display:inline-flex; align-items:center; gap:4px;
@@ -893,7 +896,7 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
 
         <div class="field">
           <label for="industry">行业表述<span class="req">*</span></label>
-          <input id="industry" type="text" placeholder="请输入行业表述，如：科技" data-type="industry" autocomplete="off" />
+          <input id="industry" type="text" placeholder="请输入汉字行业表述，如：科技" data-type="industry" autocomplete="off" maxlength="20" />
           </div>
 
         <div class="field">
@@ -942,7 +945,7 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
                 </select>
               </div>
               <div class="addr-cell">
-                <input id="addrRoad" type="text" placeholder="请输入汉字路名/村名" autocomplete="off" />
+                <input id="addrRoad" type="text" placeholder="请输入汉字路名/村名（仅汉字）" autocomplete="off" maxlength="30" />
               </div>
               <div class="addr-cell">
                 <div class="addr-unit">
@@ -995,7 +998,7 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
 
         <div class="field">
           <label for="postalCode">邮编<span class="req">*</span></label>
-          <input id="postalCode" type="text" inputmode="numeric" maxlength="6" placeholder="6 位邮编" />
+          <input id="postalCode" type="text" inputmode="numeric" maxlength="6" placeholder="" />
         </div>
 
         <div class="field">
@@ -1025,9 +1028,9 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
       </div>
     </section>
 
-    <!-- ===================== 屏 3：人员信息 2/4 ===================== -->
+    <!-- ===================== 屏 3：人员信息 ===================== -->
     <section class="screen" data-screen="1" data-phase="A">
-      <h2 class="screen-title">人员信息 2/4</h2>
+      <h2 class="screen-title">人员信息</h2>
 
       <!-- 法人 -->
       <div class="role-sec" id="legalSection">
@@ -1036,7 +1039,7 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
           <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="legalName" placeholder="如：张伟" /></div>
           <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="legalMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" /></div>
         </div>
-        <div class="inline-note" id="legalNote">法人可同时担任董事或经理（卡片内「与法人同一人」全员仅勾一人）；财务负责人需单独填写</div>
+        <div class="inline-note" id="legalNote">法人可同时担任董事或经理（卡片内「与法人同一人」全员仅勾一人）</div>
       </div>
 
       <!-- 自然人 / 合伙人 -->
@@ -1092,13 +1095,14 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
         <div class="inline-note" id="mgrBoardNote">所有董事与经理合计仅一人可勾选「与法人同一人」。</div>
       </div>
 
-      <!-- 财务负责人（不可勾选与法人同一人） -->
+      <!-- 财务负责人 -->
       <div class="role-sec">
         <div class="role-h"><span class="role-dot r-fin"></span>财务负责人<span class="req">*</span></div>
         <div id="finBody" class="grid2">
           <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="finName" placeholder="如：王芳" /></div>
           <div class="field"><label>手机号<span class="req">*</span></label><input type="tel" id="finMobile" inputmode="numeric" maxlength="11" placeholder="11 位手机号" /></div>
         </div>
+        <div class="inline-note">可为法人本人，也可为他人</div>
       </div>
 
       <!-- 联络员 -->
@@ -1124,9 +1128,9 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
       </div>
     </section>
 
-    <!-- ===================== 屏 4：受益人、证件 3/4 ===================== -->
+    <!-- ===================== 屏 4：受益人、证件 ===================== -->
     <section class="screen" data-screen="2" data-phase="A">
-      <h2 class="screen-title">证件及相关文件 3/4</h2>
+      <h2 class="screen-title">证件及相关文件</h2>
 
       <div class="card">
         <div class="field" style="margin-top:0;margin-bottom:0;">
@@ -1141,7 +1145,7 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
             <li><b>横拍图：</b>身份证、营业执照需横拍，正面朝上、文字可读。</li>
             <li><b>避免错误：</b>不可倒拍、不可缺边、不可过糊，避免反光遮挡关键字段。</li>
             <li><b>字迹清晰：</b>姓名、身份证号、住址、有效期等关键信息应完整可见。</li>
-            <li><b>格式与大小：</b>仅支持 jpg/png，单张不超过 500k。</li>
+            <li><b>格式与大小：</b>仅支持 jpg/png，单张不超过 5M。</li>
             <li><b>充满可视区：</b>图片内容应充满取景框，边缘留白不超过 10%。</li>
           </ol>
           <div class="ur-foot">识别异常时，OCR 引擎会要求重新上传；本端会自动压缩并保持原始信息。</div>
@@ -1193,14 +1197,7 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
             人员信息
             <button class="edit" onclick="go(1)">修改</button>
           </div>
-          <div class="sum-line"><div class="k">法人</div><div class="v" id="sumLegal">—</div></div>
-          <div class="sum-line"><div class="k" id="sumNpLabel">自然人</div><div class="v" id="sumNp">—</div></div>
-          <div class="sum-line" id="sumDirLine"><div class="k">董事</div><div class="v" id="sumDir">—</div></div>
-          <div class="sum-line" id="sumSupLine"><div class="k">监事</div><div class="v" id="sumSup">—</div></div>
-          <div class="sum-line" id="sumMgrLine"><div class="k">经理</div><div class="v" id="sumMgr">—</div></div>
-          <div class="sum-line"><div class="k">财务负责人</div><div class="v" id="sumFin">—</div></div>
-          <div class="sum-line"><div class="k">联络员</div><div class="v" id="sumLia">—</div></div>
-          <div class="sum-line"><div class="k">最终受益人</div><div class="v" id="sumUbo">—</div></div>
+          <div id="sumPersonnelDetail"></div>
         </div>
 
         <div class="sum-sec">
@@ -1208,9 +1205,7 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
             证件及相关文件
             <button class="edit" onclick="go(2)">修改</button>
           </div>
-          <div class="sum-line"><div class="k">身份证上传</div><div class="v"><span class="sum-tags" id="sumIdCards"><span>未上传</span></span></div></div>
-          <div class="sum-line"><div class="k">住所使用相关文件</div><div class="v" id="sumAddrProof">未上传</div></div>
-          <div class="sum-line"><div class="k">实名核验</div><div class="v">承诺实报</div></div>
+          <div id="sumDocsDetail"></div>
         </div>
       </div>
 
@@ -1223,13 +1218,13 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
 
       <div class="tip-box tip-orange">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <span>请用「随申办」APP 扫描二维码完成政务网授权。扫码成功后将自动进入下一步；若二维码超时请点「重试」，取消则返回上一页。</span>
+        <span>请用「随申办」APP 扫描二维码完成政务网授权。二维码加载约需要 10–30 秒，请耐心等待；如长时间无反应可点击下方「重试」。扫码成功后将自动进入下一步。</span>
       </div>
 
       <div class="gov-iframe-wrap" id="bPageWrap">
         <div class="qr-panel" id="qrPanel">
           <div class="qr-frame" id="qrFrame">
-            <div class="qr-placeholder" id="qrPlaceholder">正在获取登录二维码…</div>
+            <div class="qr-placeholder" id="qrPlaceholder">正在获取登录二维码…约需 10–30 秒，请稍候</div>
             <img id="qrLive" class="qr-live" alt="登录二维码" draggable="true" />
         </div>
           <div class="qr-status" id="qrStatus">等待 RPA 同步二维码</div>
@@ -1237,6 +1232,7 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
         <div class="qr-actions" id="qrActions">
           <button class="btn btn-ghost" id="qrCancelBtn" type="button">取消</button>
           <button class="btn btn-primary" id="qrRetryBtn" type="button">重试</button>
+          <button class="btn btn-primary" id="qrStartBtn" type="button" style="display:none">开始办理</button>
         </div>
         <iframe id="bPageFrame" class="gov-iframe-hidden" src="about:blank" referrerpolicy="no-referrer" title="扫码中继"></iframe>
       </div>
@@ -1394,13 +1390,17 @@ input.invalid{border-color:var(--color-danger) !important; background:#FEF2F2;}
 const TOTAL = 9;               // ①–⑨（办理完成页独立，不计入）
 const PHASE_A_MAX = 3;        // 0..3 是阶段 A（企业信息→确认单）；④⑤ 之间竖线
 const PHASE_SIGN_SEP = 6;     // ⑥⑦ 之后竖线：⑦⑧ 之间（提交完成 | 支付宝签名）
-const DEFAULT_CASE_ID = 'GM202608062231EF';
+const DEFAULT_CASE_ID = 'GM202608062231EF'; // 历史占位，新会话由服务端铸造独立 caseId
 const AUTOMATION_POLL_MS = 1500;
+const QUEUE_WAIT_MSG = '当前办理人数较多或服务器繁忙，请稍候';
+const QUEUE_READY_MSG = '可以开始办理了，请点击开始办理';
+/** 暂时停用短信验证：启动直接进入企业信息页（改回 false 即恢复） */
+const SMS_AUTH_DISABLED = true;
 const STATE = {
   step: 0,
-  onAuth: true,               // 注册独立页（不计入步骤条）
+  onAuth: !SMS_AUTH_DISABLED, // 注册独立页（不计入步骤条）
   onDone: false,              // 办理完成独立页（不计入步骤条）
-  authed: false,
+  authed: !!SMS_AUTH_DISABLED,
   refillTimes: 2,             // 兼容旧草稿字段
   pipeRunning: false,
   sid: null,                  // 扫码页会话钥匙：B 页 bind 时由后端自动触发 RPA
@@ -1415,7 +1415,10 @@ const STATE = {
   signQrLoadingAlipay: false, // 未拿到新码前显示加载中，勿展示旧码
   signQrLoadingFace: false,
   signStarting: false,        // 防止重复点「继续完成签名」打断衔接
-  caseId: DEFAULT_CASE_ID,
+  caseId: '',                 // 本会话案件号（同步后写入）
+  queueWaiting: false,        // 满载/内存不足等待中
+  queueReady: false,          // 等待队列已通知可执行
+  syncedCaseId: null,
   // personKey -> { personKey, personName, roles, frontFileId, backFileId, frontName, backName, frontPreview, backPreview }
   idUploads: {},
   addressProof: { fileId: '', fileName: '' },
@@ -1572,6 +1575,12 @@ function go(i){
 
 async function next(){
   if(STATE.onAuth || STATE.step < 0){
+    // 短信验证暂时关闭：直接进入企业信息
+    if(SMS_AUTH_DISABLED){
+      STATE.authed = true;
+      STATE.authPhone = (document.getElementById('phone')?.value || '').trim() || '';
+      go(0); return;
+    }
     if(!document.getElementById('agree').checked){ alert('请先勾选同意《用户授权协议》'); return; }
     if(!requireMobile(document.getElementById('phone').value, '手机号')) return;
     if(document.getElementById('code').value.length!==6){ alert('请填写 6 位验证码'); return; }
@@ -1601,11 +1610,11 @@ async function next(){
   const i = STATE.step;
   if(i===0){
     if(document.querySelectorAll('#nameChips .chip.zi.on').length < 1){ alert('请至少选择 / 生成一个字号候选'); return; }
-    if(!document.getElementById('industry').value.trim()){ alert('请填写行业表述'); return; }
+    if(!validateIndustryField()) return;
     if(!document.getElementById('orgForm').value){ alert('请选择组织形式'); return; }
     if(!document.getElementById('capital').value || !(parseFloat(document.getElementById('capital').value) > 0)){ alert('请填写注册资本'); return; }
     if(!validateRegAddress()) return;
-    if(!document.getElementById('postalCode').value.trim()){ alert('请填写邮编'); return; }
+    if(!validateCompanyPostal()) return;
     if(!(STATE.selectedScopes || []).length && !document.getElementById('scope').value.trim()){
       alert('请至少勾选 1 条经营范围，或填写经营范围文案'); return;
     }
@@ -1615,7 +1624,11 @@ async function next(){
   }
   if(i===1){
     if(!validatePersonnel()) return;
-    go(2); return;
+    // 进入证件页前先铸造案件号，避免上传时无 caseId
+    ensureCaseIdForUpload().then(()=> go(2)).catch((err)=>{
+      alert('同步案件失败：' + ((err && err.message) || String(err)));
+    });
+    return;
   }
   if(i===2){
     refreshIdPeopleUploads();
@@ -1764,11 +1777,105 @@ function collectRegAddress(){
   return { district, street, road, lane, number, numberEnd, oddEvenMode: mode, building, room, detail };
 }
 
+/** 仅汉字（CJK 统一表意文字） */
+const HAN_ONLY_RE = /^[\u4e00-\u9fff]+$/;
+const HAN_STRIP_RE = /[^\u4e00-\u9fff]/g;
+
+/** 中国大陆邮编前两位（省级邮区），不含港澳台 */
+const CN_POSTAL_PREFIX2 = new Set([
+  '01','02','03','04','05','06','07',
+  '10','11','12','13','15','16',
+  '20','21','22','23','24','25','26','27',
+  '30','31','33','34','35','36',
+  '40','41','42','43','44','45','46','47',
+  '51','52','53','54','55','56','57',
+  '61','62','63','64','65','66','67',
+  '71','72','73','74','75',
+  '81','83','84','85',
+]);
+
+/** 上海各区常用邮编前缀（有区县时加强校验） */
+const SH_POSTAL_PREFIX_BY_DISTRICT = {
+  '黄浦区': ['2000'],
+  '徐汇区': ['2000'],
+  '长宁区': ['2000'],
+  '静安区': ['2000'],
+  '普陀区': ['2003'],
+  '虹口区': ['2000'],
+  '杨浦区': ['2000'],
+  '闵行区': ['2011'],
+  '宝山区': ['2019'],
+  '嘉定区': ['2018'],
+  '浦东新区': ['2001', '2012', '2013'],
+  '金山区': ['2015'],
+  '松江区': ['2016'],
+  '青浦区': ['2017'],
+  '奉贤区': ['2014'],
+  '崇明区': ['2021'],
+};
+
+function stripToHanOnly(s){
+  return String(s || '').replace(HAN_STRIP_RE, '');
+}
+
+function isHanOnlyText(s){
+  return HAN_ONLY_RE.test(String(s || '').trim());
+}
+
+function isLikelyFakePostal(code){
+  if(!/^\d{6}$/.test(code)) return true;
+  if(/^(\d)\1{5}$/.test(code)) return true; // 000000 / 111111
+  if(code === '123456' || code === '654321') return true;
+  if(code.startsWith('000')) return true;
+  return false;
+}
+
+/** 校验中国境内真实邮编：6 位、合法省级邮区、非假号；上海区县可选加强前缀 */
+function validatePostalCodeValue(code, district){
+  const raw = String(code || '').trim();
+  if(!raw) return { ok: false, message: '请填写邮编' };
+  if(!/^[1-9]\d{5}$/.test(raw)) return { ok: false, message: '邮编须为 6 位数字，且不以 0 开头' };
+  if(isLikelyFakePostal(raw)) return { ok: false, message: '请填写中国境内真实有效邮编，勿使用测试号码' };
+  const prefix2 = raw.slice(0, 2);
+  if(!CN_POSTAL_PREFIX2.has(prefix2)){
+    return { ok: false, message: '邮编不在中国大陆有效号段内，请核对后填写' };
+  }
+  const dist = String(district || '').trim();
+  const prefixes = SH_POSTAL_PREFIX_BY_DISTRICT[dist];
+  if(prefixes && prefixes.length){
+    const hit = prefixes.some(p => raw.startsWith(p));
+    if(!hit){
+      return {
+        ok: false,
+        message: `邮编与所选区县「${dist}」不符，请填写该区真实邮编`,
+      };
+    }
+  }
+  return { ok: true, message: '' };
+}
+
+function validateIndustryValue(v){
+  const s = String(v || '').trim();
+  if(!s) return { ok: false, message: '请填写行业表述' };
+  if(!isHanOnlyText(s)) return { ok: false, message: '行业表述只能填写汉字' };
+  if(s.length > 20) return { ok: false, message: '行业表述过长，请精简为常用表述' };
+  return { ok: true, message: '' };
+}
+
+function validateRoadValue(v){
+  const s = String(v || '').trim();
+  if(!s) return { ok: false, message: '请填写路名/村名' };
+  if(!isHanOnlyText(s)) return { ok: false, message: '路名/村名只能填写汉字' };
+  if(s.length < 2) return { ok: false, message: '路名/村名至少 2 个汉字' };
+  return { ok: true, message: '' };
+}
+
 function validateRegAddress(){
   const a = collectRegAddress();
   if(!a.district){ alert('请选择区县'); return false; }
   if(!a.street){ alert('请选择街道/乡镇'); return false; }
-  if(!a.road){ alert('请填写路名/村名'); return false; }
+  const roadChk = validateRoadValue(a.road);
+  if(!roadChk.ok){ alert(roadChk.message); return false; }
   // 弄/号/幢/室选填：填了才带入；连号时若填了起号则止号必填
   if(isAddrRangeMode(a.oddEvenMode) && a.number && !a.numberEnd){
     alert('连号请填写起止门牌号'); return false;
@@ -1776,6 +1883,20 @@ function validateRegAddress(){
   if(isAddrRangeMode(a.oddEvenMode) && a.numberEnd && !a.number){
     alert('连号请填写起号'); return false;
   }
+  return true;
+}
+
+function validateCompanyPostal(){
+  const code = (document.getElementById('postalCode')?.value || '').trim();
+  const district = (document.getElementById('addrDistrict')?.value || '').trim();
+  const chk = validatePostalCodeValue(code, district);
+  if(!chk.ok){ alert(chk.message); return false; }
+  return true;
+}
+
+function validateIndustryField(){
+  const chk = validateIndustryValue(document.getElementById('industry')?.value || '');
+  if(!chk.ok){ alert(chk.message); return false; }
   return true;
 }
 
@@ -2057,12 +2178,18 @@ function buildCasePayload(){
 }
 
 async function syncCasePayloadToGamma(){
+  const indChk = validateIndustryValue(document.getElementById('industry')?.value || '');
+  if(!indChk.ok) throw new Error(indChk.message);
   if(!validateRegAddress()){
     throw new Error('注册地址未填完整，请返回企业信息页按区县/街道/路/号/室填写');
   }
-  if(!document.getElementById('postalCode').value.trim()){
-    throw new Error('请填写邮编');
-  }
+  const roadChk = validateRoadValue(document.getElementById('addrRoad')?.value || '');
+  if(!roadChk.ok) throw new Error(roadChk.message);
+  const postChk = validatePostalCodeValue(
+    document.getElementById('postalCode')?.value || '',
+    document.getElementById('addrDistrict')?.value || ''
+  );
+  if(!postChk.ok) throw new Error(postChk.message);
   const payload = buildCasePayload();
   const addr = (payload.registration && payload.registration.address) || {};
   if(!(addr.district && addr.street && addr.road && (addr.detail || '').trim())){
@@ -2070,10 +2197,16 @@ async function syncCasePayloadToGamma(){
   }
   const origin = backendOriginForPrototype();
   const headers = await authHeaders();
+  // 首次不传 caseId（服务端铸造）；同会话续写才带已同步 id
+  const body = { payload, token: STATE.apiToken };
+  const existing = String(STATE.syncedCaseId || STATE.caseId || '').trim();
+  if(existing && existing !== DEFAULT_CASE_ID){
+    body.caseId = existing;
+  }
   const res = await fetch(origin + '/api/case-payload', {
     method: 'POST',
     headers,
-    body: JSON.stringify({ caseId: DEFAULT_CASE_ID, payload, token: STATE.apiToken }),
+    body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
   if(!res.ok || !data.ok){
@@ -2088,10 +2221,16 @@ async function enterPhaseB(){
   STATE.sid = makeSid();
   STATE.automationRelay = true;
   STATE.fillCancelled = false;
+  STATE.queueWaiting = false;
+  STATE.queueReady = false;
   try{
     const sync = await syncCasePayloadToGamma();
     console.log('[enterPhaseB] case synced', sync);
-    STATE.syncedCaseId = sync.caseId || DEFAULT_CASE_ID;
+    if(!sync.caseId){
+      throw new Error('服务端未返回案件号');
+    }
+    STATE.syncedCaseId = sync.caseId;
+    STATE.caseId = sync.caseId;
   }catch(err){
     console.warn('[enterPhaseB] sync case failed', err);
     alert('写入 gamma-yct 案件失败：' + (err && err.message ? err.message : err));
@@ -2100,6 +2239,10 @@ async function enterPhaseB(){
   try{
     const data = await postStartAutomation(STATE.sid, STATE.syncedCaseId);
     console.log('[enterPhaseB] automation started', data);
+    if(data && data.queued){
+      STATE.queueWaiting = true;
+      STATE.queueReady = false;
+    }
   }catch(err){
     console.warn('[enterPhaseB] start automation failed', err);
     alert('启动后台填报失败：' + (err && err.message ? err.message : err) + '\n请确认已启动演示后端，然后重试「确认并建立」。');
@@ -2145,17 +2288,63 @@ async function authHeaders(extra){
 }
 
 function currentCaseId(fallback){
-  return String(fallback || STATE.syncedCaseId || STATE.caseId || DEFAULT_CASE_ID).trim() || DEFAULT_CASE_ID;
+  const cid = String(fallback || STATE.syncedCaseId || STATE.caseId || '').trim();
+  if(!cid || cid === DEFAULT_CASE_ID){
+    throw new Error('本会话尚未分配案件号，请先完成表单同步');
+  }
+  return cid;
+}
+
+/** 上传证件/住所文件前确保已有独立 caseId（未同步则先写入 payload 铸造） */
+async function ensureCaseIdForUpload(){
+  let cid = String(STATE.syncedCaseId || STATE.caseId || '').trim();
+  if(cid && cid !== DEFAULT_CASE_ID) return cid;
+  const sync = await syncCasePayloadToGamma();
+  if(!sync || !sync.caseId || sync.caseId === DEFAULT_CASE_ID){
+    throw new Error('服务端未返回案件号，请检查企业信息后重试');
+  }
+  STATE.syncedCaseId = sync.caseId;
+  STATE.caseId = sync.caseId;
+  return sync.caseId;
+}
+
+function setQueueUi(mode, message){
+  // mode: wait | ready | clear
+  const st = document.getElementById('qrStatus');
+  const startBtn = document.getElementById('qrStartBtn');
+  const retryBtn = document.getElementById('qrRetryBtn');
+  if(mode === 'wait'){
+    STATE.queueWaiting = true;
+    STATE.queueReady = false;
+    if(st){ st.className = 'qr-status'; st.textContent = message || QUEUE_WAIT_MSG; }
+    if(startBtn) startBtn.style.display = 'none';
+    if(retryBtn) retryBtn.style.display = 'none';
+    showLiveQr('');
+    const ph = document.getElementById('qrPlaceholder');
+    if(ph) ph.textContent = QUEUE_WAIT_MSG;
+  }else if(mode === 'ready'){
+    STATE.queueWaiting = true;
+    STATE.queueReady = true;
+    if(st){ st.className = 'qr-status ok'; st.textContent = message || QUEUE_READY_MSG; }
+    if(startBtn) startBtn.style.display = '';
+    if(retryBtn) retryBtn.style.display = 'none';
+  }else{
+    STATE.queueWaiting = false;
+    STATE.queueReady = false;
+    if(startBtn) startBtn.style.display = 'none';
+    if(retryBtn) retryBtn.style.display = '';
+  }
 }
 
 async function postStartAutomation(sid, caseId){
   const origin = backendOriginForPrototype();
   const headers = await authHeaders();
+  const cid = currentCaseId(caseId);
   const res = await fetch(origin + '/api/start-automation', {
     method: 'POST',
     headers,
     body: JSON.stringify({
-      caseId: currentCaseId(caseId),
+      caseId: cid,
       sid,
       token: STATE.apiToken,
     }),
@@ -2165,6 +2354,28 @@ async function postStartAutomation(sid, caseId){
     throw new Error((data && (data.message || data.error)) || ('启动自动化失败 HTTP ' + res.status));
   }
   return data;
+}
+
+async function startQueuedFill(){
+  if(!STATE.sid || !STATE.syncedCaseId){
+    alert('会话已失效，请返回上一页重新提交');
+    return;
+  }
+  const startBtn = document.getElementById('qrStartBtn');
+  if(startBtn) startBtn.disabled = true;
+  try{
+    const data = await postStartAutomation(STATE.sid, STATE.syncedCaseId);
+    if(data && data.queued){
+      setQueueUi('wait', data.message || QUEUE_WAIT_MSG);
+      return;
+    }
+    setQueueUi('clear');
+    mountBPageFrame();
+  }catch(err){
+    alert('启动失败：' + (err && err.message ? err.message : err));
+  }finally{
+    if(startBtn) startBtn.disabled = false;
+  }
 }
 
 async function getAutomationStatus(sid){
@@ -2177,7 +2388,11 @@ async function getAutomationStatus(sid){
 /** 统一取消：awaitDone=true 时等待响应后再稍顿，避免重试时误杀新会话 */
 async function cancelAutomation(sid, caseId, awaitDone){
   const origin = backendOriginForPrototype();
-  const cid = currentCaseId(caseId);
+  let cid = '';
+  try{
+    cid = String(caseId || STATE.syncedCaseId || STATE.caseId || '').trim();
+    if(cid === DEFAULT_CASE_ID) cid = '';
+  }catch(e){ cid = ''; }
   let headers = { 'Content-Type': 'application/json' };
   if(awaitDone){
     try{ headers = await authHeaders(); }catch(e){}
@@ -2195,7 +2410,11 @@ async function cancelAutomation(sid, caseId, awaitDone){
   if(sid){
     tasks.push(fetch(origin + '/api/automation/' + encodeURIComponent(sid) + '/cancel', opts({})).catch(() => {}));
   }
-  tasks.push(fetch(origin + '/api/automation/cancel-case', opts({ caseId: cid })).catch(() => {}));
+  if(cid){
+    tasks.push(fetch(origin + '/api/automation/cancel-case', opts({ caseId: cid })).catch(() => {}));
+  }
+  STATE.queueWaiting = false;
+  STATE.queueReady = false;
   if(awaitDone){
     await Promise.all(tasks);
     await new Promise(r => setTimeout(r, 1000));
@@ -2268,6 +2487,30 @@ function startQrPolling(){
         }
         return;
       }
+      // 等待队列：满载/内存不足
+      if(data.queued){
+        if(data.queueReady){
+          setQueueUi('ready', data.progress || QUEUE_READY_MSG);
+        }else{
+          setQueueUi('wait', data.progress || QUEUE_WAIT_MSG);
+        }
+        return;
+      }
+      if(STATE.queueWaiting && !data.queued && (data.running || data.hasQr)){
+        setQueueUi('clear');
+      }
+      // 浏览器被关闭等失败：扫码页也要明示
+      if(data.finished && !data.fillOk && data.error && !data.running){
+        const err = String(data.error || '');
+        const st = document.getElementById('qrStatus');
+        if(st){
+          st.className = 'qr-status err';
+          st.textContent = /target page|has been closed|browser has been closed/i.test(err)
+            ? '办理会话已中断（浏览器已关闭），请点击「重试」重新开始'
+            : ('办理失败：' + err);
+        }
+        return;
+      }
       if(data.hasQr && data.qr){
         const changed = data.qr !== STATE.lastQrData;
         if(changed){
@@ -2311,6 +2554,12 @@ function startQrPolling(){
 function mountBPageFrame(){
   if(STATE.fillCancelled) return;
   if (!STATE.sid) STATE.sid = makeSid();
+  // 仍在排队：只轮询等待态，不挂 iframe / 不等二维码
+  if(STATE.queueWaiting && !STATE.queueReady){
+    setQueueUi('wait', QUEUE_WAIT_MSG);
+    startQrPolling();
+    return;
+  }
   const params = new URLSearchParams(location.search);
   const useMock = params.get('mock') === '1' || params.get('mock') === 'true';
   STATE.sidMock = useMock;
@@ -2330,7 +2579,9 @@ function mountBPageFrame(){
   }
   STATE.lastQrData = null;
   STATE.qrReceivedAt = 0;
-  showLiveQr('');
+  if(!STATE.queueWaiting){
+    showLiveQr('');
+  }
   startQrPolling();
 }
 
@@ -2605,9 +2856,11 @@ function startFillProgressPolling(){
       }
 
       if(data.finished && !data.fillOk && !data.nameFailed){
-        showFillRetryOrSupportUI(
-          data.error || data.reason || data.progress || '系统异常'
-        );
+        const rawErr = String(data.error || data.reason || data.progress || '系统异常');
+        const tip = /target page|has been closed|browser has been closed/i.test(rawErr)
+          ? '办理会话已中断（浏览器已关闭），请点击重试重新开始'
+          : rawErr;
+        showFillRetryOrSupportUI(tip);
       }
     },
     () => {
@@ -2987,6 +3240,7 @@ document.getElementById('signFaceRetryBtn')?.addEventListener('click', ()=> retr
 /* ============ 屏 6：取消 / 重试 ============ */
 document.getElementById('qrCancelBtn').addEventListener('click', ()=> cancelQrLogin());
 document.getElementById('qrRetryBtn').addEventListener('click', ()=> retryQrLogin());
+document.getElementById('qrStartBtn').addEventListener('click', ()=> startQueuedFill());
 
 /* ============ 屏 7：返回修改字号 → 企业信息（第 2 页） ============ */
 document.getElementById('gotoRefill').addEventListener('click', ()=>{
@@ -3677,7 +3931,7 @@ async function onAddrProofSelected(input){
     const fd = new FormData();
     fd.append('file', file, name);
     const origin = backendOriginForPrototype();
-    const caseId = currentCaseId();
+    const caseId = await ensureCaseIdForUpload();
     const url = origin + '/api/cases/' + encodeURIComponent(caseId) + '/address-proof';
     const res = await fetch(url, { method: 'POST', body: fd });
     const data = await res.json().catch(() => ({}));
@@ -3746,7 +4000,7 @@ async function onPersonIdSelected(personKey, side, input){
     fd.append('personName', person.personName);
     fd.append('roles', JSON.stringify(person.roles));
     const origin = backendOriginForPrototype();
-    const caseId = currentCaseId();
+    const caseId = await ensureCaseIdForUpload();
     const url = origin + '/api/cases/' + encodeURIComponent(caseId) + '/id-card';
     let res;
     try{
@@ -4237,7 +4491,7 @@ function npCardHtml(idx, data){
       <div class="grid2" style="margin-bottom:12px;">
         <div class="field">
           <label>邮编<span class="req">*</span></label>
-          <input type="text" class="np-postal" inputmode="numeric" maxlength="6" placeholder="6 位邮编" value="${d.postalCode||''}" />
+          <input type="text" class="np-postal" inputmode="numeric" maxlength="6" placeholder="" value="${d.postalCode||''}" />
         </div>
         <div class="field">
           <label>政治面貌<span class="req">*</span></label>
@@ -4422,7 +4676,7 @@ function syncPersonnelByOrgForm(){
       legalNote.textContent = '有限合伙：法人默认为无限责任且为执行事务合伙人，请在合伙人中填写与法人相同的姓名并选择无限责任';
     }else{
       legalNote.style.display = hideBoard ? 'none' : '';
-      if(!hideBoard) legalNote.textContent = '法人可同时担任董事或经理（卡片内「与法人同一人」全员仅勾一人）；财务负责人需单独填写';
+      if(!hideBoard) legalNote.textContent = '法人可同时担任董事或经理（卡片内「与法人同一人」全员仅勾一人）';
     }
   }
   const sumNpLabel = document.getElementById('sumNpLabel');
@@ -4582,7 +4836,11 @@ function validatePersonnel(){
     npSum += pct;
     if(sole){
       const postal = (c.querySelector('.np-postal')?.value || '').trim();
-      if(!/^\d{6}$/.test(postal)){ alert('个人独资企业请填写投资人 6 位邮编'); return false; }
+      const postChk = validatePostalCodeValue(postal, '');
+      if(!postChk.ok){
+        alert('投资人邮编：' + postChk.message);
+        return false;
+      }
       if(!(c.querySelector('.np-political')?.value || '').trim()){ alert('请选择投资人政治面貌'); return false; }
       if(!(c.querySelector('.np-education')?.value || '').trim()){ alert('请选择投资人文化程度'); return false; }
       if(!(c.querySelector('.np-occupation')?.value || '').trim()){ alert('请选择投资人申请前职业状况'); return false; }
@@ -4787,13 +5045,13 @@ function isLocalHostName(h){
 }
 
 function gamazOriginCandidates(){
-  // 公网隧道：手机直连 api.gamaz.cn（CORS=*），不依赖本机能否访问上游
-  // 本机调试：优先走 8766 代理（可本地降级 / LLM），失败再直连
+  // 一律优先同源演示后端（含 validate / zihao_generate 本地降级）。
+  // api.gamaz.cn 对部分路径会返回 404 System Error，公网域名若优先打上游会红字失败。
   const local = backendOriginForPrototype();
-  if(isLocalHostName(location.hostname)){
-    return [local, GAMAZ_PUBLIC_API];
+  if(local === GAMAZ_PUBLIC_API){
+    return [GAMAZ_PUBLIC_API];
   }
-  return [GAMAZ_PUBLIC_API, local];
+  return [local, GAMAZ_PUBLIC_API];
 }
 
 function gamazOrigin(){ return gamazOriginCandidates()[0]; }
@@ -4883,10 +5141,28 @@ async function ensureNameScopeApis(){
   document.getElementById('reco')?.classList.add('show');
 }
 
+function isPrePermitScope(itemOrType){
+  // 前置许可：permit_type=1 或文案含「前置许可」
+  if(itemOrType == null) return false;
+  if(typeof itemOrType === 'object'){
+    const pt = itemOrType.permit_type;
+    if(pt === 1 || pt === '1') return true;
+    const txt = String(itemOrType.permit_text || itemOrType.label || '');
+    return txt.indexOf('前置许可') >= 0;
+  }
+  const v = String(itemOrType);
+  return v === '1' || v.indexOf('前置许可') >= 0;
+}
+
 function renderScopeTabs(types){
   const wrap = document.getElementById('scopeTabs');
   if(!wrap) return;
-  const all = [{ value: '', label: '全部' }].concat(types.map(t => ({
+  // 隐藏前置许可分类 Tab
+  const visibleTypes = (types || []).filter(t => !isPrePermitScope(t));
+  if(isPrePermitScope(STATE.scopePermitType) || STATE.scopePermitType === '1'){
+    STATE.scopePermitType = '';
+  }
+  const all = [{ value: '', label: '全部' }].concat(visibleTypes.map(t => ({
     value: String(t.value),
     label: t.label + (t.count != null ? ` (${t.count})` : ''),
   })));
@@ -4921,6 +5197,51 @@ function scopeItemHtml(item){
       <div class="meta">${metaBits}</div>
     </span>
   </div>`;
+}
+
+/** 经营范围关键词相关度：越大越靠前 */
+function scopeRelevanceScore(item, kw){
+  const q = String(kw || '').trim().toLowerCase();
+  if(!q) return 0;
+  const name = String(item.name || '').toLowerCase();
+  const code = String(item.scope_code || '').toLowerCase();
+  const ptxt = String(item.permit_text || '').toLowerCase();
+  let score = 0;
+  if(name === q) score += 10000;
+  else if(name.startsWith(q)) score += 8000;
+  else if(name.includes(q)){
+    const pos = name.indexOf(q);
+    score += 5000 - Math.min(pos, 2000);
+  }
+  // 多字关键词：命中字数越多越好
+  if(q.length >= 2){
+    let hit = 0;
+    for(const ch of q){
+      if(name.includes(ch)) hit += 1;
+    }
+    score += hit * 40;
+  }
+  if(code === q) score += 3000;
+  else if(code.includes(q)) score += 1200;
+  if(ptxt.includes(q)) score += 80;
+  // 名称更短且已命中 → 更贴切
+  if(score > 0 && name){
+    score += Math.max(0, 200 - name.length);
+  }
+  return score;
+}
+
+function sortScopesByRelevance(list, kw){
+  const q = String(kw || '').trim();
+  if(!q || !list || !list.length) return list || [];
+  return list.slice().sort((a, b)=>{
+    const db = scopeRelevanceScore(b, q) - scopeRelevanceScore(a, q);
+    if(db !== 0) return db;
+    const na = String(a.name || '');
+    const nb = String(b.name || '');
+    if(na.length !== nb.length) return na.length - nb.length;
+    return na.localeCompare(nb, 'zh');
+  });
 }
 
 function renderScopeOpts(statusText){
@@ -4965,6 +5286,7 @@ async function searchBizScopes(){
   const pushAll = (arr)=>{
     for(const it of arr || []){
       if(!it || !it.scope_id || seen.has(it.scope_id)) continue;
+      if(isPrePermitScope(it)) continue; // 隐藏前置许可条目
       seen.add(it.scope_id);
       acc.push(it);
     }
@@ -4988,7 +5310,7 @@ async function searchBizScopes(){
       total = Math.max(total, firstList.length + 1);
     }
     STATE.scopeTotal = total;
-    STATE.scopeList = acc.slice();
+    STATE.scopeList = sortScopesByRelevance(acc, kw);
     renderScopeOpts(`已加载 ${acc.length}${total ? ' / ' + total : ''} 项…`);
 
     let pages = Math.max(1, Math.ceil(Math.max(total, firstList.length) / pageSize));
@@ -5007,12 +5329,13 @@ async function searchBizScopes(){
         const t2 = Number((data.data && data.data.total) || 0);
         if(t2 > total) total = t2;
       }
-      STATE.scopeList = acc.slice();
+      STATE.scopeList = sortScopesByRelevance(acc, kw);
       STATE.scopeTotal = Math.max(total, acc.length);
       // total 不准时：若末页仍满，继续顺序补页直到不满页
       let page = pages + 1;
       while(lastFull && page <= 50){
         if(!stillCurrent()) return;
+        STATE.scopeList = sortScopesByRelevance(acc, kw);
         renderScopeOpts(`已加载 ${acc.length} 项，继续补齐…`);
         const more = await fetchScopePage(kw, page, pageSize);
         if(!stillCurrent()) return;
@@ -5022,14 +5345,14 @@ async function searchBizScopes(){
         pushAll(chunk);
         lastFull = chunk.length >= pageSize;
         page += 1;
-        STATE.scopeList = acc.slice();
+        STATE.scopeList = sortScopesByRelevance(acc, kw);
       }
       pages = page - 1;
     }
 
     if(!stillCurrent()) return;
     STATE.scopePage = pages;
-    STATE.scopeList = acc;
+    STATE.scopeList = sortScopesByRelevance(acc, kw);
     STATE.scopeTotal = Math.max(STATE.scopeTotal || 0, acc.length);
     if(!acc.length){
       box.innerHTML = '<div class="scope-empty">无匹配条目，换个关键词或分类试试</div>';
@@ -5427,7 +5750,52 @@ async function genZiCandidates(){
 }
 document.getElementById('aiGenZi').addEventListener('click', ()=> genZiCandidates());
 
-document.getElementById('industry').addEventListener('input', ()=> refreshName());
+document.getElementById('industry').addEventListener('input', (e)=>{
+  const el = e.target;
+  const cleaned = stripToHanOnly(el.value);
+  if(el.value !== cleaned) el.value = cleaned;
+  refreshName();
+});
+document.getElementById('addrRoad')?.addEventListener('input', (e)=>{
+  const el = e.target;
+  const cleaned = stripToHanOnly(el.value);
+  if(el.value !== cleaned) el.value = cleaned;
+});
+document.getElementById('postalCode')?.addEventListener('input', (e)=>{
+  const el = e.target;
+  const cleaned = String(el.value || '').replace(/\D/g, '').slice(0, 6);
+  if(el.value !== cleaned) el.value = cleaned;
+});
+document.getElementById('postalCode')?.addEventListener('blur', ()=>{
+  const code = (document.getElementById('postalCode')?.value || '').trim();
+  if(!code) return;
+  const chk = validatePostalCodeValue(code, document.getElementById('addrDistrict')?.value || '');
+  if(!chk.ok){
+    const tip = document.getElementById('postalCode');
+    if(tip) tip.setCustomValidity(chk.message);
+    tip?.reportValidity?.();
+  }else{
+    document.getElementById('postalCode')?.setCustomValidity('');
+  }
+});
+// 人员页等动态邮编输入：数字过滤 + 失焦核验
+document.addEventListener('input', (e)=>{
+  const el = e.target;
+  if(!(el instanceof HTMLInputElement)) return;
+  if(!el.classList.contains('np-postal') && el.id !== 'postalCode') return;
+  const cleaned = String(el.value || '').replace(/\D/g, '').slice(0, 6);
+  if(el.value !== cleaned) el.value = cleaned;
+});
+document.addEventListener('blur', (e)=>{
+  const el = e.target;
+  if(!(el instanceof HTMLInputElement)) return;
+  if(!el.classList.contains('np-postal')) return;
+  const code = (el.value || '').trim();
+  if(!code){ el.setCustomValidity(''); return; }
+  const chk = validatePostalCodeValue(code, '');
+  el.setCustomValidity(chk.ok ? '' : chk.message);
+  if(!chk.ok) el.reportValidity?.();
+}, true);
 document.getElementById('orgForm').addEventListener('change', ()=>{
   syncPersonnelByOrgForm();
   refreshName();
@@ -5678,7 +6046,18 @@ window.addEventListener('beforeunload', ()=>{
   try{ saveDraft(); }catch(e){}
 });
 
-/* ============ 屏 5：确认单同步屏1动态值 ============ */
+function sumLineHtml(k, v){
+  const val = (v == null || String(v).trim() === '') ? '—' : String(v);
+  return `<div class="sum-line"><div class="k">${k}</div><div class="v">${val.replace(/</g,'&lt;')}</div></div>`;
+}
+
+function sumBlockHtml(title, lines){
+  const body = (lines || []).filter(Boolean).join('');
+  if(!body) return '';
+  return `<div class="sum-sub"><div class="sum-sub-h">${title}</div>${body}</div>`;
+}
+
+/* ============ 屏 5：确认单集中展示全部已填信息 ============ */
 function syncConfirm(){
   const name = document.getElementById('aiName').value;
   const ind  = document.getElementById('industry').value.trim() || '—';
@@ -5688,6 +6067,7 @@ function syncConfirm(){
   const addr = addrObj.detail || '—';
   const post = document.getElementById('postalCode').value.trim() || '—';
   const scope = document.getElementById('scope').value || '（未填写）';
+  const authPhone = (STATE.authPhone || document.getElementById('phone')?.value || '').trim();
   document.getElementById('sumName').textContent = name || '—';
   document.getElementById('sumIndustry').textContent = ind;
   document.getElementById('sumOrgForm').textContent = org;
@@ -5704,59 +6084,120 @@ function syncConfirm(){
     }
   }
   document.getElementById('sumScope').textContent = scope;
-  document.getElementById('sumLegal').textContent = document.getElementById('legalName').value.trim() || '—';
-  const npParts = [...document.querySelectorAll('#npList .np-card')].map(c=>{
-    const d = collectNpCardData(c);
-    const n = d.name || '—';
-    const p = d.pct || '0';
-    let extra = '';
-    if(isLimitedPartnership() && d.liabilityType) extra = '·' + d.liabilityType;
-    if(isGeneralPartnership()){
-      const tags = [];
-      if(d.isExecutivePartner) tags.push('执行事务');
-      if(d.isLicenseHolder) tags.push('持照人');
-      if(tags.length) extra = '·' + tags.join('/');
+
+  // 企业信息区补充登录手机号（若有）
+  let entExtra = document.getElementById('sumAuthPhoneLine');
+  if(!entExtra){
+    const scopeLine = document.getElementById('sumScope')?.closest('.sum-line');
+    if(scopeLine && scopeLine.parentElement){
+      entExtra = document.createElement('div');
+      entExtra.className = 'sum-line';
+      entExtra.id = 'sumAuthPhoneLine';
+      entExtra.innerHTML = '<div class="k">登录手机号</div><div class="v" id="sumAuthPhone">—</div>';
+      scopeLine.parentElement.insertBefore(entExtra, scopeLine);
     }
-    return `${n}（${p}%${extra}）`;
-  });
-  document.getElementById('sumNp').textContent = npParts.length ? npParts.join('、') : '—';
+  }
+  const sumAuthPhone = document.getElementById('sumAuthPhone');
+  if(sumAuthPhone) sumAuthPhone.textContent = authPhone || '（未填写 / 已跳过短信验证）';
+
   const hideBoard = hidesBoardRoles();
-  const dirCards = hideBoard ? [] : collectDirectorCards();
-  document.getElementById('sumDir').textContent = hideBoard
-    ? '—'
-    : (dirCards.length
-      ? dirCards.map(d => d.name + (dirCards.length >= 2 && d.title ? `（${d.title}）` : '')).join('、')
-      : '—');
-  const supOn = isSupervisorOn();
-  document.getElementById('sumSup').textContent = hideBoard
-    ? '—'
-    : (supOn
-    ? ((document.getElementById('supName').value.trim() || '—') + '（已设立）')
-      : '不设立');
-  const sumMgrLine = document.getElementById('sumMgrLine');
-  if(sumMgrLine) sumMgrLine.style.display = hideBoard ? 'none' : '';
+  const blocks = [];
+
+  blocks.push(sumBlockHtml('法人（法定代表人）', [
+    sumLineHtml('姓名', document.getElementById('legalName')?.value),
+    sumLineHtml('手机号', document.getElementById('legalMobile')?.value),
+  ]));
+
+  const npCards = [...document.querySelectorAll('#npList .np-card')];
+  const npLabel = isLimitedPartnership() || isGeneralPartnership()
+    ? '合伙人'
+    : (isSoleProprietorship() ? '投资人' : '自然人（股东）');
+  if(npCards.length){
+    const lines = [];
+    npCards.forEach((c, i)=>{
+      const d = collectNpCardData(c);
+      lines.push(sumLineHtml(npLabel + (npCards.length > 1 ? ` ${i+1}` : ''), d.name));
+      lines.push(sumLineHtml('手机号', d.phone));
+      lines.push(sumLineHtml('民族', d.ethnicity));
+      lines.push(sumLineHtml('持股比例', d.pct != null && d.pct !== '' ? (d.pct + '%') : ''));
+      if(d.postalCode) lines.push(sumLineHtml('邮编', d.postalCode));
+      if(d.politicalStatus) lines.push(sumLineHtml('政治面貌', d.politicalStatus));
+      if(d.education) lines.push(sumLineHtml('文化程度', d.education));
+      if(d.priorOccupation) lines.push(sumLineHtml('申请前职业', d.priorOccupation));
+      if(d.liabilityType) lines.push(sumLineHtml('承担责任方式', d.liabilityType));
+      if(d.isExecutivePartner) lines.push(sumLineHtml('执行事务合伙人', '是'));
+      if(d.isLicenseHolder) lines.push(sumLineHtml('持照人', '是'));
+    });
+    blocks.push(sumBlockHtml(npLabel, lines));
+  }
+
+  if(!hideBoard){
+    const dirCards = collectDirectorCards();
+    blocks.push(sumBlockHtml('董事', dirCards.length ? dirCards.flatMap((d,i)=>[
+      sumLineHtml('董事' + (dirCards.length > 1 ? ` ${i+1}` : ''), d.name),
+      sumLineHtml('手机号', d.mobile),
+      (dirCards.length >= 2 && d.title) ? sumLineHtml('职务', d.title) : '',
+      d.sameAsLegal ? sumLineHtml('与法人同一人', '是') : '',
+    ]) : [sumLineHtml('状态', '未填写')]));
+
+    const supOn = isSupervisorOn();
+    blocks.push(sumBlockHtml('监事', supOn ? [
+      sumLineHtml('姓名', document.getElementById('supName')?.value),
+      sumLineHtml('手机号', document.getElementById('supMobile')?.value),
+      sumLineHtml('设立', '是'),
+    ] : [sumLineHtml('设立', '否')]));
+  }
+
   const managerOn = isManagerOn();
   const mgrCards = managerOn ? collectManagerCards() : [];
-  document.getElementById('sumMgr').textContent = managerOn
-    ? ((mgrCards.map(m => m.name).filter(Boolean).join('、') || '—') + '（已设立）')
-    : '不设立';
-  document.getElementById('sumFin').textContent = document.getElementById('finName').value.trim() || '—';
-  document.getElementById('sumLia').textContent = document.getElementById('liaName').value.trim() || '—';
-  document.getElementById('sumUbo').textContent = (() => {
-    const names = collectUboCards().map(u => u.name).filter(Boolean);
-    return names.length ? names.join('、') : '—';
-  })();
-  const tags = collectIdPeople().map(p => {
+  blocks.push(sumBlockHtml('经理', managerOn ? (mgrCards.length ? mgrCards.flatMap((m,i)=>[
+    sumLineHtml('经理' + (mgrCards.length > 1 ? ` ${i+1}` : ''), m.name),
+    sumLineHtml('手机号', m.mobile),
+    m.sameAsLegal ? sumLineHtml('与法人同一人', '是') : '',
+  ]) : [sumLineHtml('状态', '已设立但未填')]) : [sumLineHtml('设立', '否')]));
+
+  blocks.push(sumBlockHtml('财务负责人', [
+    sumLineHtml('姓名', document.getElementById('finName')?.value),
+    sumLineHtml('手机号', document.getElementById('finMobile')?.value),
+  ]));
+
+  blocks.push(sumBlockHtml('联络员', [
+    sumLineHtml('姓名', document.getElementById('liaName')?.value),
+    sumLineHtml('手机号', document.getElementById('liaMobile')?.value),
+    sumLineHtml('邮箱', document.getElementById('liaEmail')?.value),
+    sumLineHtml('住所', document.getElementById('liaAddress')?.value),
+  ]));
+
+  const ubos = collectUboCards();
+  blocks.push(sumBlockHtml('最终受益人', ubos.length ? ubos.flatMap((u,i)=>[
+    sumLineHtml('受益人' + (ubos.length > 1 ? ` ${i+1}` : ''), u.name),
+    sumLineHtml('手机号', u.mobile),
+    sumLineHtml('持股比例', u.pct != null && u.pct !== '' ? (u.pct + '%') : ''),
+    sumLineHtml('身份证有效期', u.idValidUntil),
+    sumLineHtml('户籍地', [u.hukouProvince, u.hukouCity, u.hukouDistrict].filter(Boolean).join('') || ''),
+  ]) : [sumLineHtml('状态', '未填写')]));
+
+  const pBox = document.getElementById('sumPersonnelDetail');
+  if(pBox) pBox.innerHTML = blocks.join('') || sumLineHtml('状态', '未填写');
+
+  const idPeople = collectIdPeople();
+  const docLines = idPeople.map(p => {
     const u = STATE.idUploads[p.personKey] || {};
-    const ok = !!(u.frontFileId && u.backFileId);
-    return `<span>${p.personName}·${ok ? '已齐' : '待传'}（${p.roles.join('/')}）</span>`;
+    const front = u.frontFileId ? '正面已传' : '正面待传';
+    const back = u.backFileId ? '反面已传' : '反面待传';
+    return sumLineHtml(
+      `${p.personName}（${(p.roles || []).join('/')}）`,
+      `${front} / ${back}；证件号以身份证影像为准`
+    );
   });
-  document.getElementById('sumIdCards').innerHTML = tags.length ? tags.join('') : '<span>未上传</span>';
-  const sumAp = document.getElementById('sumAddrProof');
-  if(sumAp){
-    const ap = STATE.addressProof || {};
-    sumAp.textContent = ap.fileId ? ('已上传' + (ap.fileName ? '（' + ap.fileName + '）' : '')) : '未上传';
-  }
+  const ap = STATE.addressProof || {};
+  docLines.push(sumLineHtml(
+    '住所使用相关文件',
+    ap.fileId ? ('已上传' + (ap.fileName ? '（' + ap.fileName + '）' : '')) : '未上传'
+  ));
+  docLines.push(sumLineHtml('实名核验', '承诺实报'));
+  const dBox = document.getElementById('sumDocsDetail');
+  if(dBox) dBox.innerHTML = docLines.join('');
 }
 
 /* ============ 初始化 ============ */
@@ -5775,8 +6216,12 @@ function syncConfirm(){
   ensureNameScopeApis().then(()=>{
     if(!(document.querySelectorAll('#nameChips .chip.zi').length)) genZiCandidates();
   });
-  if(restoredStep == null){ showAuth(); }
-  else { go(restoredStep); }
+  if(restoredStep == null){
+    if(SMS_AUTH_DISABLED) go(0);
+    else showAuth();
+  } else {
+    go(restoredStep);
+  }
 })();
 </script>
 </body>

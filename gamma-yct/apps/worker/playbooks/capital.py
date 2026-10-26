@@ -2997,9 +2997,54 @@ def run_capital_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dict[
         except Exception as e:
             result["pageCapitalRefillErr"] = str(e)
 
+    def _left_capital_page() -> bool:
+        """是否已离开出资页、进入人员信息（或更后）。"""
+        try:
+            url = (page.url or "").lower()
+        except Exception:
+            url = ""
+        if "chief-executive" in url or "personnel" in url:
+            return True
+        if "stockholder" in url:
+            # 仍在出资 URL，再看正文
+            pass
+        markers = (
+            "董事信息",
+            "设一名董事",
+            "设董事会",
+            "添加董事",
+            "监事信息",
+            "财务负责人",
+            "联络员",
+            "高级管理人员",
+        )
+        for scope in (page, frame2):
+            try:
+                body = scope.locator("body").inner_text(timeout=800) or ""
+            except Exception:
+                continue
+            if any(m in body for m in markers):
+                return True
+            if "出资情况" in body and "注册资本" in body and "股东" in body:
+                # 仍像出资页
+                continue
+        # 扫 frames
+        try:
+            for fr in page.frames:
+                try:
+                    b = fr.locator("body").inner_text(timeout=400) or ""
+                except Exception:
+                    continue
+                if any(m in b for m in markers):
+                    return True
+        except Exception:
+            pass
+        return False
+
     next_ok = False
+    left_page = False
     if not result.get("dialogStillOpen"):
-        for _ in range(4):
+        for attempt in range(6):
             _dismiss_switch_tip(page)
             dismiss_system_busy(page)
             try:
@@ -3026,12 +3071,27 @@ def run_capital_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dict[
                     next_ok = False
                     page.wait_for_timeout(1200)
                     continue
-                break
+                # 等路由切到人员信息，避免「点了下一步但仍停在出资」导致后续阶段起不来
+                for _ in range(16):
+                    page.wait_for_timeout(500)
+                    dismiss_system_busy(page)
+                    _dismiss_switch_tip(page)
+                    if _left_capital_page():
+                        left_page = True
+                        break
+                if left_page:
+                    break
+                # 未离开：再点
+                next_ok = False
+                frame2 = _frame_stockholder(page, timeout_ms=5000) or frame2
+                page.wait_for_timeout(400)
+                continue
             page.wait_for_timeout(500)
     else:
         result["nextSkippedReason"] = "股东弹窗未关闭"
-    result["nextClicked"] = next_ok
-    page.wait_for_timeout(1500)
+    result["nextClicked"] = bool(next_ok or left_page)
+    result["leftCapitalPage"] = left_page
+    page.wait_for_timeout(800)
     _shot(page, case_id, "capital-after-next")
 
     missing = []
@@ -3050,7 +3110,8 @@ def run_capital_flow(case_id: str, page: Page, payload: dict[str, Any]) -> dict[
             missing.append(f"股东:{nm}")
     if not result.get("shareholderConfirm") or result.get("dialogStillOpen"):
         missing.append("股东确定")
-    if not result.get("nextClicked"):
+    # 已离开出资页则不再要求 nextClicked 标记（避免竞态误判失败）
+    if not result.get("nextClicked") and not left_page:
         missing.append("下一步")
     result["missing"] = missing
     result["ok"] = not missing

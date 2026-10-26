@@ -20,8 +20,11 @@ bash run.sh
 >
 > 表单会自动保存在浏览器 localStorage；**重启后端后刷新页面即可继续填写**，无需重填。
 >
-> **外网用户访问**：见 [`docs/PUBLIC_TUNNEL.md`](docs/PUBLIC_TUNNEL.md)（Cloudflare Tunnel + 后台无头填报）。
-> 用户只应打开公网首页；抓码/填报在本机无头 Chrome 完成，不展示监控页。
+> **外网用户访问（临时隧道）**：见 [`docs/PUBLIC_TUNNEL.md`](docs/PUBLIC_TUNNEL.md)（Cloudflare Tunnel + 后台无头填报）。
+>
+> **阿里云 Windows ECS 正式部署**：见 [`docs/ALIYUN_WINDOWS_DEPLOY.md`](docs/ALIYUN_WINDOWS_DEPLOY.md) 与 [`deploy/`](deploy/)（HTTP 反代、NSSM、验收与 HTTPS 升级）。
+> 无头由环境变量 `GAMMA_HEADLESS` 控制（默认 `1`；本机看窗设 `0`）。环境变量模板：[`backend/.env.example`](backend/.env.example)。
+> 多客户并行填报：每会话独立 `caseId`；`GAMMA_MAX_CONCURRENT_FILLS`（默认 4）与 `GAMMA_MIN_FREE_MB`（默认 1200）控制容量，满载/内存不足时进入等待队列，不互杀窗口。
 >
 > **管理页**：本机打开 `http://localhost:8766/admin` 可查看用户提交任务与 RPA 进度；公网访问需设置环境变量 `GAMMA_ADMIN_TOKEN`。
 

@@ -23,6 +23,10 @@ class RelayClient:
     subscribe: set
 
 
+QUEUE_WAIT_MSG = "当前办理人数较多或服务器繁忙，请稍候"
+QUEUE_READY_MSG = "可以开始办理了，请点击开始办理"
+
+
 @dataclass
 class RelayJob:
     sid: str
@@ -40,9 +44,19 @@ class RelayJob:
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
+@dataclass
+class WaitEntry:
+    sid: str
+    case_id: str
+    enqueued_at: float = field(default_factory=time.time)
+    ready: bool = False
+
+
 class RelayHub:
     def __init__(self) -> None:
         self._jobs: Dict[str, RelayJob] = {}
+        self._wait_queue: List[WaitEntry] = []
+        self._wait_lock = threading.Lock()
         self._lock = asyncio.Lock()
         self._loop: Optional[asyncio.AbstractEventLoop] = None
 
@@ -198,15 +212,93 @@ class RelayHub:
         self._schedule(_do())
 
     def mark_finished(self, sid: str, ok: bool, error: Optional[str] = None) -> None:
+        # 同步置 finished，便于立刻释放并发计数
+        job = self._jobs.get(sid)
+        if job:
+            job.finished = True
+            job.ok = ok
+            job.error = error
+
         async def _do():
             async with self._lock:
-                job = self._jobs.get(sid)
-                if job:
-                    job.finished = True
-                    job.ok = ok
-                    job.error = error
+                j = self._jobs.get(sid)
+                if j:
+                    j.finished = True
+                    j.ok = ok
+                    j.error = error
 
         self._schedule(_do())
+        # 槽位释放后唤醒等待队列队首
+        try:
+            self.mark_wait_ready_when_slot_free()
+        except Exception:
+            logger.exception("mark_wait_ready failed after finish sid=%s", sid)
+
+    def count_live_fill_jobs(self) -> int:
+        """存活填报/签名线程数（不含仅排队未启动的 sid）。"""
+        n = 0
+        for job in list(self._jobs.values()):
+            if job.thread and job.thread.is_alive() and not job.finished:
+                n += 1
+        return n
+
+    def enqueue_wait(self, sid: str, case_id: str) -> dict[str, Any]:
+        """满载入队；同 sid 重复入队则更新 caseId 并返回当前位置。"""
+        with self._wait_lock:
+            for i, ent in enumerate(self._wait_queue):
+                if ent.sid == sid:
+                    ent.case_id = case_id or ent.case_id
+                    ent.ready = False
+                    ent.enqueued_at = time.time()
+                    return {
+                        "position": i + 1,
+                        "ready": False,
+                        "message": QUEUE_WAIT_MSG,
+                    }
+            self._wait_queue.append(WaitEntry(sid=sid, case_id=case_id))
+            return {
+                "position": len(self._wait_queue),
+                "ready": False,
+                "message": QUEUE_WAIT_MSG,
+            }
+
+    def dequeue_wait(self, sid: str) -> None:
+        with self._wait_lock:
+            self._wait_queue = [e for e in self._wait_queue if e.sid != sid]
+
+    def get_wait_state(self, sid: str) -> Optional[dict[str, Any]]:
+        with self._wait_lock:
+            for i, ent in enumerate(self._wait_queue):
+                if ent.sid == sid:
+                    return {
+                        "queued": True,
+                        "queuePosition": i + 1,
+                        "queueReady": bool(ent.ready),
+                        "caseId": ent.case_id,
+                        "message": QUEUE_READY_MSG if ent.ready else QUEUE_WAIT_MSG,
+                    }
+        return None
+
+    def consume_wait_ready(self, sid: str) -> Optional[WaitEntry]:
+        """开始办理时取出已就绪条目（出队）。"""
+        with self._wait_lock:
+            for i, ent in enumerate(self._wait_queue):
+                if ent.sid == sid:
+                    if not ent.ready:
+                        return None
+                    self._wait_queue.pop(i)
+                    return ent
+        return None
+
+    def mark_wait_ready_when_slot_free(self) -> None:
+        """有空位时仅唤醒队首（FIFO），避免一哄而上再次打满。"""
+        with self._wait_lock:
+            if not self._wait_queue:
+                return
+            # 若队首已 ready，保持；否则标 ready
+            head = self._wait_queue[0]
+            if not head.ready:
+                head.ready = True
 
     def start_fill_thread(
         self, sid: str, case_id: str, gamma_root: str, *, headless: bool = True
@@ -401,7 +493,7 @@ class RelayHub:
 
                 def _close_browser() -> None:
                     try:
-                        abort_fill_browser(case_id)
+                        abort_fill_browser(case_id, kill_all=False)
                     except Exception:
                         logger.exception("abort browser failed case=%s", case_id)
 
@@ -410,13 +502,14 @@ class RelayHub:
                     target=_close_browser, name=f"abort-{sid}", daemon=True
                 ).start()
                 try:
-                    abort_fill_browser(case_id)
+                    abort_fill_browser(case_id, kill_all=False)
                 except Exception:
                     pass
             except Exception as e:
                 logger.exception("cancel fill failed sid=%s", sid)
                 cancel_err = str(e)
 
+        self.dequeue_wait(sid)
         self.mark_finished(sid, False, "用户取消")
         try:
             self.push_error(sid, "用户取消填报")

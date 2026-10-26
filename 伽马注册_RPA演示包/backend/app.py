@@ -28,7 +28,7 @@ from .protocol import (
     msg_login_success, msg_error, msg_pong,
     msg_step, msg_screenshot,
 )
-from .relay import relay_hub
+from .relay import QUEUE_WAIT_MSG, relay_hub
 from . import gamaz_proxy
 
 
@@ -58,6 +58,14 @@ def _load_dotenv_file(path: Path) -> None:
 _load_dotenv_file(BACKEND_DIR / ".env")
 _load_dotenv_file(BACKEND_DIR.parent / ".env")
 
+
+def _env_flag(name: str, *, default: bool = False) -> bool:
+    raw = (os.environ.get(name) or "").strip().lower()
+    if not raw:
+        return default
+    return raw in ("1", "true", "yes", "on")
+
+
 # 真实场景：从上海企业登记在线门户开始
 REAL_PORTAL_URL = "https://yct.sh.gov.cn/portal_yct/"
 # mock 场景：直接进入 mock 登录页（保留旧 mock 用于离线验证）
@@ -67,15 +75,70 @@ MOCK_GOV_URL = "/mock/index.html"
 # 无论是否配置，页面都会通过 /api/bootstrap 领取短时 session token。
 GAMMA_API_TOKEN = (os.environ.get("GAMMA_API_TOKEN") or "").strip()
 # 本机调试才允许打开 A 页监控：GAMMA_ALLOW_MONITOR=1 或来自 localhost
-GAMMA_ALLOW_MONITOR = (os.environ.get("GAMMA_ALLOW_MONITOR") or "").strip() in ("1", "true", "TRUE", "yes")
+GAMMA_ALLOW_MONITOR = _env_flag("GAMMA_ALLOW_MONITOR", default=False)
 # 管理页口令：未设置时仅本机可调 /api/admin/*；设置后公网也可凭 X-Gamma-Admin-Token 访问
 GAMMA_ADMIN_TOKEN = (os.environ.get("GAMMA_ADMIN_TOKEN") or "").strip()
+# 生产默认无头；本机要看 Chrome 窗时在 .env 设 GAMMA_HEADLESS=0
+GAMMA_HEADLESS = _env_flag("GAMMA_HEADLESS", default=True)
+# 暂时停用注册页短信验证（send/verify 直接放行）；恢复时设 0
+GAMMA_SMS_AUTH_DISABLED = _env_flag("GAMMA_SMS_AUTH_DISABLED", default=True)
+# 并行填报软上限与最低可用内存（MB）；不足时入等待队列而非互杀
+try:
+    GAMMA_MAX_CONCURRENT_FILLS = max(
+        1, int((os.environ.get("GAMMA_MAX_CONCURRENT_FILLS") or "4").strip() or "4")
+    )
+except Exception:
+    GAMMA_MAX_CONCURRENT_FILLS = 4
+try:
+    GAMMA_MIN_FREE_MB = max(
+        0, int((os.environ.get("GAMMA_MIN_FREE_MB") or "1200").strip() or "1200")
+    )
+except Exception:
+    GAMMA_MIN_FREE_MB = 1200
 _BOOTSTRAP_SECRET = (os.environ.get("GAMMA_BOOTSTRAP_SECRET") or secrets.token_hex(16)).encode("utf-8")
 _SESSION_TOKENS: dict[str, float] = {}  # token -> expires_at epoch
 _SESSION_TOKEN_TTL_SEC = 4 * 3600
 
 app = FastAPI(title="伽马注册 RPA QR 同步服务", version="0.2.0")
 sessions = SessionManager(ttl_seconds=600)
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception):
+    """未捕获异常统一 JSON，避免反代落成纯文本 Internal Server Error。"""
+    from fastapi import HTTPException
+    from fastapi.exceptions import RequestValidationError
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+
+    if isinstance(exc, RequestValidationError):
+        return JSONResponse(
+            {"ok": False, "error": "validation_error", "detail": exc.errors()},
+            status_code=422,
+        )
+    if isinstance(exc, (HTTPException, StarletteHTTPException)):
+        detail = getattr(exc, "detail", str(exc))
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "http_error",
+                "message": detail if isinstance(detail, str) else str(detail),
+            },
+            status_code=int(getattr(exc, "status_code", 500) or 500),
+        )
+
+    import logging
+
+    logging.getLogger(__name__).exception(
+        "unhandled %s %s", request.method, request.url.path
+    )
+    return JSONResponse(
+        {
+            "ok": False,
+            "error": "internal_error",
+            "message": str(exc) or "服务器内部错误，请稍后重试",
+        },
+        status_code=500,
+    )
 
 # 静态文件：mock 政务网登录页（用于离线开发/演示）
 app.mount("/mock", StaticFiles(directory=str(MOCK_GOV_DIR)), name="mock")
@@ -240,6 +303,14 @@ async def api_sms_send(request: Request, body: dict):
     denied = _require_api_token(request, body)
     if denied is not None:
         return denied
+    if GAMMA_SMS_AUTH_DISABLED:
+        phone = str((body or {}).get("phone") or "").strip()
+        return {
+            "ok": True,
+            "disabled": True,
+            "phone": phone,
+            "message": "短信验证已暂时关闭",
+        }
     from . import sms_auth
 
     phone = str((body or {}).get("phone") or "").strip()
@@ -256,6 +327,14 @@ async def api_sms_verify(request: Request, body: dict):
     denied = _require_api_token(request, body)
     if denied is not None:
         return denied
+    if GAMMA_SMS_AUTH_DISABLED:
+        phone = str((body or {}).get("phone") or "").strip()
+        return {
+            "ok": True,
+            "disabled": True,
+            "phone": phone,
+            "message": "短信验证已暂时关闭",
+        }
     from . import sms_auth
 
     phone = str((body or {}).get("phone") or "").strip()
@@ -281,6 +360,8 @@ async def qrlogin():
 # ---------- REST ----------
 @app.get("/health")
 async def health():
+    from .sms import build_sms_sender
+
     return {
         "status": "ok",
         "service": "gamma-register-qr-sync",
@@ -295,18 +376,74 @@ async def health():
             "qrlogin": "http://localhost:8766/qrlogin",
             "acquire": "local-only unless GAMMA_ALLOW_MONITOR=1",
         },
-        # 外网产品面强制无头；本地可见调试时改为 False
-        "headless_forced": True,
+        "headless": GAMMA_HEADLESS,
+        "headless_forced": GAMMA_HEADLESS,
+        "smsConfigured": build_sms_sender() is not None,
         "cases_static_exposed": False,
         "admin_token_configured": bool(GAMMA_ADMIN_TOKEN),
         "public_tunnel_doc": "docs/PUBLIC_TUNNEL.md",
+        "deploy_doc": "docs/ALIYUN_WINDOWS_DEPLOY.md",
     }
 
 
-REPO_ROOT = BACKEND_DIR.parents[1]  # …/伽马账（backend → 演示包 → 仓库根）
+# backend → 演示包 → 兄弟根（本地可为 aliyun/，生产多为 C:\gamma\）
+REPO_ROOT = BACKEND_DIR.parents[1]
 GAMMA_ROOT = REPO_ROOT / "gamma-yct"
 GAMMA_CASES_DIR = GAMMA_ROOT / "data" / "cases"
-DEFAULT_CASE_ID = "GM202608062231EF"
+DEFAULT_CASE_ID = "GM202608062231EF"  # 仅作历史占位；新会话会铸造独立 id
+
+
+def _mint_case_id() -> str:
+    """铸造独立案件号：GM + 时间戳 + 4 位随机，避免多客户共用一案互杀。"""
+    stamp = time.strftime("%Y%m%d%H%M%S")
+    return f"GM{stamp}{secrets.token_hex(2).upper()}"
+
+
+def _resolve_case_id(raw: str | None, *, mint_if_default: bool = False) -> str:
+    cid = str(raw or "").strip()
+    if not cid or (mint_if_default and cid == DEFAULT_CASE_ID):
+        return _mint_case_id()
+    return cid
+
+
+def _free_memory_mb() -> float | None:
+    """返回可用物理内存 MB；检测失败返回 None（仅用并发路数判断）。"""
+    try:
+        if os.name == "nt":
+            import ctypes
+
+            class MEMORYSTATUSEX(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+
+            stat = MEMORYSTATUSEX()
+            stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+            if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+                return None
+            return float(stat.ullAvailPhys) / (1024.0 * 1024.0)
+    except Exception:
+        return None
+    return None
+
+
+def _can_start_fill_now() -> tuple[bool, str]:
+    """是否可立即启动填报。(ok, reason) reason 仅用于日志。"""
+    live = relay_hub.count_live_fill_jobs()
+    if live >= GAMMA_MAX_CONCURRENT_FILLS:
+        return False, f"live_jobs={live}>={GAMMA_MAX_CONCURRENT_FILLS}"
+    free_mb = _free_memory_mb()
+    if free_mb is not None and GAMMA_MIN_FREE_MB > 0 and free_mb < GAMMA_MIN_FREE_MB:
+        return False, f"free_mb={free_mb:.0f}<{GAMMA_MIN_FREE_MB}"
+    return True, "ok"
 
 _STAGE_FILES = [
     ("name", "fill-name-result.json", "名称信息"),
@@ -943,11 +1080,14 @@ async def name_check_industry(kw: str = "", limit: int = 20):
 
 @app.post("/api/name_check/validate")
 async def name_check_validate(body: dict):
-    return await gamaz_proxy.proxy_post_with_fallback(
-        "/api/name_check/validate",
-        body or {},
-        fallback=gamaz_proxy.local_name_validate,
-    )
+    # 上游无此路径（404 System Error），直接本地校验，避免公网红字与多余往返
+    try:
+        return gamaz_proxy.local_name_validate(body or {})
+    except Exception as e:
+        return JSONResponse(
+            {"code": 0, "msg": str(e) or "校验失败", "data": None, "error_code": -1},
+            status_code=200,
+        )
 
 
 @app.post("/api/name_check/check")
@@ -1002,11 +1142,11 @@ async def biz_scope_generate(body: dict):
 
 @app.post("/api/case-payload")
 async def sync_case_payload(request: Request, body: dict):
-    """把原型表单组装的 gamma-yct payload 写入本地案件（默认 GM202608062231EF）。"""
+    """把原型表单写入本地案件；无 caseId / 占位默认号时铸造独立案件号。"""
     denied = _require_api_token(request, body)
     if denied is not None:
         return denied
-    case_id = str(body.get("caseId") or DEFAULT_CASE_ID).strip() or DEFAULT_CASE_ID
+    case_id = _resolve_case_id(body.get("caseId"), mint_if_default=True)
     patch = body.get("payload")
     if not isinstance(patch, dict):
         return JSONResponse({"ok": False, "error": "payload must be object"}, status_code=400)
@@ -1125,51 +1265,99 @@ async def sync_case_payload(request: Request, body: dict):
 async def start_automation(request: Request, body: dict):
     """同步案件后启动后台填报，二维码中继到 sid。
 
-    外网产品面强制无头；本地可见调试时改为 headless=False，并改用下方「可见窗」返回文案。
+    无头由 GAMMA_HEADLESS 控制。满载或内存不足时入等待队列（queued=true），不挤杀他人。
     """
-    denied = _require_api_token(request, body)
-    if denied is not None:
-        return denied
-    case_id = str(body.get("caseId") or DEFAULT_CASE_ID).strip() or DEFAULT_CASE_ID
-    sid = str(body.get("sid") or "").strip()
-    if not sid:
-        return JSONResponse({"ok": False, "error": "sid required"}, status_code=400)
-
-    payload_path = GAMMA_CASES_DIR / case_id / "payload.json"
-    if not payload_path.exists():
-        return JSONResponse(
-            {"ok": False, "error": f"payload missing for {case_id}; call /api/case-payload first"},
-            status_code=400,
-        )
-
-    # 外网产品面：强制无头（headless=True）；本地调试可见 Chrome 时改为 False
-    headless = False
-    gamma_root = _ensure_gamma_path()
-    # 重试前清掉上一轮 cancel / 残留 Chrome，避免新会话被误杀或复用已登录 profile
     try:
-        from apps.api import store as gamma_store
-        from apps.worker.run_fill_session import abort_fill_browser
+        denied = _require_api_token(request, body)
+        if denied is not None:
+            return denied
+        # 启动必须带本会话已同步的 caseId，禁止回落共用默认号
+        case_id = str(body.get("caseId") or "").strip()
+        if not case_id or case_id == DEFAULT_CASE_ID:
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": "caseId required；请先调用 /api/case-payload 获取独立案件号",
+                },
+                status_code=400,
+            )
+        sid = str(body.get("sid") or "").strip()
+        if not sid:
+            return JSONResponse({"ok": False, "error": "sid required"}, status_code=400)
 
-        abort_fill_browser(case_id, kill_all=False)
-        gamma_store.consume_cancel(case_id)
-    except Exception:
-        pass
-    await asyncio.sleep(0.8)
-    await relay_hub.ensure_job(sid, case_id)
-    started = relay_hub.start_fill_thread(sid, case_id, gamma_root, headless=headless)
-    return {
-        "ok": True,
-        "caseId": case_id,
-        "sid": sid,
-        "started": started,
-        "mode": "relay_visible" if not headless else "relay_headless",
-        "headless": headless,
-        "message": (
-            ("已启动可见窗填报" if not headless else "已启动后台无头填报")
-            if started
-            else "同 sid 填报已在运行"
-        ),
-    }
+        payload_path = GAMMA_CASES_DIR / case_id / "payload.json"
+        if not payload_path.exists():
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": f"payload missing for {case_id}; call /api/case-payload first",
+                },
+                status_code=400,
+            )
+
+        await relay_hub.ensure_job(sid, case_id)
+
+        # 用户从等待态点「开始办理」：先消费 ready 标记
+        relay_hub.consume_wait_ready(sid)
+
+        can_run, reason = _can_start_fill_now()
+        if not can_run:
+            wait_info = relay_hub.enqueue_wait(sid, case_id)
+            return {
+                "ok": True,
+                "queued": True,
+                "caseId": case_id,
+                "sid": sid,
+                "started": False,
+                "position": wait_info.get("position"),
+                "message": QUEUE_WAIT_MSG,
+                "reason": reason,
+            }
+
+        headless = GAMMA_HEADLESS
+        gamma_root = _ensure_gamma_path()
+        # 仅清理本案件上一轮 cancel / Chrome；必须放到线程池，禁止在事件循环线程调 Playwright close
+        try:
+            from apps.api import store as gamma_store
+            from apps.worker.run_fill_session import abort_fill_browser
+
+            await asyncio.to_thread(
+                lambda: abort_fill_browser(case_id, kill_all=False)
+            )
+            await asyncio.to_thread(gamma_store.consume_cancel, case_id)
+        except Exception:
+            pass
+        await asyncio.sleep(0.35)
+        relay_hub.dequeue_wait(sid)
+        started = relay_hub.start_fill_thread(
+            sid, case_id, gamma_root, headless=headless
+        )
+        return {
+            "ok": True,
+            "queued": False,
+            "caseId": case_id,
+            "sid": sid,
+            "started": started,
+            "mode": "relay_headless" if headless else "relay_visible",
+            "headless": headless,
+            "message": (
+                ("已启动后台无头填报" if headless else "已启动可见窗填报")
+                if started
+                else "同 sid 填报已在运行"
+            ),
+        }
+    except Exception as e:
+        import logging
+
+        logging.getLogger(__name__).exception("start_automation failed")
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "start_failed",
+                "message": f"启动自动化失败：{e}",
+            },
+            status_code=500,
+        )
 
 
 @app.post("/api/start-signature")
@@ -1295,11 +1483,38 @@ async def refresh_sign_qr(request: Request, body: dict):
 
 @app.get("/api/automation/{sid}")
 async def automation_status(sid: str):
-    job = await relay_hub.get(sid)
-    if job is None:
-        return JSONResponse({"ok": False, "error": "unknown sid"}, status_code=404)
+    try:
+        return await _automation_status_impl(sid)
+    except Exception as e:
+        import logging
 
-    summary = _case_summary(job.case_id or "", job)
+        logging.getLogger(__name__).exception("automation_status failed sid=%s", sid)
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "status_failed",
+                "message": str(e) or "进度查询失败",
+            },
+            status_code=500,
+        )
+
+
+async def _automation_status_impl(sid: str):
+    job = await relay_hub.get(sid)
+    wait_state = relay_hub.get_wait_state(sid)
+    if job is None and wait_state is None:
+        # 用 200 + ok:false，避免扫码后短暂竞态被前端当成资源 404
+        return {
+            "ok": False,
+            "error": "unknown sid",
+            "sid": sid,
+            "running": False,
+            "finished": False,
+            "queued": False,
+        }
+
+    case_id = (job.case_id if job else "") or (wait_state or {}).get("caseId") or ""
+    summary = _case_summary(case_id, job)
     case_status = str(summary.get("caseStatus") or "")
     customer_message = str(summary.get("customerMessage") or "")
     reason = str(summary.get("reason") or "")
@@ -1310,7 +1525,9 @@ async def automation_status(sid: str):
     progress = str(summary.get("progress") or "等待填报进度…")
     fill_ok = bool(summary.get("fillOk"))
     sign_done = bool(summary.get("signDone"))
-    sign_phase = str(summary.get("signPhase") or "") or (job.sign_phase or "")
+    sign_phase = str(summary.get("signPhase") or "") or (
+        (job.sign_phase or "") if job else ""
+    )
     if not sign_phase:
         if case_status == "awaiting_alipay_qr":
             sign_phase = "alipay_qr"
@@ -1322,22 +1539,38 @@ async def automation_status(sid: str):
             sign_phase = "signing"
 
     # 案件已过扫码阶段时，即使 job.logged_in 因调度丢失未置位，也视为已登录
-    logged_in = bool(job.logged_in) or case_status in PAST_QR_STATUSES
+    logged_in = bool(job and job.logged_in) or case_status in PAST_QR_STATUSES
+
+    queued = bool(wait_state)
+    queue_ready = bool(wait_state and wait_state.get("queueReady"))
+    if queued:
+        progress = str(wait_state.get("message") or progress)
+
+    # 有空位时主动尝试唤醒队首标记（轮询侧也会间接触发）
+    if queued and not queue_ready:
+        can_run, _ = _can_start_fill_now()
+        if can_run:
+            relay_hub.mark_wait_ready_when_slot_free()
+            wait_state = relay_hub.get_wait_state(sid) or wait_state
+            queue_ready = bool(wait_state and wait_state.get("queueReady"))
+            if queue_ready:
+                progress = str(wait_state.get("message") or progress)
 
     return {
         "ok": True,
         "sid": sid,
-        "caseId": job.case_id,
-        "hasQr": bool(job.qr_b64),
-        "qr": job.qr_b64 if job.qr_b64 else None,
-        "qrKind": job.qr_kind or None,
+        "caseId": case_id or (job.case_id if job else None),
+        "hasQr": bool(job and job.qr_b64),
+        "qr": (job.qr_b64 if job and job.qr_b64 else None),
+        "qrKind": (job.qr_kind if job else None) or None,
         "signPhase": sign_phase or None,
         "signDone": sign_done,
         "loggedIn": logged_in,
-        "finished": job.finished,
+        "finished": bool(job.finished) if job else False,
         "fillOk": fill_ok,
-        "error": job.error or (reason if job.finished and not fill_ok else None),
-        "running": bool(job.thread and job.thread.is_alive()),
+        "error": (job.error if job else None)
+        or (reason if job and job.finished and not fill_ok else None),
+        "running": bool(job and job.thread and job.thread.is_alive()),
         "caseStatus": case_status,
         "progress": progress,
         "customerMessage": customer_message,
@@ -1346,6 +1579,9 @@ async def automation_status(sid: str):
         "needsHuman": needs_human,
         "stage": stage,
         "stagesDone": stages_done,
+        "queued": queued,
+        "queuePosition": (wait_state or {}).get("queuePosition"),
+        "queueReady": queue_ready,
     }
 
 
@@ -1514,17 +1750,20 @@ async def cancel_automation(sid: str, request: Request):
     else:
         result = {"ok": True, "sid": sid, "message": "无进行中的自动化会话"}
 
-    # 无论 job 是否还在，都按案件号强制关 Chrome（解决取消未命中会话时窗口残留）
+    # 有明确案件号时才关 Chrome；禁止回落共用 DEFAULT 误杀他人
     try:
-        _ensure_gamma_path()
-        from apps.worker.run_fill_session import abort_fill_browser
+        if case_id and case_id != DEFAULT_CASE_ID:
+            _ensure_gamma_path()
+            from apps.worker.run_fill_session import abort_fill_browser
 
-        if not case_id:
-            case_id = DEFAULT_CASE_ID
-        # 只关本案件窗口，避免 kill_all 误杀其它/刚拉起的会话
-        abort_fill_browser(case_id, kill_all=False)
-        result["browserClosed"] = True
-        result["caseId"] = case_id
+            await asyncio.to_thread(
+                lambda: abort_fill_browser(case_id, kill_all=False)
+            )
+            result["browserClosed"] = True
+            result["caseId"] = case_id
+        else:
+            result["browserClosed"] = False
+            result["caseId"] = case_id or None
     except Exception as e:
         result["browserWarn"] = str(e)
     return result
@@ -1536,7 +1775,12 @@ async def cancel_automation_by_case(request: Request, body: dict):
     denied = _require_api_token(request, body)
     if denied is not None:
         return denied
-    case_id = str(body.get("caseId") or DEFAULT_CASE_ID).strip() or DEFAULT_CASE_ID
+    case_id = str(body.get("caseId") or "").strip()
+    if not case_id or case_id == DEFAULT_CASE_ID:
+        return JSONResponse(
+            {"ok": False, "error": "caseId required（禁止使用共用默认案件号）"},
+            status_code=400,
+        )
     # 顺带取消仍在跑的同 case 会话
     try:
         for sid, job in list(getattr(relay_hub, "_jobs", {}).items()):
@@ -1553,10 +1797,21 @@ async def cancel_automation_by_case(request: Request, body: dict):
     from apps.worker.run_fill_session import abort_fill_browser
 
     try:
-        gamma_store.request_cancel(case_id)
+        await asyncio.to_thread(gamma_store.request_cancel, case_id)
     except Exception:
         pass
-    abort_fill_browser(case_id, kill_all=False)
+    try:
+        await asyncio.to_thread(
+            lambda: abort_fill_browser(case_id, kill_all=False)
+        )
+    except Exception as e:
+        return {
+            "ok": True,
+            "caseId": case_id,
+            "killed": 0,
+            "warn": str(e),
+            "message": "已取消（关窗时出现警告）",
+        }
     return {"ok": True, "caseId": case_id, "killed": 0, "message": "已取消并关闭填报浏览器"}
 
 

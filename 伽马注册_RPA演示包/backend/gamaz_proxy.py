@@ -207,10 +207,10 @@ async def generate_zihao_candidates(body: Optional[dict[str, Any]] = None) -> di
         "count": count,
         "limit": count,
     }
+    # 上游目前无 zihao_generate（404 System Error），只试可能存在的 suggest/generate
     for path in (
-        "/api/name_check/zihao_generate",
-        "/api/name_check/generate",
         "/api/name_check/suggest",
+        "/api/name_check/generate",
     ):
         upstream = await proxy_post(path, payload)
         if upstream.get("code") == 1:
